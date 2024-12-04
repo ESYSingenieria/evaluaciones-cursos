@@ -82,16 +82,45 @@ if (loginForm) {
 
 // Cargar evaluaciones en dashboard.html
 const loadEvaluations = async () => {
-    const evaluationsList = document.getElementById('evaluationsList');
+    const evaluationsList = document.getElementById("evaluationsList");
+    const user = auth.currentUser;
+
+    if (!user) return;
+
     try {
-        const snapshot = await db.collection('evaluations').get();
-        snapshot.forEach(doc => {
-            const li = document.createElement('li');
-            li.innerHTML = `<a href="evaluation.html?id=${doc.id}">${doc.data().title}</a>`;
-            evaluationsList.appendChild(li);
+        const evaluationsSnapshot = await db.collection("evaluations").get();
+        evaluationsSnapshot.forEach(async (evaluationDoc) => {
+            const evaluationData = evaluationDoc.data();
+            const evaluationId = evaluationDoc.id;
+
+            // Obtener respuestas para esta evaluación del usuario
+            const responsesSnapshot = await db.collection("responses")
+                .where("userId", "==", user.uid)
+                .where("evaluationId", "==", evaluationId)
+                .get();
+
+            let highestScore = null; // Para almacenar la respuesta con el mayor puntaje
+            responsesSnapshot.forEach((responseDoc) => {
+                const responseData = responseDoc.data();
+                const result = calculateResult(evaluationId, responseData.answers); // Calcula el puntaje
+                if (!highestScore || result.score > highestScore.score) {
+                    highestScore = { ...result, responseId: responseDoc.id }; // Actualiza con el puntaje más alto
+                }
+            });
+
+            // Muestra el intento con mayor puntaje
+            if (highestScore) {
+                const li = document.createElement("li");
+                li.innerHTML = `
+                    <a href="evaluation.html?id=${evaluationId}">${evaluationData.name}</a>
+                    <p><strong>Puntaje más alto:</strong> ${highestScore.score}%</p>
+                    <p><strong>Nota:</strong> ${highestScore.grade}</p>
+                `;
+                evaluationsList.appendChild(li);
+            }
         });
     } catch (error) {
-        console.error("Error cargando evaluaciones:", error);
+        console.error("Error al cargar las evaluaciones:", error);
     }
 };
 
