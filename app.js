@@ -97,12 +97,12 @@ const loadEvaluations = async () => {
 
 // Enviar respuestas de evaluation.html
 const submitEvaluation = async (event) => {
-    event.preventDefault(); // Evita el envío predeterminado del formulario
+    event.preventDefault(); // Detiene el comportamiento predeterminado del formulario
 
-    // Mostrar confirmación al usuario
+    // Mostrar confirmación antes de enviar
     const confirmSubmission = window.confirm("¿Estás seguro de que quieres enviar tus respuestas?");
     if (!confirmSubmission) {
-        return; // Si cancela, no se envían las respuestas
+        return; // Si el usuario cancela, no envía nada
     }
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -111,11 +111,11 @@ const submitEvaluation = async (event) => {
     const formData = new FormData(form);
     const answers = {};
 
+    // Procesar las respuestas del formulario
     formData.forEach((value, key) => {
         answers[key] = value;
     });
 
-    // Validar que se hayan respondido las preguntas
     if (Object.keys(answers).length === 0) {
         alert("Debes responder al menos una pregunta antes de enviar.");
         return;
@@ -125,7 +125,7 @@ const submitEvaluation = async (event) => {
         const user = auth.currentUser;
         if (!user) throw new Error("Usuario no autenticado.");
 
-        // Guardar las respuestas en Firestore
+        // Agregar respuestas a Firestore
         await db.collection('responses').add({
             userId: user.uid,
             evaluationId: evaluationId,
@@ -152,11 +152,14 @@ const submitEvaluation = async (event) => {
 };
 
 // Vincular el evento de envío al formulario
-const evaluationForm = document.getElementById('evaluationForm');
-if (evaluationForm && !evaluationForm.dataset.listenerAttached) {
-    evaluationForm.addEventListener('submit', submitEvaluation);
-    evaluationForm.dataset.listenerAttached = true; // Marca que el listener ya fue agregado
-}
+// Asegúrate de que el evento se registre solo una vez
+document.addEventListener('DOMContentLoaded', () => {
+    const evaluationForm = document.getElementById('evaluationForm');
+    if (evaluationForm && !evaluationForm.dataset.listenerAttached) {
+        evaluationForm.addEventListener('submit', submitEvaluation);
+        evaluationForm.dataset.listenerAttached = true; // Marca que el listener ya fue agregado
+    }
+});
 
 // Cargar respuestas en dashboard.html
 const loadResponses = async () => {
