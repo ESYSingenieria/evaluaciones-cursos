@@ -412,7 +412,7 @@ const generateCertificateFromPDF = async (userName, evaluationID, score, approva
 
 
         // Cargar el PDF base
-        const existingPdfBytes = await fetch("/plantilla.pdf").then(res => res.arrayBuffer());
+        const existingPdfBytes = await fetch("plantilla.pdf").then(res => res.arrayBuffer());
         const pdfDoc = await PDFLib.PDFDocument.load(existingPdfBytes);
         const pages = pdfDoc.getPages();
         const firstPage = pages[0];
