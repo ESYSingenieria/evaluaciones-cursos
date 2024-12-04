@@ -82,51 +82,16 @@ if (loginForm) {
 
 // Cargar evaluaciones en dashboard.html
 const loadEvaluations = async () => {
-    const evaluationsList = document.getElementById("evaluationsList");
-    evaluationsList.innerHTML = ""; // Limpia la lista de evaluaciones
-
+    const evaluationsList = document.getElementById('evaluationsList');
     try {
-        const user = auth.currentUser;
-        if (!user) throw new Error("Usuario no autenticado.");
-
-        const evaluationsSnapshot = await db.collection("evaluations").get();
-        const responsesSnapshot = await db.collection("responses")
-            .where("userId", "==", user.uid)
-            .get();
-
-        const attemptsByEvaluation = {}; // Almacena los intentos por evaluación
-
-        // Procesar intentos por evaluación
-        responsesSnapshot.forEach((doc) => {
-            const response = doc.data();
-            const evaluationId = response.evaluationId;
-
-            if (!attemptsByEvaluation[evaluationId]) {
-                attemptsByEvaluation[evaluationId] = 0;
-            }
-
-            attemptsByEvaluation[evaluationId] += 1; // Incrementar intentos
-        });
-
-        // Mostrar evaluaciones disponibles según los intentos
-        evaluationsSnapshot.forEach((evaluationDoc) => {
-            const evaluationData = evaluationDoc.data();
-            const evaluationId = evaluationDoc.id;
-            const attempts = attemptsByEvaluation[evaluationId] || 0;
-
-            // Mostrar evaluación si los intentos son menores a 3
-            if (attempts < 3) {
-                const li = document.createElement("li");
-                li.innerHTML = `
-                    <a href="evaluation.html?id=${evaluationId}">${evaluationData.name}</a>
-                    <p>Intentos realizados: ${attempts}/3</p>
-                `;
-                evaluationsList.appendChild(li);
-            }
+        const snapshot = await db.collection('evaluations').get();
+        snapshot.forEach(doc => {
+            const li = document.createElement('li');
+            li.innerHTML = `<a href="evaluation.html?id=${doc.id}">${doc.data().title}</a>`;
+            evaluationsList.appendChild(li);
         });
     } catch (error) {
-        console.error("Error al cargar las evaluaciones:", error);
-        evaluationsList.innerHTML = "<p>Hubo un problema al cargar las evaluaciones.</p>";
+        console.error("Error cargando evaluaciones:", error);
     }
 };
 
@@ -194,52 +159,57 @@ if (evaluationForm) {
 // Cargar respuestas en dashboard.html
 const loadResponses = async () => {
     const responsesContainer = document.getElementById('responsesList');
-    responsesContainer.innerHTML = ""; // Limpia el contenedor de resultados
+    responsesContainer.innerHTML = ""; // Limpia el contenedor
 
     try {
         const user = auth.currentUser;
         if (!user) throw new Error("Usuario no autenticado.");
 
-        const responsesSnapshot = await db.collection("responses")
-            .where("userId", "==", user.uid)
+        // Obtener respuestas del usuario desde Firestore
+        const snapshot = await db.collection('responses')
+            .where('userId', '==', user.uid)
             .get();
 
-        if (responsesSnapshot.empty) {
+        if (snapshot.empty) {
             responsesContainer.innerHTML = "<p>No tienes evaluaciones realizadas.</p>";
             return;
         }
 
-        const highestScores = {}; // Almacena el mejor puntaje por evaluación
-
-        // Procesar respuestas del usuario
-        responsesSnapshot.forEach((doc) => {
+        snapshot.forEach(async (doc) => {
             const response = doc.data();
-            const evaluationId = response.evaluationId;
+            const result = await calculateResult(response.evaluationId, response.answers);
 
-            // Calcular el puntaje usando `calculateResult`
-            const result = calculateResult(evaluationId, response.answers);
+            if (result) {
+                const div = document.createElement('div');
+                div.className = "result-item";
+                div.innerHTML = `
+                    <h3>Curso: ${response.evaluationId}</h3>
+                    <p><strong>Puntaje:</strong> ${result.score}</p>
+                    <p><strong>Estado de Aprobación:</strong> ${result.grade}</p>
+                `;
 
-            // Guardar el mejor puntaje
-            if (!highestScores[evaluationId] || result.score > highestScores[evaluationId].score) {
-                highestScores[evaluationId] = { ...result, timestamp: response.timestamp };
+                // Verificar si el usuario aprobó
+                if (result.score >= 80) {
+                    const downloadButton = document.createElement("button");
+                    downloadButton.textContent = "Descargar Certificado";
+                    downloadButton.style.marginTop = "10px";
+
+                    const approvalDate = response.timestamp ? new Date(response.timestamp.toDate()).toLocaleDateString() : "Fecha no disponible";
+
+                    // Botón para generar el certificado
+                    downloadButton.addEventListener("click", () => {
+                        console.log("Intentando generar certificado para:", response.evaluationId);
+                        generateCertificateFromPDF(auth.currentUser.email, response.evaluationId, result.score, approvalDate);
+                    });
+
+                    div.appendChild(downloadButton);
+                }
+
+                responsesContainer.appendChild(div);
             }
         });
-
-        // Mostrar los resultados
-        Object.keys(highestScores).forEach((evaluationId) => {
-            const { score, grade, timestamp } = highestScores[evaluationId];
-            const div = document.createElement('div');
-            div.className = "result-item";
-            div.innerHTML = `
-                <h3>Curso: ${evaluation.name}</h3>
-                <p><strong>Puntaje:</strong> ${score}</p>
-                <p><strong>Estado de Aprobación:</strong> ${grade}</p>
-                <p><strong>Fecha del último intento:</strong> ${timestamp ? new Date(timestamp.toDate()).toLocaleDateString() : "No disponible"}</p>
-            `;
-            responsesContainer.appendChild(div);
-        });
     } catch (error) {
-        console.error("Error al cargar los resultados:", error);
+        console.error("Error cargando respuestas:", error);
         responsesContainer.innerHTML = "<p>Hubo un problema al cargar tus resultados.</p>";
     }
 };
@@ -346,15 +316,15 @@ const startTimer = (timeLimit) => {
 
 const calculateResult = async (evaluationId, userAnswers) => {
     try {
-        const evaluationDoc = await db.collection('evaluations').doc(evaluationId).get();
-        if (!evaluationDoc.exists) throw new Error("La evaluación no existe.");
+        const doc = await db.collection('evaluations').doc(evaluationId).get();
+        if (!doc.exists) throw new Error("La evaluación no existe.");
 
-        const questions = evaluationDoc.data().questions;
+        const questions = doc.data().questions;
         let correctCount = 0;
 
         questions.forEach((question, index) => {
-            const userAnswer = userAnswers[`question${index}`]?.trim().toLowerCase();
-            const correctAnswer = question.correct?.trim().toLowerCase();
+            const userAnswer = (userAnswers[`question${index}`] || "").trim().toLowerCase();
+            const correctAnswer = question.correct.trim().toLowerCase();
 
             if (userAnswer === correctAnswer) {
                 correctCount++;
@@ -362,13 +332,16 @@ const calculateResult = async (evaluationId, userAnswers) => {
         });
 
         const totalQuestions = questions.length;
-        const score = Math.round((correctCount*4));
-        const grade = score >= 80 ? "Aprobado" : "Reprobado";
+        const score = Math.round((correctCount*4)); // Porcentaje
+        let grade;
+
+        if (score >= 80) grade = "Aprobado";
+        else grade = "Reprobado";
 
         return { score, grade };
     } catch (error) {
         console.error("Error al calcular el resultado:", error);
-        return { score: 0, grade: "No disponible" }; // Valores predeterminados
+        return null;
     }
 };
 
