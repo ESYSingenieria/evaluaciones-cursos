@@ -181,70 +181,83 @@ if (evaluationForm) {
 // Cargar respuestas en dashboard.html
 const loadResponses = async () => {
     const responsesContainer = document.getElementById('responsesList');
+    const evaluationsList = document.getElementById('evaluationsList'); // Evaluaciones disponibles
     responsesContainer.innerHTML = ""; // Limpia el contenedor de resultados
-    
+    evaluationsList.innerHTML = ""; // Limpia el contenedor de evaluaciones
+
     try {
         const user = auth.currentUser;
         if (!user) throw new Error("Usuario no autenticado.");
 
-        // Obtener respuestas del usuario desde Firestore
-        const snapshot = await db.collection('responses')
-            .where('userId', '==', user.uid)
-            .get();
-
-        if (snapshot.empty) {
-            responsesContainer.innerHTML = "<p>No tienes evaluaciones realizadas.</p>";
+        // Obtener todas las evaluaciones
+        const evaluationsSnapshot = await db.collection('evaluations').get();
+        if (evaluationsSnapshot.empty) {
+            evaluationsList.innerHTML = "<p>No hay evaluaciones disponibles.</p>";
             return;
         }
 
         const highestScores = {}; // Almacena el mejor puntaje por evaluación
 
-        snapshot.forEach((doc) => {
+        // Obtener respuestas del usuario
+        const responsesSnapshot = await db.collection('responses')
+            .where('userId', '==', user.uid)
+            .get();
+
+        responsesSnapshot.forEach((doc) => {
             const response = doc.data();
             const evaluationId = response.evaluationId;
 
-            // Calcula el puntaje actual
-            const result = calculateResult(evaluationId, response.answers);
+            // Calcular puntaje actual usando tu lógica
+            const result = await calculateResult(evaluationId, response.answers);
 
-            // Si no hay registro previo o el puntaje actual es mayor, actualiza
             if (!highestScores[evaluationId] || result.score > highestScores[evaluationId].score) {
                 highestScores[evaluationId] = { ...result, response, timestamp: response.timestamp };
             }
         });
 
-        // Mostrar resultados del mayor puntaje
-        for (const evaluationId in highestScores) {
-            const { score, grade, response, timestamp } = highestScores[evaluationId];
+        // Mostrar evaluaciones realizadas y disponibles
+        evaluationsSnapshot.forEach((evaluationDoc) => {
+            const evaluationData = evaluationDoc.data();
+            const evaluationId = evaluationDoc.id;
 
-            const div = document.createElement('div');
-            div.className = "result-item";
-            div.innerHTML = `
-                <h3>Curso: ${evaluationId}</h3>
-                <p><strong>Puntaje:</strong> ${score}%</p>
-                <p><strong>Estado de Aprobación:</strong> ${grade}</p>
-            `;
+            // Mostrar resultados del mayor puntaje
+            if (highestScores[evaluationId]) {
+                const { score, grade, timestamp } = highestScores[evaluationId];
+                const div = document.createElement('div');
+                div.className = "result-item";
+                div.innerHTML = `
+                    <h3>Curso: ${evaluationData.name}</h3>
+                    <p><strong>Puntaje más alto:</strong> ${score ?? "No disponible"}%</p>
+                    <p><strong>Estado de Aprobación:</strong> ${grade ?? "No disponible"}</p>
+                `;
 
-            // Verificar si el usuario aprobó
-            if (score >= 80) {
-                const downloadButton = document.createElement("button");
-                downloadButton.textContent = "Descargar Certificado";
-                downloadButton.style.marginTop = "10px";
+                if (score >= 80) {
+                    const downloadButton = document.createElement("button");
+                    downloadButton.textContent = "Descargar Certificado";
+                    downloadButton.style.marginTop = "10px";
 
-                const approvalDate = timestamp ? new Date(timestamp.toDate()).toLocaleDateString() : "Fecha no disponible";
+                    const approvalDate = timestamp ? new Date(timestamp.toDate()).toLocaleDateString() : "Fecha no disponible";
 
-                // Botón para generar el certificado
-                downloadButton.addEventListener("click", () => {
-                    console.log("Intentando generar certificado para:", evaluationId);
-                    generateCertificateFromPDF(auth.currentUser.email, evaluationId, score, approvalDate);
-                });
+                    downloadButton.addEventListener("click", () => {
+                        generateCertificateFromPDF(user.email, evaluationId, score, approvalDate);
+                    });
 
-                div.appendChild(downloadButton);
+                    div.appendChild(downloadButton);
+                }
+
+                responsesContainer.appendChild(div);
+            } else {
+                // Mostrar evaluación disponible si no hay intentos
+                const li = document.createElement("li");
+                li.innerHTML = `
+                    <a href="evaluation.html?id=${evaluationId}">${evaluationData.name}</a>
+                    <p>Puedes realizar esta evaluación.</p>
+                `;
+                evaluationsList.appendChild(li);
             }
-
-            responsesContainer.appendChild(div);
-        }
+        });
     } catch (error) {
-        console.error("Error cargando respuestas:", error);
+        console.error("Error al cargar respuestas y evaluaciones:", error);
         responsesContainer.innerHTML = "<p>Hubo un problema al cargar tus resultados.</p>";
     }
 };
