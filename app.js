@@ -381,7 +381,7 @@ const calculateResult = async (evaluationId, userAnswers) => {
         });
 
         const totalQuestions = questions.length;
-        const score = Math.round((correctCount / totalQuestions) * 100);
+        const score = Math.round((correctCount*4));
         const grade = score >= 80 ? "Aprobado" : "Reprobado";
 
         return { score, grade };
