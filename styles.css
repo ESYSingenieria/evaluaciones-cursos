@@ -204,3 +204,8 @@ body.modal-open {
     padding: 0;
     border: none;
 }
+
+#questionsContainer label {
+    display: block;
+    margin-bottom: 10px; /* Espaciado entre las opciones */
+}
