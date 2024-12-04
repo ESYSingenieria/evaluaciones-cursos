@@ -101,37 +101,17 @@ const loadEvaluations = async () => {
                 .where("evaluationId", "==", evaluationId)
                 .get();
 
-            let highestScore = null; // Para almacenar la respuesta con el mayor puntaje
-
-            if (!responsesSnapshot.empty) {
-                responsesSnapshot.forEach((responseDoc) => {
-                    const responseData = responseDoc.data();
-                    const result = calculateResult(evaluationId, responseData.answers); // Calcula el puntaje
-                    if (!highestScore || result.score > highestScore.score) {
-                        highestScore = { ...result, responseId: responseDoc.id }; // Actualiza con el puntaje más alto
-                    }
-                });
-            }
-
-            // Crear el elemento de la evaluación
-            const li = document.createElement("li");
-            if (highestScore) {
-                // Mostrar resultados si hay intentos
+            // Mostrar evaluación solo si no hay intentos
+            if (responsesSnapshot.empty) {
+                const li = document.createElement("li");
                 li.innerHTML = `
                     <a href="evaluation.html?id=${evaluationId}">${evaluationData.name}</a>
-                    <p><strong>Puntaje:</strong> ${highestScore.score}%</p>
-                    <p><strong>Estado de Aprobación:</strong> ${highestScore.grade}</p>
+                    <p>Haz clic para realizar esta evaluación.</p>
                 `;
-            } else {
-                // Mostrar evaluación disponible si no hay intentos
-                li.innerHTML = `
-                    <a href="evaluation.html?id=${evaluationId}">${evaluationData.name}</a>
-                    <p>No has realizado esta evaluación.</p>
-                `;
+                evaluationsList.appendChild(li);
             }
-
-            evaluationsList.appendChild(li);
         });
+
     } catch (error) {
         console.error("Error al cargar las evaluaciones:", error);
     }
@@ -201,8 +181,8 @@ if (evaluationForm) {
 // Cargar respuestas en dashboard.html
 const loadResponses = async () => {
     const responsesContainer = document.getElementById('responsesList');
-    responsesContainer.innerHTML = ""; // Limpia el contenedor
-
+    responsesContainer.innerHTML = ""; // Limpia el contenedor de resultados
+    
     try {
         const user = auth.currentUser;
         if (!user) throw new Error("Usuario no autenticado.");
@@ -217,39 +197,52 @@ const loadResponses = async () => {
             return;
         }
 
-        snapshot.forEach(async (doc) => {
+        const highestScores = {}; // Almacena el mejor puntaje por evaluación
+
+        snapshot.forEach((doc) => {
             const response = doc.data();
-            const result = await calculateResult(response.evaluationId, response.answers);
+            const evaluationId = response.evaluationId;
 
-            if (result) {
-                const div = document.createElement('div');
-                div.className = "result-item";
-                div.innerHTML = `
-                    <h3>Curso: ${response.evaluationId}</h3>
-                    <p><strong>Puntaje:</strong> ${result.score}</p>
-                    <p><strong>Estado de Aprobación:</strong> ${result.grade}</p>
-                `;
+            // Calcula el puntaje actual
+            const result = calculateResult(evaluationId, response.answers);
 
-                // Verificar si el usuario aprobó
-                if (result.score >= 80) {
-                    const downloadButton = document.createElement("button");
-                    downloadButton.textContent = "Descargar Certificado";
-                    downloadButton.style.marginTop = "10px";
-
-                    const approvalDate = response.timestamp ? new Date(response.timestamp.toDate()).toLocaleDateString() : "Fecha no disponible";
-
-                    // Botón para generar el certificado
-                    downloadButton.addEventListener("click", () => {
-                        console.log("Intentando generar certificado para:", response.evaluationId);
-                        generateCertificateFromPDF(auth.currentUser.email, response.evaluationId, result.score, approvalDate);
-                    });
-
-                    div.appendChild(downloadButton);
-                }
-
-                responsesContainer.appendChild(div);
+            // Si no hay registro previo o el puntaje actual es mayor, actualiza
+            if (!highestScores[evaluationId] || result.score > highestScores[evaluationId].score) {
+                highestScores[evaluationId] = { ...result, response, timestamp: response.timestamp };
             }
         });
+
+        // Mostrar resultados del mayor puntaje
+        for (const evaluationId in highestScores) {
+            const { score, grade, response, timestamp } = highestScores[evaluationId];
+
+            const div = document.createElement('div');
+            div.className = "result-item";
+            div.innerHTML = `
+                <h3>Curso: ${evaluationId}</h3>
+                <p><strong>Puntaje:</strong> ${score}%</p>
+                <p><strong>Estado de Aprobación:</strong> ${grade}</p>
+            `;
+
+            // Verificar si el usuario aprobó
+            if (score >= 80) {
+                const downloadButton = document.createElement("button");
+                downloadButton.textContent = "Descargar Certificado";
+                downloadButton.style.marginTop = "10px";
+
+                const approvalDate = timestamp ? new Date(timestamp.toDate()).toLocaleDateString() : "Fecha no disponible";
+
+                // Botón para generar el certificado
+                downloadButton.addEventListener("click", () => {
+                    console.log("Intentando generar certificado para:", evaluationId);
+                    generateCertificateFromPDF(auth.currentUser.email, evaluationId, score, approvalDate);
+                });
+
+                div.appendChild(downloadButton);
+            }
+
+            responsesContainer.appendChild(div);
+        }
     } catch (error) {
         console.error("Error cargando respuestas:", error);
         responsesContainer.innerHTML = "<p>Hubo un problema al cargar tus resultados.</p>";
