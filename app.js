@@ -184,12 +184,12 @@ const loadResponses = async () => {
                 div.className = "result-item";
                 div.innerHTML = `
                     <h3>Curso: ${response.evaluationId}</h3>
-                    <p><strong>Puntaje:</strong> ${result.score}%</p>
-                    <p><strong>Nota:</strong> ${result.grade}</p>
+                    <p><strong>Puntaje:</strong> ${result.score}</p>
+                    <p><strong>Estado de Aprobación:</strong> ${result.grade}</p>
                 `;
 
                 // Verificar si el usuario aprobó
-                if (result.score >= 60) {
+                if (result.score >= 80) {
                     const downloadButton = document.createElement("button");
                     downloadButton.textContent = "Descargar Certificado";
                     downloadButton.style.marginTop = "10px";
@@ -357,14 +357,11 @@ const calculateResult = async (evaluationId, userAnswers) => {
         });
 
         const totalQuestions = questions.length;
-        const score = Math.round((correctCount / totalQuestions) * 100); // Porcentaje
+        const score = Math.round((correctCount*4)); // Porcentaje
         let grade;
 
-        if (score >= 90) grade = "A";
-        else if (score >= 80) grade = "B";
-        else if (score >= 70) grade = "C";
-        else if (score >= 60) grade = "D";
-        else grade = "F";
+        if (score >= 80) grade = "Aprobado";
+        else grade = "Reprobado";
 
         return { score, grade };
     } catch (error) {
