@@ -97,7 +97,7 @@ const loadEvaluations = async () => {
 
 // Enviar respuestas de evaluation.html
 const submitEvaluation = async (event) => {
-    event.preventDefault();
+    event.preventDefault(); // Evita el envío predeterminado del formulario
 
     // Mostrar confirmación al usuario
     const confirmSubmission = window.confirm("¿Estás seguro de que quieres enviar tus respuestas?");
@@ -133,6 +133,7 @@ const submitEvaluation = async (event) => {
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
         });
 
+        // Mostrar mensaje de éxito
         form.innerHTML = `
             <p>Gracias por enviar tus respuestas. En el Dashboard puedes ver tus resultados.</p>
             <button id="backToDashboard" type="button">Volver al Dashboard</button>
@@ -152,8 +153,9 @@ const submitEvaluation = async (event) => {
 
 // Vincular el evento de envío al formulario
 const evaluationForm = document.getElementById('evaluationForm');
-if (evaluationForm) {
+if (evaluationForm && !evaluationForm.dataset.listenerAttached) {
     evaluationForm.addEventListener('submit', submitEvaluation);
+    evaluationForm.dataset.listenerAttached = true; // Marca que el listener ya fue agregado
 }
 
 // Cargar respuestas en dashboard.html
