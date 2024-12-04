@@ -421,8 +421,7 @@ const generateCertificateFromPDF = async (userName, evaluationID, score, approva
         const { width, height } = firstPage.getSize();
 
         // Registrar fontkit
-        import fontkit from "@pdf-lib/fontkit";
-        pdfDoc.registerFontkit(fontkit);
+        pdfDoc.registerFontkit(window.fontkit);
 
 
         // Cargar fuentes personalizadas
