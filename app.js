@@ -96,13 +96,23 @@ const loadEvaluations = async () => {
 };
 
 // Enviar respuestas de evaluation.html
+let isSubmitting = false; // Control para evitar envíos múltiples
+
 const submitEvaluation = async (event) => {
-    event.preventDefault(); // Detiene el comportamiento predeterminado del formulario
+    event.preventDefault(); // Evita el envío predeterminado del formulario
+
+    // Bloquear envío si ya se está procesando
+    if (isSubmitting) {
+        console.warn("Ya se está procesando un envío. Por favor, espera.");
+        return;
+    }
+    isSubmitting = true; // Bloquea futuros envíos
 
     // Mostrar confirmación antes de enviar
     const confirmSubmission = window.confirm("¿Estás seguro de que quieres enviar tus respuestas?");
     if (!confirmSubmission) {
-        return; // Si el usuario cancela, no envía nada
+        isSubmitting = false; // Libera el bloqueo si el usuario cancela
+        return;
     }
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -118,6 +128,7 @@ const submitEvaluation = async (event) => {
 
     if (Object.keys(answers).length === 0) {
         alert("Debes responder al menos una pregunta antes de enviar.");
+        isSubmitting = false; // Libera el bloqueo
         return;
     }
 
@@ -148,6 +159,8 @@ const submitEvaluation = async (event) => {
     } catch (error) {
         console.error("Error al enviar las respuestas:", error);
         alert("Hubo un error al enviar las respuestas. Por favor, inténtalo de nuevo.");
+    } finally {
+        isSubmitting = false; // Libera el bloqueo después del proceso
     }
 };
 
