@@ -94,12 +94,18 @@ const loadEvaluations = async () => {
             .where("userId", "==", user.uid)
             .get();
 
+        const attemptsByEvaluation = {}; // Almacena los intentos por evaluación
+
         // Procesar intentos por evaluación
-        const attemptsByEvaluation = {};
         responsesSnapshot.forEach((doc) => {
             const response = doc.data();
             const evaluationId = response.evaluationId;
-            attemptsByEvaluation[evaluationId] = (attemptsByEvaluation[evaluationId] || 0) + 1;
+
+            if (!attemptsByEvaluation[evaluationId]) {
+                attemptsByEvaluation[evaluationId] = 0;
+            }
+
+            attemptsByEvaluation[evaluationId] += 1; // Incrementar intentos
         });
 
         // Mostrar evaluaciones disponibles según los intentos
@@ -108,7 +114,7 @@ const loadEvaluations = async () => {
             const evaluationId = evaluationDoc.id;
             const attempts = attemptsByEvaluation[evaluationId] || 0;
 
-            // Si el usuario tiene menos de 3 intentos, permitir realizar la evaluación
+            // Mostrar evaluación si los intentos son menores a 3
             if (attempts < 3) {
                 const li = document.createElement("li");
                 li.innerHTML = `
@@ -205,13 +211,15 @@ const loadResponses = async () => {
 
         const highestScores = {}; // Almacena el mejor puntaje por evaluación
 
-        // Procesar las respuestas del usuario
+        // Procesar respuestas del usuario
         responsesSnapshot.forEach((doc) => {
             const response = doc.data();
             const evaluationId = response.evaluationId;
+
+            // Calcular el puntaje usando `calculateResult`
             const result = calculateResult(evaluationId, response.answers);
 
-            // Almacenar el puntaje más alto
+            // Guardar el mejor puntaje
             if (!highestScores[evaluationId] || result.score > highestScores[evaluationId].score) {
                 highestScores[evaluationId] = { ...result, timestamp: response.timestamp };
             }
@@ -223,10 +231,10 @@ const loadResponses = async () => {
             const div = document.createElement('div');
             div.className = "result-item";
             div.innerHTML = `
-                <h3>Evaluación: ${evaluationId}</h3>
-                <p><strong>Puntaje más alto:</strong> ${score}%</p>
+                <h3>Curso: ${evaluation.name}</h3>
+                <p><strong>Puntaje:</strong> ${score}</p>
                 <p><strong>Estado de Aprobación:</strong> ${grade}</p>
-                <p><strong>Intentos realizados:</strong> 3/3</p>
+                <p><strong>Fecha del último intento:</strong> ${timestamp ? new Date(timestamp.toDate()).toLocaleDateString() : "No disponible"}</p>
             `;
             responsesContainer.appendChild(div);
         });
