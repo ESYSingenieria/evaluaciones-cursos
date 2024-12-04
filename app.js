@@ -203,17 +203,18 @@ const loadResponses = async () => {
             .where('userId', '==', user.uid)
             .get();
 
-        responsesSnapshot.forEach((doc) => {
+        // Procesar respuestas
+        for (const doc of responsesSnapshot.docs) {
             const response = doc.data();
             const evaluationId = response.evaluationId;
 
-            // Calcular puntaje actual usando tu lógica
+            // Llama a calculateResult correctamente
             const result = await calculateResult(evaluationId, response.answers);
 
             if (!highestScores[evaluationId] || result.score > highestScores[evaluationId].score) {
                 highestScores[evaluationId] = { ...result, response, timestamp: response.timestamp };
             }
-        });
+        }
 
         // Mostrar evaluaciones realizadas y disponibles
         evaluationsSnapshot.forEach((evaluationDoc) => {
@@ -364,15 +365,15 @@ const startTimer = (timeLimit) => {
 
 const calculateResult = async (evaluationId, userAnswers) => {
     try {
-        const doc = await db.collection('evaluations').doc(evaluationId).get();
-        if (!doc.exists) throw new Error("La evaluación no existe.");
+        const evaluationDoc = await db.collection('evaluations').doc(evaluationId).get();
+        if (!evaluationDoc.exists) throw new Error("La evaluación no existe.");
 
-        const questions = doc.data().questions;
+        const questions = evaluationDoc.data().questions;
         let correctCount = 0;
 
         questions.forEach((question, index) => {
-            const userAnswer = (userAnswers[`question${index}`] || "").trim().toLowerCase();
-            const correctAnswer = question.correct.trim().toLowerCase();
+            const userAnswer = userAnswers[`question${index}`]?.trim().toLowerCase();
+            const correctAnswer = question.correct?.trim().toLowerCase();
 
             if (userAnswer === correctAnswer) {
                 correctCount++;
@@ -380,16 +381,13 @@ const calculateResult = async (evaluationId, userAnswers) => {
         });
 
         const totalQuestions = questions.length;
-        const score = Math.round((correctCount*4)); // Porcentaje
-        let grade;
-
-        if (score >= 80) grade = "Aprobado";
-        else grade = "Reprobado";
+        const score = Math.round((correctCount / totalQuestions) * 100);
+        const grade = score >= 80 ? "Aprobado" : "Reprobado";
 
         return { score, grade };
     } catch (error) {
         console.error("Error al calcular el resultado:", error);
-        return null;
+        return { score: 0, grade: "No disponible" }; // Valores predeterminados
     }
 };
 
