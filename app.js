@@ -275,14 +275,17 @@ const loadEvaluation = async () => {
                 questionDiv.innerHTML = `
                     <p>${index + 1}. ${question.text}</p>
                     ${question.options.map(option => `
-                        <label>
-                            <input type="radio" name="question${index}" value="${option}" required>
-                            ${option}
-                        </label>
+                        <div>
+                            <label>
+                                <input type="radio" name="question${index}" value="${option}" required>
+                                ${option}
+                            </label>
+                        </div>
                     `).join("")}
                 `;
                 questionsContainer.appendChild(questionDiv);
             });
+            
         } else {
             console.error("La evaluación no existe.");
             alert("La evaluación no fue encontrada.");
