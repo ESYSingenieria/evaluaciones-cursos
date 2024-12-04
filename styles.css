@@ -207,5 +207,5 @@ body.modal-open {
 
 #questionsContainer label {
     display: block;
-    margin-bottom: 10px; /* Espaciado entre las opciones */
+    margin-bottom: 30px; /* Espaciado entre las opciones */
 }
