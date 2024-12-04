@@ -181,7 +181,7 @@ if (evaluationForm) {
 // Cargar respuestas en dashboard.html
 const loadResponses = async () => {
     const responsesContainer = document.getElementById('responsesList');
-    const evaluationsList = document.getElementById('evaluationsList'); // Evaluaciones disponibles
+    const evaluationsList = document.getElementById('evaluationsList'); // Lista de evaluaciones disponibles
     responsesContainer.innerHTML = ""; // Limpia el contenedor de resultados
     evaluationsList.innerHTML = ""; // Limpia el contenedor de evaluaciones
 
@@ -197,21 +197,29 @@ const loadResponses = async () => {
         }
 
         const attemptsByEvaluation = {}; // Almacena los intentos por evaluación
+        const highestScores = {}; // Almacena el mejor puntaje por evaluación
 
         // Obtener respuestas del usuario
         const responsesSnapshot = await db.collection('responses')
             .where('userId', '==', user.uid)
             .get();
 
-        // Contar intentos para cada evaluación
+        // Procesar respuestas del usuario
         responsesSnapshot.forEach((doc) => {
             const response = doc.data();
             const evaluationId = response.evaluationId;
 
+            // Incrementar intentos
             if (!attemptsByEvaluation[evaluationId]) {
                 attemptsByEvaluation[evaluationId] = 0;
             }
             attemptsByEvaluation[evaluationId]++;
+
+            // Calcular y almacenar el mejor puntaje
+            const result = calculateResult(evaluationId, response.answers);
+            if (!highestScores[evaluationId] || result.score > highestScores[evaluationId].score) {
+                highestScores[evaluationId] = { ...result, timestamp: response.timestamp };
+            }
         });
 
         // Mostrar evaluaciones realizadas y disponibles
@@ -221,7 +229,34 @@ const loadResponses = async () => {
 
             const attempts = attemptsByEvaluation[evaluationId] || 0;
 
-            // Si el usuario ha realizado menos de 3 intentos, permitir realizar la evaluación nuevamente
+            if (highestScores[evaluationId]) {
+                const { score, grade, timestamp } = highestScores[evaluationId];
+                const div = document.createElement('div');
+                div.className = "result-item";
+                div.innerHTML = `
+                    <h3>Curso: ${evaluationData.name}</h3>
+                    <p><strong>Puntaje más alto:</strong> ${score}%</p>
+                    <p><strong>Estado de Aprobación:</strong> ${grade}</p>
+                    <p><strong>Intentos realizados:</strong> ${attempts}/3</p>
+                `;
+
+                if (score >= 80) {
+                    const downloadButton = document.createElement("button");
+                    downloadButton.textContent = "Descargar Certificado";
+                    downloadButton.style.marginTop = "10px";
+
+                    const approvalDate = timestamp ? new Date(timestamp.toDate()).toLocaleDateString() : "Fecha no disponible";
+
+                    downloadButton.addEventListener("click", () => {
+                        generateCertificateFromPDF(user.email, evaluationId, score, approvalDate);
+                    });
+
+                    div.appendChild(downloadButton);
+                }
+
+                responsesContainer.appendChild(div);
+            }
+
             if (attempts < 3) {
                 const li = document.createElement("li");
                 li.innerHTML = `
@@ -229,15 +264,6 @@ const loadResponses = async () => {
                     <p>Intentos realizados: ${attempts}/3</p>
                 `;
                 evaluationsList.appendChild(li);
-            } else {
-                // Mostrar mensaje si se agotaron los intentos
-                const div = document.createElement("div");
-                div.className = "result-item";
-                div.innerHTML = `
-                    <h3>Curso: ${evaluationData.name}</h3>
-                    <p><strong>Intentos agotados.</strong></p>
-                `;
-                responsesContainer.appendChild(div);
             }
         });
     } catch (error) {
