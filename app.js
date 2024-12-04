@@ -99,21 +99,10 @@ const loadEvaluations = async () => {
 let isSubmitting = false; // Control para evitar envíos múltiples
 
 const submitEvaluation = async (event) => {
-    event.preventDefault(); // Evita el envío predeterminado del formulario
+    event.preventDefault(); // Evitar el envío predeterminado
 
-    // Bloquear envío si ya se está procesando
-    if (isSubmitting) {
-        console.warn("Ya se está procesando un envío. Por favor, espera.");
-        return;
-    }
-    isSubmitting = true; // Bloquea futuros envíos
-
-    // Mostrar confirmación antes de enviar
     const confirmSubmission = window.confirm("¿Estás seguro de que quieres enviar tus respuestas?");
-    if (!confirmSubmission) {
-        isSubmitting = false; // Libera el bloqueo si el usuario cancela
-        return;
-    }
+    if (!confirmSubmission) return;
 
     const urlParams = new URLSearchParams(window.location.search);
     const evaluationId = urlParams.get('id');
@@ -121,14 +110,12 @@ const submitEvaluation = async (event) => {
     const formData = new FormData(form);
     const answers = {};
 
-    // Procesar las respuestas del formulario
     formData.forEach((value, key) => {
         answers[key] = value;
     });
 
     if (Object.keys(answers).length === 0) {
         alert("Debes responder al menos una pregunta antes de enviar.");
-        isSubmitting = false; // Libera el bloqueo
         return;
     }
 
@@ -136,7 +123,7 @@ const submitEvaluation = async (event) => {
         const user = auth.currentUser;
         if (!user) throw new Error("Usuario no autenticado.");
 
-        // Agregar respuestas a Firestore
+        // Guardar respuestas reales en Firestore
         await db.collection('responses').add({
             userId: user.uid,
             evaluationId: evaluationId,
@@ -144,23 +131,18 @@ const submitEvaluation = async (event) => {
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
         });
 
-        // Mostrar mensaje de éxito
         form.innerHTML = `
             <p>Gracias por enviar tus respuestas. En el Dashboard puedes ver tus resultados.</p>
             <button id="backToDashboard" type="button">Volver al Dashboard</button>
         `;
 
-        // Botón para volver al dashboard
-        const backButton = document.getElementById('backToDashboard');
-        backButton.addEventListener('click', () => {
+        document.getElementById('backToDashboard').addEventListener('click', () => {
             window.location.href = "dashboard.html";
         });
 
     } catch (error) {
         console.error("Error al enviar las respuestas:", error);
         alert("Hubo un error al enviar las respuestas. Por favor, inténtalo de nuevo.");
-    } finally {
-        isSubmitting = false; // Libera el bloqueo después del proceso
     }
 };
 
