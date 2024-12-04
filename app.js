@@ -255,16 +255,17 @@ const loadEvaluation = async () => {
 
         let attempts = 0;
 
-        if (!snapshot.empty) {
-            const responseDoc = snapshot.docs[0]; // Obtén el primer documento
-            const responseData = responseDoc.data();
-            attempts = responseData.attempts || 0;
+        if (attempts >= 3) {
+            alert("Has alcanzado el número máximo de intentos para esta evaluación.");
+            window.location.href = "dashboard.html";
+        return;
+        }
 
-            if (attempts >= 3) {
-                alert("Has alcanzado el número máximo de intentos para esta evaluación.");
-                window.location.href = "dashboard.html";
-                return;
-            }
+        // Incrementar los intentos directamente en Firestore sin agregar respuestas vacías
+        if (!snapshot.empty) {
+            await snapshot.docs[0].ref.update({
+                attempts: firebase.firestore.FieldValue.increment(1),
+            });
         }
 
         // Incrementar el contador de intentos si aún no ha alcanzado el límite
