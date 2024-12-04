@@ -89,6 +89,8 @@ const loadEvaluations = async () => {
 
     try {
         const evaluationsSnapshot = await db.collection("evaluations").get();
+        evaluationsList.innerHTML = ""; // Limpia la lista de evaluaciones
+
         evaluationsSnapshot.forEach(async (evaluationDoc) => {
             const evaluationData = evaluationDoc.data();
             const evaluationId = evaluationDoc.id;
@@ -100,24 +102,35 @@ const loadEvaluations = async () => {
                 .get();
 
             let highestScore = null; // Para almacenar la respuesta con el mayor puntaje
-            responsesSnapshot.forEach((responseDoc) => {
-                const responseData = responseDoc.data();
-                const result = calculateResult(evaluationId, responseData.answers); // Calcula el puntaje
-                if (!highestScore || result.score > highestScore.score) {
-                    highestScore = { ...result, responseId: responseDoc.id }; // Actualiza con el puntaje más alto
-                }
-            });
 
-            // Muestra el intento con mayor puntaje
+            if (!responsesSnapshot.empty) {
+                responsesSnapshot.forEach((responseDoc) => {
+                    const responseData = responseDoc.data();
+                    const result = calculateResult(evaluationId, responseData.answers); // Calcula el puntaje
+                    if (!highestScore || result.score > highestScore.score) {
+                        highestScore = { ...result, responseId: responseDoc.id }; // Actualiza con el puntaje más alto
+                    }
+                });
+            }
+
+            // Crear el elemento de la evaluación
+            const li = document.createElement("li");
             if (highestScore) {
-                const li = document.createElement("li");
+                // Mostrar resultados si hay intentos
                 li.innerHTML = `
                     <a href="evaluation.html?id=${evaluationId}">${evaluationData.name}</a>
-                    <p><strong>Puntaje más alto:</strong> ${highestScore.score}%</p>
-                    <p><strong>Nota:</strong> ${highestScore.grade}</p>
+                    <p><strong>Puntaje:</strong> ${highestScore.score}%</p>
+                    <p><strong>Estado de Aprobación:</strong> ${highestScore.grade}</p>
                 `;
-                evaluationsList.appendChild(li);
+            } else {
+                // Mostrar evaluación disponible si no hay intentos
+                li.innerHTML = `
+                    <a href="evaluation.html?id=${evaluationId}">${evaluationData.name}</a>
+                    <p>No has realizado esta evaluación.</p>
+                `;
             }
+
+            evaluationsList.appendChild(li);
         });
     } catch (error) {
         console.error("Error al cargar las evaluaciones:", error);
