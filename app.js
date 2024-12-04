@@ -196,65 +196,48 @@ const loadResponses = async () => {
             return;
         }
 
-        const highestScores = {}; // Almacena el mejor puntaje por evaluación
+        const attemptsByEvaluation = {}; // Almacena los intentos por evaluación
 
         // Obtener respuestas del usuario
         const responsesSnapshot = await db.collection('responses')
             .where('userId', '==', user.uid)
             .get();
 
-        // Procesar respuestas
-        for (const doc of responsesSnapshot.docs) {
+        // Contar intentos para cada evaluación
+        responsesSnapshot.forEach((doc) => {
             const response = doc.data();
             const evaluationId = response.evaluationId;
 
-            // Llama a calculateResult correctamente
-            const result = await calculateResult(evaluationId, response.answers);
-
-            if (!highestScores[evaluationId] || result.score > highestScores[evaluationId].score) {
-                highestScores[evaluationId] = { ...result, response, timestamp: response.timestamp };
+            if (!attemptsByEvaluation[evaluationId]) {
+                attemptsByEvaluation[evaluationId] = 0;
             }
-        }
+            attemptsByEvaluation[evaluationId]++;
+        });
 
         // Mostrar evaluaciones realizadas y disponibles
         evaluationsSnapshot.forEach((evaluationDoc) => {
             const evaluationData = evaluationDoc.data();
             const evaluationId = evaluationDoc.id;
 
-            // Mostrar resultados del mayor puntaje
-            if (highestScores[evaluationId]) {
-                const { score, grade, timestamp } = highestScores[evaluationId];
-                const div = document.createElement('div');
-                div.className = "result-item";
-                div.innerHTML = `
-                    <h3>Curso: ${evaluationData.name}</h3>
-                    <p><strong>Puntaje más alto:</strong> ${score ?? "No disponible"}%</p>
-                    <p><strong>Estado de Aprobación:</strong> ${grade ?? "No disponible"}</p>
-                `;
+            const attempts = attemptsByEvaluation[evaluationId] || 0;
 
-                if (score >= 80) {
-                    const downloadButton = document.createElement("button");
-                    downloadButton.textContent = "Descargar Certificado";
-                    downloadButton.style.marginTop = "10px";
-
-                    const approvalDate = timestamp ? new Date(timestamp.toDate()).toLocaleDateString() : "Fecha no disponible";
-
-                    downloadButton.addEventListener("click", () => {
-                        generateCertificateFromPDF(user.email, evaluationId, score, approvalDate);
-                    });
-
-                    div.appendChild(downloadButton);
-                }
-
-                responsesContainer.appendChild(div);
-            } else {
-                // Mostrar evaluación disponible si no hay intentos
+            // Si el usuario ha realizado menos de 3 intentos, permitir realizar la evaluación nuevamente
+            if (attempts < 3) {
                 const li = document.createElement("li");
                 li.innerHTML = `
                     <a href="evaluation.html?id=${evaluationId}">${evaluationData.name}</a>
-                    <p>Puedes realizar esta evaluación.</p>
+                    <p>Intentos realizados: ${attempts}/3</p>
                 `;
                 evaluationsList.appendChild(li);
+            } else {
+                // Mostrar mensaje si se agotaron los intentos
+                const div = document.createElement("div");
+                div.className = "result-item";
+                div.innerHTML = `
+                    <h3>Curso: ${evaluationData.name}</h3>
+                    <p><strong>Intentos agotados.</strong></p>
+                `;
+                responsesContainer.appendChild(div);
             }
         });
     } catch (error) {
