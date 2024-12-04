@@ -424,9 +424,9 @@ const generateCertificateFromPDF = async (userName, evaluationID, score, approva
         pdfDoc.registerFontkit(window.fontkit);
 
         // Cargar fuentes personalizadas
-        const monotypeFontBytes = await fetch("/fonts/MonotypeCorsiva.ttf").then(res => res.arrayBuffer());
-        const perpetuaFontBytes = await fetch("/fonts/Perpetua.ttf").then(res => res.arrayBuffer());
-        const perpetuaItalicFontBytes = await fetch("/fonts/PerpetuaItalic.ttf").then(res => res.arrayBuffer());
+        const monotypeFontBytes = await fetch("fonts/MonotypeCorsiva.ttf").then(res => res.arrayBuffer());
+        const perpetuaFontBytes = await fetch("fonts/Perpetua.ttf").then(res => res.arrayBuffer());
+        const perpetuaItalicFontBytes = await fetch("fonts/PerpetuaItalic.ttf").then(res => res.arrayBuffer());
 
         const monotypeFont = await pdfDoc.embedFont(monotypeFontBytes);
         const perpetuaFont = await pdfDoc.embedFont(perpetuaFontBytes);
