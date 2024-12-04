@@ -216,13 +216,11 @@ const loadResponses = async () => {
 
 // Cargar preguntas y opciones en evaluation.html
 const loadEvaluation = async () => {
-    console.log("Iniciando carga de evaluación...");
     const urlParams = new URLSearchParams(window.location.search);
-    const evaluationId = urlParams.get('id');
-    const evaluationTitle = document.getElementById('evaluation-title');
-    const questionsContainer = document.getElementById('questionsContainer');
-    const form = document.getElementById('evaluationForm');
-    const timerElement = document.getElementById('timer'); // Elemento para mostrar el temporizador
+    const evaluationId = urlParams.get("id");
+    const evaluationTitle = document.getElementById("evaluation-title");
+    const questionsContainer = document.getElementById("questionsContainer");
+    const form = document.getElementById("evaluationForm");
 
     try {
         const user = auth.currentUser;
@@ -231,71 +229,48 @@ const loadEvaluation = async () => {
             return;
         }
 
-        console.log("Usuario autenticado:", user.uid);
-
-        // Verificar si el usuario ya respondió esta evaluación
-        const snapshot = await db.collection('responses')
-            .where('userId', '==', user.uid)
-            .where('evaluationId', '==', evaluationId)
+        // Verificar intentos previos
+        const snapshot = await db.collection("responses")
+            .where("userId", "==", user.uid)
+            .where("evaluationId", "==", evaluationId)
             .get();
 
-        console.log("Consulta realizada. Resultados:", snapshot.size);
+        let attempts = 0;
 
         if (!snapshot.empty) {
-            console.log("El usuario ya respondió esta evaluación.");
-            
-            // Mostrar un modal flotante
-            const modal = document.createElement('div');
-            modal.id = 'responseModal';
-            modal.style.position = 'fixed';
-            modal.style.top = '50%';
-            modal.style.left = '50%';
-            modal.style.transform = 'translate(-50%, -50%)';
-            modal.style.zIndex = '1000';
-            modal.style.backgroundColor = '#fff';
-            modal.style.padding = '20px';
-            modal.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
-            modal.style.borderRadius = '10px';
-            modal.innerHTML = `
-                <p style="color: red; font-weight: bold; text-align: center;">
-                    No puedes realizar la evaluación más de una vez.
-                </p>
-                <button id="closeModal" style="padding: 10px 20px; background-color: #007bff; color: #fff; border: none; border-radius: 5px; cursor: pointer; margin: 0 auto; display: block;">
-                    Volver al Dashboard
-                </button>
-            `;
+            const responseDoc = snapshot.docs[0]; // Obtén el primer documento
+            const responseData = responseDoc.data();
+            attempts = responseData.attempts || 0;
 
-            // Insertar el modal en el cuerpo del documento
-            document.body.appendChild(modal);
-
-            // Deshabilitar el contenido de la página detrás del modal
-            form.style.display = "none";
-
-            // Manejar clic en el botón del modal
-            const closeModal = document.getElementById('closeModal');
-            closeModal.addEventListener('click', () => {
+            if (attempts >= 3) {
+                alert("Has alcanzado el número máximo de intentos para esta evaluación.");
                 window.location.href = "dashboard.html";
-            });
-
-            return;
+                return;
+            }
         }
 
-        console.log("El usuario no ha respondido esta evaluación. Cargando preguntas...");
+        // Incrementar el contador de intentos si aún no ha alcanzado el límite
+        if (attempts < 3) {
+            const responseDoc = snapshot.empty
+                ? await db.collection("responses").add({
+                    userId: user.uid,
+                    evaluationId: evaluationId,
+                    attempts: 1,
+                    answers: {},
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                })
+                : snapshot.docs[0].ref.update({
+                    attempts: firebase.firestore.FieldValue.increment(1),
+                });
+        }
 
-        // Si no respondió, cargar las preguntas
-        const doc = await db.collection('evaluations').doc(evaluationId).get();
+        // Cargar preguntas de la evaluación
+        const doc = await db.collection("evaluations").doc(evaluationId).get();
         if (doc.exists) {
-            const evaluationData = doc.data();
-            evaluationTitle.innerText = evaluationData.name; // Usar el nombre único de la evaluación
+            evaluationTitle.innerText = doc.data().title;
 
-            // Iniciar temporizador si hay un tiempo límite
-            if (evaluationData.timeLimit) {
-                startTimer(evaluationData.timeLimit, form);
-            }
-
-            // Cargar preguntas
-            evaluationData.questions.forEach((question, index) => {
-                const questionDiv = document.createElement('div');
+            doc.data().questions.forEach((question, index) => {
+                const questionDiv = document.createElement("div");
                 questionDiv.innerHTML = `
                     <p>${index + 1}. ${question.text}</p>
                     ${question.options.map(option => `
@@ -303,7 +278,7 @@ const loadEvaluation = async () => {
                             <input type="radio" name="question${index}" value="${option}" required>
                             ${option}
                         </label>
-                    `).join('')}
+                    `).join("")}
                 `;
                 questionsContainer.appendChild(questionDiv);
             });
