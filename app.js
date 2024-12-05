@@ -189,7 +189,7 @@ const loadResponses = async () => {
                 `;
 
                 // Verificar si el usuario aprobó
-                if (result.score >= 80) {
+                if (result.score >= 93) {
                     const downloadButton = document.createElement("button");
                     downloadButton.textContent = "Descargar Certificado";
                     downloadButton.style.marginTop = "10px";
@@ -339,7 +339,7 @@ const calculateResult = async (evaluationId, userAnswers) => {
         const score = Math.round((correctCount*4)); // Porcentaje
         let grade;
 
-        if (score >= 80) grade = "Aprobado";
+        if (score >= 93) grade = "Aprobado";
         else grade = "Reprobado";
 
         return { score, grade };
