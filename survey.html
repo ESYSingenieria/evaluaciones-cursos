@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Encuesta de Satisfacción</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
+    <script src="app.js" defer></script>
+</head>
+<body>
+    <header style="text-align: center; padding: 0px; background-color: #ffffff;">
+        <a href="https://esys.cl/"> <!-- Enlace al logo -->
+            <img src="logo.png" alt="Logo de la Empresa" style="max-width: 200px; height: auto;">
+        </a>
+    </header>
+
+    <h2>Encuesta de Satisfacción</h2>
+
+    <main>
+        <form id="surveyForm">
+            <!-- Aquí se cargarán las preguntas dinámicamente -->
+        </form>
+        <p id="surveyMessage"></p>
+    </main>
+</body>
+</html>
