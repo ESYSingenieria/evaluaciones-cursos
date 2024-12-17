@@ -213,3 +213,336 @@ body.modal-open {
 #questionsContainer > div {
     margin-bottom: 40px; /* Ajusta el valor según la separación deseada */
 }
+
+/* Contenedor principal para la encuesta */
+#surveyForm {
+    max-width: 1000px;
+    margin: 30px auto;
+    padding: 20px;
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Estilo para cada pregunta */
+#surveyForm > div {
+    margin-bottom: 25px; /* Espacio entre preguntas */
+    padding: 15px;
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Etiquetas de las preguntas */
+#surveyForm label {
+    display: block;
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+/* Campos de entrada y select */
+#surveyForm input[type="text"],
+#surveyForm select {
+    width: 100%;
+    padding: 10px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+#surveyForm select {
+    cursor: pointer;
+}
+
+#surveyForm input:focus,
+#surveyForm select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+}
+
+/* Botón de envío */
+#surveyForm button[type="submit"] {
+    display: block;
+    width: 100%;
+    max-width: 200px;
+    margin: 20px auto 0;
+    padding: 10px;
+    font-size: 16px;
+    color: #fff;
+    background-color: #007bff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: center;
+    transition: background-color 0.3s ease;
+}
+
+#surveyForm button[type="submit"]:hover {
+    background-color: #0056b3;
+}
+
+/* Asegurar que los campos de texto y select no sobresalgan */
+/* Ajustar el tamaño de las casillas de selección */
+#surveyForm select {
+    width: auto; /* Permite que el ancho se ajuste al contenido */
+    box-sizing: border-box;
+    padding: 8px; /* Ajusta el espacio interno */
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    margin-top: 5px;
+}
+
+/* Ajustar estilo general para input */
+#surveyForm input[type="text"] {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 10px; /* Más espacio interno */
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+/* Espaciado y contenedor visualmente agradable */
+#surveyForm > div {
+    margin-bottom: 25px; /* Espacio entre preguntas */
+    padding: 15px;
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    overflow: hidden; /* Previene contenido desbordado */
+}
+
+
+/* Contenedor principal para cada resultado */
+.result-item {
+    background-color: #f9f9f9; /* Color de fondo */
+    border: 1px solid #ddd; /* Borde sutil */
+    border-radius: 8px; /* Bordes redondeados */
+    padding: 15px; /* Espaciado interno */
+    margin-bottom: 20px; /* Separación entre contenedores */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Sombra suave */
+    transition: transform 0.2s, box-shadow 0.2s; /* Efecto al pasar el mouse */
+}
+
+/* Hover para un efecto interactivo */
+.result-item:hover {
+    transform: translateY(-5px); /* Efecto de elevación */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Sombra más fuerte al pasar el mouse */
+}
+
+/* Encabezado del curso */
+.result-item h3 {
+    margin-top: 0; /* Elimina margen superior */
+    font-size: 18px;
+    color: #333;
+    border-bottom: 1px solid #ccc; /* Línea separadora debajo del título */
+    padding-bottom: 8px; /* Espaciado debajo del título */
+}
+
+/* Texto de puntaje y estado */
+.result-item p {
+    margin: 8px 0; /* Espaciado vertical entre párrafos */
+    font-size: 14px;
+    color: #555;
+}
+
+/* Botón de descargar certificado */
+.result-item button {
+    display: inline-block;
+    padding: 8px 12px;
+    font-size: 14px;
+    color: #fff;
+    background-color: #007bff; /* Color azul */
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.result-item button:hover {
+    background-color: #0056b3; /* Azul más oscuro al pasar el mouse */
+}
+
+
+
+
+
+
+
+
+
+/* Contenedor principal para cada evaluación */
+.evaluation-item {
+    background-color: #fefefe; /* Fondo ligeramente distinto */
+    border: 1px solid #ccc; /* Borde sutil */
+    border-radius: 8px; /* Bordes redondeados */
+    padding: 15px; /* Espaciado interno */
+    margin-bottom: 20px; /* Espaciado entre contenedores */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Sombra suave */
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+/* Hover para un efecto interactivo */
+.evaluation-item:hover {
+    transform: translateY(-5px); /* Efecto de elevación */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Encabezado del título de la evaluación */
+.evaluation-item h3 {
+    margin-top: 0;
+    font-size: 18px;
+    color: #333;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 8px;
+}
+
+/* Descripción de la evaluación */
+.evaluation-item p {
+    margin: 8px 0;
+    font-size: 14px;
+    color: #555;
+}
+
+/* Botón para comenzar la evaluación */
+.evaluation-item button {
+    display: inline-block;
+    padding: 8px 12px;
+    font-size: 14px;
+    color: #fff;
+    background-color: #28a745; /* Verde para indicar acción */
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.evaluation-item button:hover {
+    background-color: #218838;
+}
+
+/* Centrar los botones dentro de un contenedor */
+.result-item button,
+.evaluation-item button {
+    display: block; /* Hace que el botón ocupe toda una línea */
+    margin: 15px auto 0; /* Margen superior de 15px y centrado horizontal */
+    text-align: center; /* Alineación del texto dentro del botón */
+}
+
+
+
+
+
+
+
+
+/* Contenedor principal que organiza dos columnas */
+.dashboard-container {
+    display: flex; /* Usa Flexbox para organizar elementos en fila */
+    justify-content: space-between; /* Espacio entre columnas */
+    align-items: flex-start; /* Alinea las columnas al inicio */
+    gap: 20px; /* Espacio entre las columnas */
+    margin: 20px auto;
+    max-width: 1450px;
+}
+
+
+/* Contenedor para centrar el botón */
+#logoutContainer {
+    display: flex; /* Usa Flexbox */
+    justify-content: center; /* Centra el botón horizontalmente */
+    align-items: center; /* Centra el botón verticalmente si hay más altura */
+    margin-top: 20px; /* Espaciado superior */
+    margin-bottom: 10px; /* Espaciado superior */
+    width: 100%; /* Asegura que ocupe todo el ancho */
+}
+
+/* Botón estilizado */
+#logoutButton {
+    padding: 10px 20px;
+    background-color: #ff4d4d; /* Color de fondo */
+    color: white; /* Color del texto */
+    border: none; /* Sin borde */
+    border-radius: 5px; /* Bordes redondeados */
+    cursor: pointer;
+    font-size: 16px; /* Tamaño de fuente */
+    transition: background-color 0.3s; /* Efecto de transición */
+}
+
+#logoutButton:hover {
+    background-color: #e63939; /* Color más oscuro al pasar el mouse */
+}
+
+
+
+/* Imagen de portada en las evaluaciones */
+.evaluation-image {
+    width: 100%; /* La imagen ocupa todo el ancho del contenedor */
+    height: 250px; /* Altura automática para mantener la proporción */
+    max-height: 250px; /* Ajusta el tamaño máximo según tus necesidades */
+    object-fit: contain; /* Redimensiona sin cortar la imagen */
+    border-radius: 8px; /* Bordes redondeados opcionales */
+    display: block; /* Asegura que no tenga espacio adicional */
+    margin: 0 auto; /* Centra la imagen horizontalmente */
+}
+
+/* Contenedor principal para las evaluaciones */
+#responsesSection,
+#evaluationsSection {
+    max-height: 450px; /* Altura máxima fija */
+    overflow-y: auto; /* Activa el scroll vertical si el contenido excede */
+    border: 1px solid #ddd; /* Asegura un borde claro */
+    border-radius: 8px; /* Bordes redondeados */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Sombra ligera */
+    padding: 10px;
+    background-color: #fff; /* Fondo blanco */
+    width: 700px;
+}
+
+/* Contenedor de cada evaluación */
+.result-item,
+.evaluation-item {
+    background-color: #fefefe;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    margin-bottom: 15px; /* Separación entre evaluaciones */
+    padding: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    overflow: hidden; /* Evita que el contenido sobresalga */
+}
+
+/* Título centrado */
+.result-item h3,
+.evaluation-item h3 {
+    font-size: 16px;
+    text-align: center;
+    margin: 5px 0;
+}
+
+/* Botón centrado */
+.result-item button,
+.evaluation-item button {
+    display: block;
+    margin: 10px auto 0;
+    padding: 6px 12px;
+    font-size: 13px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.result-item button:hover,
+.evaluation-item button:hover {
+    background-color: #218838;
+}
