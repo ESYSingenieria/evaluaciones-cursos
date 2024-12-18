@@ -591,21 +591,25 @@ if (logoutButton) {
 
 const generateCertificateFromPDF = async (userName, evaluationID, score, approvalDate) => {
     try {
-        console.log("Certificado solicitado para ID:", evaluationID);
+        console.log("Certificado solicitado para ID:", evaluationID); // Verificar el ID recibido
 
         const userData = await loadUserData();
         if (!userData) throw new Error("Datos del usuario no disponibles.");
 
         const { name: userNameDB, rut, company, customID } = userData;
 
+        // Obtener el nombre de la evaluación, plantilla y campo ID desde Firestore
         const evaluationDoc = await db.collection('evaluations').doc(evaluationID).get();
         if (!evaluationDoc.exists) throw new Error("La evaluación no existe.");
         
         const evaluationData = evaluationDoc.data();
         const evaluationName = evaluationData.name;
         const evaluationTime = evaluationData.timeEvaluation;
-        const evaluationIDNumber = evaluationData.ID || "00";
-        const certificateTemplate = evaluationData.certificateTemplate || "plantilla.pdf";
+        const certificateTemplate = evaluationData.certificateTemplate || "plantilla.pdf"; // Plantilla por defecto
+        const evaluationIDNumber = evaluationData.ID || "00"; // Campo 'ID' específico de la evaluación
+
+        console.log("Evaluación encontrada:", evaluationName);
+        console.log("Plantilla utilizada:", certificateTemplate);
 
         // Convertir approvalDate a un formato válido y extraer el año
         const convertDateToValidFormat = (dateString) => {
@@ -618,22 +622,28 @@ const generateCertificateFromPDF = async (userName, evaluationID, score, approva
             const validDate = convertDateToValidFormat(approvalDate);
             year = new Date(validDate).getFullYear();
         } else {
-            year = new Date().getFullYear();
+            year = new Date().getFullYear(); // Año actual como respaldo
         }
 
         console.log("Año de Aprobación:", year);
 
+        // Generar el ID del certificado dinámico
         const certificateID = `${evaluationIDNumber}${customID}${year}`;
         console.log("ID del Certificado:", certificateID);
 
+        // Cargar el PDF base (plantilla específica o por defecto)
         const existingPdfBytes = await fetch(certificateTemplate).then(res => res.arrayBuffer());
         const pdfDoc = await PDFLib.PDFDocument.load(existingPdfBytes);
         const pages = pdfDoc.getPages();
         const firstPage = pages[0];
+
+        // Dimensiones de la página
         const { width, height } = firstPage.getSize();
 
+        // Registrar fontkit
         pdfDoc.registerFontkit(window.fontkit);
 
+        // Cargar fuentes personalizadas
         const monotypeFontBytes = await fetch("fonts/MonotypeCorsiva.ttf").then(res => res.arrayBuffer());
         const perpetuaFontBytes = await fetch("fonts/Perpetua.ttf").then(res => res.arrayBuffer());
         const perpetuaItalicFontBytes = await fetch("fonts/PerpetuaItalic.ttf").then(res => res.arrayBuffer());
@@ -642,16 +652,51 @@ const generateCertificateFromPDF = async (userName, evaluationID, score, approva
         const perpetuaFont = await pdfDoc.embedFont(perpetuaFontBytes);
         const perpetuaItalicFont = await pdfDoc.embedFont(perpetuaItalicFontBytes);
 
+        // Función para centrar texto
         const centerText = (text, y, font, size) => {
             const textWidth = font.widthOfTextAtSize(text, size);
             const x = (width - textWidth) / 2;
             firstPage.drawText(text, { x, y, size, font, color: PDFLib.rgb(0, 0, 0) });
         };
 
+        // Función para ajustar texto a líneas
+        const maxWidth2 = width - 100; // Márgenes de 50 px a cada lado
+        const wrapText = (text, font, fontSize, maxWidth) => {
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = '';
+        
+            words.forEach(word => {
+                const testLine = currentLine ? `${currentLine} ${word}` : word;
+                const textWidth = font.widthOfTextAtSize(testLine, fontSize);
+        
+                if (textWidth <= maxWidth) {
+                    currentLine = testLine;
+                } else {
+                    lines.push(currentLine);
+                    currentLine = word;
+                }
+            });
+        
+            if (currentLine) lines.push(currentLine);
+            return lines;
+        };
+
+        // Texto centrado
         centerText(`${userNameDB}`, height - 295, monotypeFont, 35);
         centerText(`RUT: ${rut}`, height - 340, perpetuaItalicFont, 19);
         centerText(`Empresa: ${company}`, height - 360, perpetuaItalicFont, 19);
 
+        // Texto centrado con ajuste de líneas
+        const lines = wrapText(evaluationName, monotypeFont, 34, maxWidth2);
+        let yPosition = height - 448;
+
+        lines.forEach(line => {
+            centerText(line, yPosition, monotypeFont, 34);
+            yPosition -= 40;
+        });
+
+        // Texto posicionado manualmente
         firstPage.drawText(`Fecha de Aprobación: ${approvalDate}`, {
             x: 147, y: height - 548, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
         });
@@ -660,16 +705,19 @@ const generateCertificateFromPDF = async (userName, evaluationID, score, approva
             x: 157, y: height - 562, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
         });
 
+        // Texto ID dinámico del certificado
         firstPage.drawText(`ID: ${certificateID}`, {
             x: 184, y: height - 576, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
         });
 
+        // Exportar el PDF modificado
         const pdfBytes = await pdfDoc.save();
         const blob = new Blob([pdfBytes], { type: "application/pdf" });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
         link.download = `Certificado_${evaluationName}.pdf`;
         link.click();
+        console.log("Certificado generado con éxito:", evaluationName);
 
     } catch (error) {
         console.error("Error al generar el certificado:", error);
