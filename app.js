@@ -369,7 +369,7 @@ const loadEvaluation = async () => {
         let attempts = 0;
         if (!snapshot.empty) {
             attempts = snapshot.docs[0].data().attempts || 0;
-            if (attempts >= 1.5) {
+            if (attempts >= 2) {
                 alert('Has alcanzado el número máximo de intentos para esta evaluación.');
                 window.location.href = 'dashboard.html';
                 return;
