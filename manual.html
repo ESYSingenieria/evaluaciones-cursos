@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual</title>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
+    <script src="app.js" defer></script>
+</head>
+<body>
+
+    <header style="text-align: center; padding: 0px; background-color: #ffffff;">
+        <a href="https://esys.cl/"> <!-- Enlace al logo -->
+            <img src="logo.png" alt="Logo de la Empresa" style="max-width: 200px; height: auto;">
+        </a>
+    </header>
+
+    <div id="manual-container" style="display: flex; flex-direction: row; gap: 20px; justify-content: center; align-items: flex-start;">
+        <!-- Lado del Manual -->
+        <canvas id="pdf-renderer" style="flex: 2; margin-top: 15px; max-height: 450px; max-width: 800px; border: none;"></canvas>
+    
+        <!-- Lado de Notas -->
+        <div id="notes-container" style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
+            <h3 style="margin: 0; text-align: center;">Notas</h3>
+            <textarea id="notes" placeholder="Escribe tus notas aquí..." style="width: 100%; height: 400px; max-width: 680px; resize: none; padding: 10px;"></textarea>
+            <button id="save-notes" style="align-self: center; padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Guardar Notas</button>
+        </div>
+    </div>
+    
+    <!-- Botones de Navegación -->
+    <div style="margin-top: -20px; text-align: center; margin-left: -750px;">
+        <button id="prev-page" style="margin-right: 30px; padding: 10px 20px; background-color: #007BFF; color: white; border: none; border-radius: 5px; cursor: pointer;">Página Anterior</button>
+        <button id="next-page" style="padding: 10px 20px; background-color: #007BFF; color: white; border: none; border-radius: 5px; cursor: pointer;">Página Siguiente</button>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.worker.min.js"></script>
+    <script src="app.js"></script>
+      
+
+    <script>
+        // Obtener el evaluationId desde la URL
+        const queryString = window.location.search;
+        const urlParams = new URLSearchParams(queryString);
+        const evaluationId = urlParams.get('evaluationId');
+
+        // Verificar si se recibió correctamente
+        if (!evaluationId) {
+            alert("No se encontró el ID de la evaluación. Verifica la URL.");
+        }
+    </script>
+</body>
+</html>
