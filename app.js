@@ -12,56 +12,43 @@ const app = firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// Verificar autenticación en cada página
+if (typeof pdfjsLib === 'undefined') {
+
+} else {
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.worker.min.js';
+}
+
+
+
+// Consolidar autenticación en una única función
 auth.onAuthStateChanged((user) => {
     if (!user) {
         console.log("No hay usuario autenticado.");
-        if (
-            document.body.contains(document.getElementById('evaluationsList')) || 
-            document.body.contains(document.getElementById('evaluation-title'))
-        ) {
+
+        // Redirigir al inicio de sesión solo si no estás ya en 'index.html'
+        if (!window.location.pathname.includes("index.html")) {
             window.location.href = "index.html";
         }
     } else {
         console.log("Usuario autenticado:", user.uid);
 
-        // Cargar evaluaciones si es dashboard.html
-        if (document.body.contains(document.getElementById('evaluationsList'))) {
-            loadEvaluations();
+        // Lógica condicional según la página actual
+        if (window.location.pathname.includes("dashboard.html")) {
+            loadEvaluations(); // Cargar evaluaciones en el dashboard
+            loadResponses(); // Cargar respuestas del usuario
         }
 
-        // Cargar respuestas en el dashboard
-        if (document.body.contains(document.getElementById('responsesList'))) {
-            loadResponses();
+        if (window.location.pathname.includes("manual.html")) {
+            loadPDF(); // Cargar el manual correspondiente
         }
 
-        // Cargar evaluación si es evaluation.html
-        if (document.body.contains(document.getElementById('evaluation-title'))) {
-            loadEvaluation();
-        }
-    }
-});
-
-auth.onAuthStateChanged(async (user) => {
-    if (user) {
-        console.log("Usuario autenticado:", user.uid);
-
-        // Verificar si ya existen datos del usuario en Firestore
-        const userDoc = await db.collection('users').doc(user.uid).get();
-        if (!userDoc.exists) {
-            // Guardar datos iniciales si no existen
-            await db.collection('users').doc(user.uid).set({
-                rut: "Sin definir", // Puedes personalizar esto
-                name: "Nombre Predeterminado", // Cambia según tus necesidades
-                company: "Empresa Predeterminada",
-                customId: "ID-Predeterminado",
-                email: user.email,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            });
-            console.log("Datos iniciales del usuario guardados.");
+        if (window.location.pathname.includes("evaluation.html")) {
+            loadEvaluation(); // Cargar la evaluación
         }
     }
 });
+
 
 // Manejo de inicio de sesión
 const loginForm = document.getElementById('loginForm');
@@ -111,34 +98,77 @@ const loadEvaluations = async () => {
 
         snapshot.forEach(doc => {
             if (assignedEvaluations.includes(doc.id)) {
-                // Obtener datos de la evaluación
                 const evaluation = doc.data();
+                console.log(`Evaluación: ${evaluation.title}, isLocked: ${evaluation.isLocked}`); // Depuración
 
-                // Crear contenedor
+                // Asegurarse de que isLocked esté definido
+                const isLocked = evaluation.isLocked === true;
+
+                // Crear contenedor para la evaluación
                 const div = document.createElement('div');
                 div.className = "evaluation-item";
 
                 // Imagen de portada
                 const img = document.createElement('img');
-                img.src = evaluation.imageURL || 'default-image.jpg' // Usa imagen por defecto si no existe
+                img.src = evaluation.imageURL || 'default-image.jpg'; // Imagen por defecto si no está configurada
                 img.alt = `Portada de ${evaluation.title}`;
                 img.className = 'evaluation-image';
+                img.style.borderRadius = "5px";
+                img.style.marginBottom = "10px";
 
-                // Contenido del curso
-                div.innerHTML = `
-                    <h3>${evaluation.title}</h3>
-                `;
+                // Título del curso
+                const title = document.createElement('h3');
+                title.textContent = evaluation.title;
+                title.style.marginBottom = "10px";
+
+                // Crear un contenedor para los botones
+                const buttonContainer = document.createElement('div');
+                buttonContainer.style.display = "flex";
+                buttonContainer.style.justifyContent = "center";
+                buttonContainer.style.gap = "10px"; // Reduce la separación entre botones
+                buttonContainer.style.marginTop = "-6px"; // Ajusta la posición más abajo
+                buttonContainer.style.position = "relative";
+                buttonContainer.style.top = "-2px"; // Mueve los botones ligeramente hacia abajo
+
+                // Botón para abrir el manual
+                const manualButton = document.createElement('button');
+                manualButton.textContent = "Abrir Manual";
+                manualButton.style.padding = "10px 20px";
+                manualButton.style.backgroundColor = "#007BFF";
+                manualButton.style.color = "white";
+                manualButton.style.border = "none";
+                manualButton.style.borderRadius = "5px";
+                manualButton.style.cursor = "pointer";
+                manualButton.addEventListener("click", () => {
+                    const manualUrl = `manual.html?evaluationId=${doc.id}`;
+                    window.open(manualUrl, "_blank");
+                });
 
                 // Botón para iniciar evaluación
                 const startButton = document.createElement('button');
                 startButton.textContent = "Comenzar Evaluación";
-                startButton.addEventListener("click", () => {
-                    window.location.href = `evaluation.html?id=${doc.id}`;
-                });
+                startButton.disabled = isLocked; // Deshabilitar si está bloqueada
+                startButton.style.padding = "10px 20px";
+                startButton.style.backgroundColor = isLocked ? "#ccc" : "#28a745"; // Gris si está bloqueada
+                startButton.style.color = isLocked ? "#666" : "white";
+                startButton.style.border = "none";
+                startButton.style.borderRadius = "5px";
+                startButton.style.cursor = isLocked ? "not-allowed" : "pointer";
 
-                // Añadir elementos al contenedor
-                div.prepend(img); // La imagen va al inicio
-                div.appendChild(startButton);
+                if (!isLocked) {
+                    startButton.addEventListener("click", () => {
+                        window.location.href = `evaluation.html?id=${doc.id}`;
+                    });
+                }
+
+                // Agregar los botones al contenedor
+                buttonContainer.appendChild(manualButton);
+                buttonContainer.appendChild(startButton);
+
+                // Agregar elementos al contenedor principal
+                div.appendChild(img); // Imagen
+                div.appendChild(title); // Título
+                div.appendChild(buttonContainer); // Contenedor de botones
 
                 // Agregar el contenedor al listado
                 evaluationsList.appendChild(div);
@@ -152,7 +182,6 @@ const loadEvaluations = async () => {
         console.error('Error cargando evaluaciones:', error);
     }
 };
-
 
 
 // Verificar encuesta de satisfacción antes de realizar la evaluación
@@ -398,7 +427,7 @@ const loadSurveyQuestions = async (evaluationId) => {
 
     // Validar si el formulario existe
     if (!surveyForm) {
-        console.warn("El formulario de encuesta no existe en esta página.");
+
         return;
     }
 
@@ -749,3 +778,145 @@ const loadUserData = async () => {
         return null;
     }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Variables globales
+let pdfDoc = null; // Documento PDF
+let currentPage = 1; // Página actual
+const pdfContainer = document.getElementById('pdf-container');
+const notesField = document.getElementById('notes');
+const saveNotesButton = document.getElementById('save-notes');
+
+
+if (!pdfContainer) {
+} else {
+
+}
+
+// Obtener la URL del manual desde Firestore
+const getManualURL = async (evaluationId) => {
+    const doc = await db.collection('evaluations').doc(evaluationId).get();
+    if (doc.exists) {
+        return doc.data().manualURL; // Devuelve la URL del manual
+    } else {
+
+    }
+};
+
+
+
+// Renderizar una página específica del PDF
+const renderPage = async (pageNum, scale = 5) => { // Aumenta la escala
+    try {
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale });
+
+        const canvas = document.getElementById("pdf-renderer");
+        const context = canvas.getContext("2d");
+
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({ canvasContext: context, viewport }).promise;
+    } catch (error) {
+    }
+};
+
+
+
+
+// Cargar el PDF desde Firebase Storage
+const loadPDF = async () => {
+    try {
+        const url = await getManualURL(evaluationId); // Obtener la URL desde Firestore
+        if (!url) {
+            return;
+        }
+
+
+        pdfDoc = await pdfjsLib.getDocument(url).promise; // Intenta cargar el PDF
+
+        renderPage(currentPage); // Renderiza la primera página
+    } catch (error) {
+
+    }
+};
+
+
+
+
+
+// Guardar notas en Firestore
+saveNotesButton.addEventListener('click', async () => {
+    const notes = notesField.value;
+
+    const user = auth.currentUser;
+    if (!user) {
+        alert("Debes iniciar sesión para guardar notas.");
+        return;
+    }
+
+    try {
+        await db.collection('manual-notes').doc(user.uid).collection('notes').doc(`${evaluationId}_page_${currentPage}`).set({
+            manualId: evaluationId,
+            page: currentPage,
+            notes,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        alert("Notas guardadas con éxito.");
+    } catch (error) {
+        console.error("Error al guardar notas:", error);
+        alert("Hubo un problema al guardar tus notas.");
+    }
+});
+
+// Cargar notas guardadas para la página actual
+const loadNotes = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+        const doc = await db.collection('manual-notes').doc(user.uid).collection('notes').doc(`${evaluationId}_page_${currentPage}`).get();
+        if (doc.exists) {
+            notesField.value = doc.data().notes || '';
+        } else {
+            notesField.value = ''; // Sin notas guardadas
+        }
+    } catch (error) {
+        console.error("Error al cargar notas:", error);
+    }
+};
+
+// Cambiar de página en el visor del PDF
+const changePage = (pageNum) => {
+    if (pageNum > 0 && pageNum <= pdfDoc.numPages) {
+        currentPage = pageNum;
+        renderPage(currentPage);
+        loadNotes();
+    }
+};
+
+// Botones para cambiar de página
+document.getElementById('prev-page').addEventListener('click', () => {
+    changePage(currentPage - 1);
+});
+
+document.getElementById('next-page').addEventListener('click', () => {
+    changePage(currentPage + 1);
+});
+
+// Inicia la carga del PDF
+loadPDF();
