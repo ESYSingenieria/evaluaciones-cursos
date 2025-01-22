@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificación de Insignia</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
+    <script src="app.js" defer></script>
+    <style>
+        .badge-container {
+            max-width: 800px;
+            margin: 30px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .badge-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .badge-header img {
+            width: 150px;
+            height: auto;
+            margin-bottom: 10px;
+        }
+
+        .badge-content {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .badge-content h2 {
+            margin-bottom: 10px;
+            font-size: 1.5rem;
+            color: #007bff;
+        }
+
+        .badge-content p {
+            margin-bottom: 15px;
+            font-size: 1rem;
+            color: #555;
+        }
+
+        .badge-criteria, .badge-standards {
+            margin: 20px 0;
+        }
+
+        .badge-criteria ul, .badge-standards ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .badge-criteria ul li, .badge-standards ul li {
+            background: #f9f9f9;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .badge-footer {
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        .badge-footer button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .badge-footer button:hover {
+            background-color: #218838;
+        }
+
+        .badge-footer a {
+            display: block;
+            margin-top: 10px;
+            color: #007bff;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .badge-footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <header style="text-align: center; padding: 0px; background-color: #ffffff;">
+        <a href="https://esys.cl/"> <!-- Enlace al logo -->
+            <img src="logo.png" alt="Logo de la Empresa" style="max-width: 200px; height: auto;">
+        </a>
+    </header>
+    <div class="badge-container">
+        <div class="badge-header">
+            <img id="badgeImage" src="" alt="Insignia">
+            <h1 id="courseName">Cargando...</h1>
+        </div>
+        <div class="badge-content">
+            <p id="issuedTo">Cargando detalles del usuario...</p>
+            <p id="description">Cargando descripción...</p>
+        </div>
+        <div class="badge-criteria">
+            <h3>Criterios de Aprobación</h3>
+            <ul id="criteriaList">
+                <li>Cargando...</li>
+            </ul>
+        </div>
+        <div class="badge-standards">
+            <h3>Estándares</h3>
+            <ul id="standardsList">
+                <li>Cargando...</li>
+            </ul>
+        </div>
+        <div class="badge-footer">
+            <button onclick="window.location.href='https://esys.cl/cursos-y-capacitaciones/'">Obtener esta Insignia</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            if (typeof db !== "undefined") {
+                loadBadgeData();
+            } else {
+                console.error("Firebase no está inicializado. Verifica tu configuración.");
+            }
+        });
+    </script>
+</body>
+</html>
