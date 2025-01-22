@@ -21,6 +21,29 @@ if (typeof pdfjsLib === 'undefined') {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Consolidar autenticación en una única función
 auth.onAuthStateChanged((user) => {
     if (!user) {
@@ -227,9 +250,11 @@ const submitEvaluation = async (event) => {
         const user = auth.currentUser;
         if (!user) throw new Error("Usuario no autenticado.");
 
+        const userId = user.uid; // Define `userId` correctamente aquí
+
         // Guardar respuestas reales en Firestore
         await db.collection('responses').add({
-            userId: user.uid,
+            userId: userId,
             evaluationId: evaluationId,
             answers: answers,
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
@@ -244,11 +269,16 @@ const submitEvaluation = async (event) => {
             window.location.href = "dashboard.html";
         });
 
+        // Llamar a `calculateAndHandleResult` con `userId` correctamente definido
+        await calculateAndHandleResult(userId, evaluationId, answers);
+        console.log("Evaluación procesada correctamente.");
+
     } catch (error) {
         console.error("Error al enviar las respuestas:", error);
         alert("Hubo un error al enviar las respuestas. Por favor, inténtalo de nuevo.");
     }
 };
+
 
 // Vincular el evento de envío al formulario
 // Asegúrate de que el evento se registre solo una vez
@@ -279,7 +309,6 @@ const loadResponses = async () => {
             return;
         }
 
-        // Agrupar respuestas por evaluationId y seleccionar el puntaje más alto
         const resultsMap = {};
 
         for (const doc of snapshot.docs) {
@@ -314,23 +343,81 @@ const loadResponses = async () => {
                 <p><strong>Estado de Aprobación:</strong> ${highestResult.grade}</p>
             `;
 
-            // Verificar si el usuario aprobó
             if (highestResult.score >= 92) {
-                const downloadButton = document.createElement("button");
-                downloadButton.textContent = "Descargar Certificado";
-                downloadButton.style.marginTop = "10px";
-
                 const approvalDate = highestResult.timestamp 
                     ? new Date(highestResult.timestamp.toDate()).toLocaleDateString()
                     : "Fecha no disponible";
 
-                // Botón para generar el certificado
+                // Crear contenedor para los botones
+                const buttonContainer = document.createElement("div");
+                buttonContainer.className = "button-container"; // Clase del CSS para diseño
+
+                // Botón para descargar el certificado
+                const downloadButton = document.createElement("button");
+                downloadButton.textContent = "Descargar Certificado";
+                downloadButton.className = "download-button"; // Clase CSS para diseño
                 downloadButton.addEventListener("click", () => {
                     console.log("Intentando generar certificado para:", evaluationId);
                     generateCertificateFromPDF(auth.currentUser.email, evaluationId, highestResult.score, approvalDate);
                 });
 
-                div.appendChild(downloadButton);
+                // Botón de añadir a LinkedIn
+                const linkedInButton = document.createElement("button");
+                linkedInButton.textContent = "Añadir a LinkedIn";
+                linkedInButton.className = "linkedin-button"; // Clase CSS para diseño
+                linkedInButton.addEventListener("click", async () => {
+                    try {
+                        const userDoc = await db.collection("users").doc(auth.currentUser.uid).get();
+                        const customID = userDoc.exists ? userDoc.data().customID : "defaultID";
+
+                        const evaluationDoc = await db.collection("evaluations").doc(evaluationId).get();
+                        const evaluationData = evaluationDoc.exists ? evaluationDoc.data() : null;
+
+                        if (!evaluationData) {
+                            alert("No se pudo encontrar la evaluación asociada.");
+                            return;
+                        }
+
+                        const year = new Date(highestResult.timestamp.toDate()).getFullYear();
+                        const certificateID = `${evaluationData.ID}${customID}${year}`;
+
+                        // Buscar el certificado por su ID
+                        const certificateDoc = await db.collection("certificates").doc(certificateID).get();
+                        if (!certificateDoc.exists) {
+                            alert("Certificado no encontrado.");
+                            return;
+                        }
+
+                        const certificateData = certificateDoc.data();
+
+                        // Obtener fechas de expedición y caducidad
+                        const issuedDate = new Date(certificateData.issuedDate); // Fecha de expedición
+                        const expirationDate = new Date(issuedDate);
+                        expirationDate.setFullYear(issuedDate.getFullYear() + 3); // Añadir 3 años
+
+                        // Construir URL de LinkedIn con formato correcto
+                        const linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME` +
+                            `&name=${encodeURIComponent(certificateData.courseName)}` +
+                            `&organizationId=66227493` + // ID de la empresa ESYS en LinkedIn
+                            `&issueYear=${issuedDate.getFullYear()}` +
+                            `&issueMonth=${issuedDate.getMonth() + 1}` +
+                            `&expirationYear=${expirationDate.getFullYear()}` +
+                            `&expirationMonth=${expirationDate.getMonth() + 1}` +
+                            `&certUrl=${encodeURIComponent(`https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${certificateID}`)}` +
+                            `&certId=${encodeURIComponent(certificateID)}`;
+
+                        // Redirigir a LinkedIn con el enlace generado
+                        window.open(linkedInUrl, "_blank");
+                    } catch (error) {
+                        console.error("Error al añadir a LinkedIn:", error);
+                        alert("Hubo un problema al intentar añadir el certificado a LinkedIn.");
+                    }
+                });
+
+                // Añadir botones al contenedor
+                buttonContainer.appendChild(downloadButton);
+                buttonContainer.appendChild(linkedInButton);
+                div.appendChild(buttonContainer);
             }
 
             responsesContainer.appendChild(div);
@@ -341,6 +428,10 @@ const loadResponses = async () => {
         responsesContainer.innerHTML = "<p>Hubo un problema al cargar tus resultados.</p>";
     }
 };
+
+
+
+
 
 // Cargar preguntas y opciones en evaluation.html
 const loadEvaluation = async () => {
@@ -601,6 +692,97 @@ const calculateResult = async (evaluationId, userAnswers) => {
         return null;
     }
 };
+
+
+
+
+
+
+
+
+async function calculateAndHandleResult(userId, evaluationId, answers) {
+    try {
+        // Llamar a calculateResult para calcular el puntaje
+        const result = await calculateResult(evaluationId, answers);
+
+        // Registra el resultado en la colección `responses`
+        const timestamp = new Date();
+        await db.collection("responses").add({
+            userId,
+            evaluationId,
+            answers,
+            result,
+            timestamp,
+        });
+
+        // Si el puntaje es suficiente para aprobar, genera el certificado
+        if (result.score >= 92) {
+            console.log(`El usuario ${userId} aprobó la evaluación ${evaluationId}. Generando certificado...`);
+            await handleEvaluationApproval(userId, evaluationId, result, timestamp);
+        } else {
+            console.log(`El usuario ${userId} no aprobó la evaluación ${evaluationId}.`);
+        }
+    } catch (error) {
+        console.error("Error al manejar el resultado de la evaluación:", error);
+    }
+}
+
+async function handleEvaluationApproval(userId, evaluationId, result, timestamp) {
+    try {
+        // Obtener datos del usuario
+        const userDoc = await db.collection("users").doc(userId).get();
+        if (!userDoc.exists) {
+            console.warn(`Usuario con ID ${userId} no encontrado.`);
+            return;
+        }
+        const { name, customID } = userDoc.data();
+
+        // Obtener datos de la evaluación
+        const evaluationDoc = await db.collection("evaluations").doc(evaluationId).get();
+        if (!evaluationDoc.exists) {
+            console.warn(`Evaluación con ID ${evaluationId} no encontrada.`);
+            return;
+        }
+        const evaluationData = evaluationDoc.data();
+
+        // Generar el ID del certificado
+        const year = new Date(timestamp).getFullYear();
+        const certificateID = `${evaluationData.ID}${customID}${year}`;
+
+        // Verificar si el certificado ya existe
+        const existingCertificate = await db.collection("certificates").doc(certificateID).get();
+        if (existingCertificate.exists) {
+            console.log(`Certificado con ID ${certificateID} ya existe.`);
+            return;
+        }
+
+        // Crear el documento en la colección `certificates`
+        await db.collection("certificates").doc(certificateID).set({
+            name: name,
+            courseName: evaluationData.name,
+            issuedDate: timestamp.toISOString(),
+            description: evaluationData.description,
+            criteria: evaluationData.criteria,
+            standards: evaluationData.standards,
+            imageURL_badge: evaluationData.imageURL_badge || "default-badge.png",
+        });
+
+        console.log(`Certificado creado para ${name} con ID ${certificateID}.`);
+    } catch (error) {
+        console.error("Error al manejar la aprobación de la evaluación:", error);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
 
 const logoutUser = () => {
     auth.signOut()
@@ -920,3 +1102,81 @@ document.getElementById('next-page').addEventListener('click', () => {
 
 // Inicia la carga del PDF
 loadPDF();
+
+
+
+
+
+
+
+
+
+
+
+async function loadBadgeData() {
+    const queryParams = new URLSearchParams(window.location.search);
+    const certificateID = queryParams.get("id");
+
+    if (!certificateID) {
+        document.body.innerHTML = "<h1>Insignia no encontrada</h1>";
+        return;
+    }
+
+    try {
+        const certificateDoc = await db.collection("certificates").doc(certificateID).get();
+
+        if (!certificateDoc.exists) {
+            document.body.innerHTML = "<h1>Insignia no encontrada</h1>";
+            return;
+        }
+
+        const {
+            name,
+            courseName,
+            issuedDate,
+            description,
+            criteria,
+            standards,
+            imageURL_badge
+        } = certificateDoc.data();
+
+        document.getElementById("courseName").textContent = courseName;
+        document.getElementById("badgeImage").src = imageURL_badge;
+        document.getElementById("issuedTo").textContent = `Esta insignia fue otorgada a ${name} el ${new Date(issuedDate).toLocaleDateString()}.`;
+        document.getElementById("description").textContent = description;
+
+// Agregar criterios
+const criteriaList = document.getElementById("criteriaList");
+criteriaList.innerHTML = ""; // Limpia la lista antes de agregar nuevos elementos
+if (Array.isArray(criteria)) {
+    criteria.forEach(criterion => {
+        const li = document.createElement("li");
+        li.textContent = criterion;
+        criteriaList.appendChild(li);
+    });
+} else {
+    const li = document.createElement("li");
+    li.textContent = "Criterios no disponibles.";
+    criteriaList.appendChild(li);
+}
+
+// Agregar estándares
+const standardsList = document.getElementById("standardsList");
+standardsList.innerHTML = ""; // Limpia la lista antes de agregar nuevos elementos
+if (Array.isArray(standards)) {
+    standards.forEach(standard => {
+        const li = document.createElement("li");
+        li.textContent = standard;
+        standardsList.appendChild(li);
+    });
+} else {
+    const li = document.createElement("li");
+    li.textContent = "Estándares no disponibles.";
+    standardsList.appendChild(li);
+}
+
+    } catch (error) {
+        console.error("Error al cargar los datos del certificado:", error);
+        document.body.innerHTML = "<h1>Hubo un error al cargar los datos.</h1>";
+    }
+}
