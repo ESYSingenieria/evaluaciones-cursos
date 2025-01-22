@@ -693,3 +693,74 @@ body.modal-open {
 .evaluation-item button:hover {
     opacity: 0.9;
 }
+
+
+
+
+
+
+
+
+
+/* Estilo uniforme para ambos botones */
+button {
+    padding: 10px 15px;
+    font-size: 16px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+/* Botón azul para LinkedIn */
+#responsesList button:last-child {
+    background-color: #007BFF;
+    color: white;
+}
+
+    #responsesList button:last-child:hover {
+        background-color: #0056b3;
+}
+
+
+
+
+
+
+
+
+
+
+    .result-item .button-container {
+        display: flex;
+        justify-content: center;
+        gap: 15px; /* Espacio entre los botones */
+        margin-top: 10px;
+    }
+    
+    .result-item button {
+        padding: 10px 20px;
+        font-size: 14px;
+        border-radius: 5px;
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+    }
+    
+    .result-item .download-button {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .result-item .download-button:hover {
+        background-color: #218838;
+    }
+    
+    .result-item .linkedin-button {
+        background-color: #007BFF;
+        color: white;
+    }
+    
+    .result-item .linkedin-button:hover {
+        background-color: #0056b3;
+    }
