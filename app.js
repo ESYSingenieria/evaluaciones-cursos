@@ -48,29 +48,34 @@ if (typeof pdfjsLib === 'undefined') {
 auth.onAuthStateChanged((user) => {
     if (!user) {
         console.log("No hay usuario autenticado.");
+        
+        // Allow access to verificar.html without redirection
+        if (window.location.pathname.includes("verificar.html")) {
+            return; // Do nothing, allow access
+        }
 
-        // Redirigir al inicio de sesión solo si no estás ya en 'index.html'
+        // Redirect for other pages
         if (!window.location.pathname.includes("index.html")) {
             window.location.href = "index.html";
         }
     } else {
         console.log("Usuario autenticado:", user.uid);
 
-        // Lógica condicional según la página actual
         if (window.location.pathname.includes("dashboard.html")) {
-            loadEvaluations(); // Cargar evaluaciones en el dashboard
-            loadResponses(); // Cargar respuestas del usuario
+            loadEvaluations();
+            loadResponses();
         }
 
         if (window.location.pathname.includes("manual.html")) {
-            loadPDF(); // Cargar el manual correspondiente
+            loadPDF();
         }
 
         if (window.location.pathname.includes("evaluation.html")) {
-            loadEvaluation(); // Cargar la evaluación
+            loadEvaluation();
         }
     }
 });
+
 
 
 // Manejo de inicio de sesión
