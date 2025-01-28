@@ -19,27 +19,38 @@ if (typeof pdfjsLib === 'undefined') {
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.worker.min.js';
 }
 
-// Función para cambiar la contraseña
-const changePassword = async () => {
-    const auth = firebase.auth();
-    const user = auth.currentUser;
 
-    if (!user) {
-        alert("No estás autenticado. Por favor, inicia sesión.");
+// Función para cambiar la contraseña mediante el correo electrónico
+const changePassword = async () => {
+    const email = prompt("Por favor, ingresa tu correo electrónico:");
+
+    if (!email) {
+        alert("No se ingresó ningún correo.");
         return;
     }
 
-    const email = user.email;
-
     try {
+        // Verificar si el correo existe en la autenticación de Firebase
+        const userExists = await auth.fetchSignInMethodsForEmail(email);
+        if (userExists.length === 0) {
+            alert("El correo ingresado no está registrado.");
+            return;
+        }
+
+        // Enviar correo de restablecimiento de contraseña
         await auth.sendPasswordResetEmail(email);
         alert(`Se ha enviado un correo para restablecer tu contraseña a ${email}.`);
     } catch (error) {
         console.error("Error al enviar el correo de restablecimiento:", error);
-        alert("Hubo un problema al intentar cambiar tu contraseña. Por favor, inténtalo nuevamente.");
+        if (error.code === 'auth/invalid-email') {
+            alert("El correo ingresado no es válido.");
+        } else {
+            alert("Hubo un problema al intentar cambiar tu contraseña. Por favor, inténtalo nuevamente.");
+        }
     }
 };
 
+// Evento para el botón de cambio de contraseña
 document.addEventListener("DOMContentLoaded", () => {
     const changePasswordButton = document.getElementById("changePasswordButton");
 
@@ -47,6 +58,7 @@ document.addEventListener("DOMContentLoaded", () => {
         changePasswordButton.addEventListener("click", changePassword);
     }
 });
+
 
 
 
