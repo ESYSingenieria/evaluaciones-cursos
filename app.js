@@ -38,7 +38,7 @@ const changePassword = async () => {
     try {
         // Enviar correo de restablecimiento de contraseña directamente
         await firebase.auth().sendPasswordResetEmail(email.trim());
-        alert(`Si su email ${email.trim()} se encuentra registrado en nuestra plataforma, se le enviará un correo con el enlace para redirigirse a la página donde podrá restablecer su contraseña`);
+        alert(`Si su email ${email.trim()} se encuentra registrado en nuestra plataforma, se le enviará un correo con el enlace para redirigirse a la página donde podrá restablecer su contraseña.`);
     } catch (error) {
         console.error("Error al intentar cambiar la contraseña:", error);
 
