@@ -19,23 +19,34 @@ if (typeof pdfjsLib === 'undefined') {
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.worker.min.js';
 }
 
+// Función para cambiar la contraseña
+const changePassword = async () => {
+    const auth = firebase.auth();
+    const user = auth.currentUser;
 
+    if (!user) {
+        alert("No estás autenticado. Por favor, inicia sesión.");
+        return;
+    }
 
+    const email = user.email;
 
+    try {
+        await auth.sendPasswordResetEmail(email);
+        alert(`Se ha enviado un correo para restablecer tu contraseña a ${email}.`);
+    } catch (error) {
+        console.error("Error al enviar el correo de restablecimiento:", error);
+        alert("Hubo un problema al intentar cambiar tu contraseña. Por favor, inténtalo nuevamente.");
+    }
+};
 
+document.addEventListener("DOMContentLoaded", () => {
+    const changePasswordButton = document.getElementById("changePasswordButton");
 
-
-
-
-
-
-
-
-
-
-
-
-
+    if (changePasswordButton) {
+        changePasswordButton.addEventListener("click", changePassword);
+    }
+});
 
 
 
@@ -45,38 +56,52 @@ if (typeof pdfjsLib === 'undefined') {
 
 
 // Consolidar autenticación en una única función
-auth.onAuthStateChanged((user) => {
+auth.onAuthStateChanged(async (user) => {
     if (!user) {
         console.log("No hay usuario autenticado.");
-        
-        // Allow access to verificar.html without redirection
-        if (window.location.pathname.includes("verificar.html")) {
-            return; // Do nothing, allow access
-        }
 
-        // Redirect for other pages
+        // Redirigir al inicio de sesión solo si no estás ya en 'index.html'
         if (!window.location.pathname.includes("index.html")) {
             window.location.href = "index.html";
         }
     } else {
         console.log("Usuario autenticado:", user.uid);
 
-        if (window.location.pathname.includes("dashboard.html")) {
-            loadEvaluations();
-            loadResponses();
-        }
+        try {
+            // Asegúrate de que todas las funciones relacionadas con datos de usuario se ejecuten aquí
+            const userData = await loadUserData(); // Cargar datos del usuario de la base de datos
+            console.log("Datos del usuario cargados:", userData);
 
-        if (window.location.pathname.includes("manual.html")) {
-            loadPDF();
-        }
+            if (window.location.pathname.includes("dashboard.html")) {
+                // Mostrar datos del usuario en el Dashboard
+                const userNameElement = document.getElementById("userNameDisplay");
+                const userRutElement = document.getElementById("userRutDisplay");
 
-        if (window.location.pathname.includes("evaluation.html")) {
-            loadEvaluation();
+                if (userNameElement) {
+                    userNameElement.textContent = userData.name || "Nombre no disponible";
+                }
+
+                if (userRutElement) {
+                    userRutElement.textContent = userData.rut || "RUT no disponible";
+                }
+
+                // Cargar evaluaciones y respuestas
+                await loadEvaluations();
+                await loadResponses();
+            }
+
+            if (window.location.pathname.includes("manual.html")) {
+                await loadPDF(); // Cargar el manual
+            }
+
+            if (window.location.pathname.includes("evaluation.html")) {
+                await loadEvaluation(); // Cargar la evaluación
+            }
+        } catch (error) {
+            console.error("Error al cargar los datos del usuario:", error);
         }
     }
 });
-
-
 
 // Manejo de inicio de sesión
 const loginForm = document.getElementById('loginForm');
@@ -95,21 +120,131 @@ if (loginForm) {
     });
 }
 
-// Cargar roles de usuario y asegurar acceso de administradores
-const ensureAdminAccess = async (user) => {
-    try {
-        const userDoc = await db.collection('users').doc(user.uid).get();
-        const userData = userDoc.data();
-        if (userData.role !== 'admin') {
-            alert('Acceso denegado. Esta página es solo para administradores.');
-            window.location.href = 'dashboard.html';
+// Lógica para editar y guardar datos del usuario
+document.addEventListener("DOMContentLoaded", async () => {
+    const userNameDisplay = document.getElementById("userNameDisplay");
+    const userRutDisplay = document.getElementById("userRutDisplay");
+    const editProfileButton = document.getElementById("editProfileButton");
+
+    let isEditing = false;
+
+    const loadUserData = async () => {
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error("Usuario no autenticado.");
+
+            // Obtener datos del usuario desde Firestore
+            const userDoc = await db.collection("users").doc(user.uid).get();
+            if (!userDoc.exists) throw new Error("Datos del usuario no encontrados.");
+
+            const userData = userDoc.data();
+
+            // Asegurarse de que los campos name y rut existen
+            const userName = userData.name || "Nombre no disponible";
+            const userRut = userData.rut || "RUT no disponible";
+
+            userNameDisplay.textContent = userName;
+            userRutDisplay.textContent = userRut;
+        } catch (error) {
+            console.error("Error al cargar los datos del usuario:", error);
+            userNameDisplay.textContent = "Error al cargar nombre.";
+            userRutDisplay.textContent = "Error al cargar RUT.";
         }
-    } catch (error) {
-        console.error('Error verificando el rol del usuario:', error);
-        alert('Hubo un problema verificando tus permisos.');
-        window.location.href = 'dashboard.html';
-    }
-};
+    };
+
+    const enableEditing = () => {
+        // Cambiar los textos a inputs para edición
+        const nameInput = document.createElement("input");
+        nameInput.type = "text";
+        nameInput.id = "userNameInput";
+        nameInput.value = userNameDisplay.textContent;
+
+        const rutInput = document.createElement("input");
+        rutInput.type = "text";
+        rutInput.id = "userRutInput";
+        rutInput.value = userRutDisplay.textContent;
+
+        userNameDisplay.textContent = "";
+        userRutDisplay.textContent = "";
+
+        userNameDisplay.appendChild(nameInput);
+        userRutDisplay.appendChild(rutInput);
+
+        editProfileButton.textContent = "Guardar";
+        isEditing = true;
+    };
+
+    const saveChanges = async () => {
+        const user = auth.currentUser;
+        if (!user) {
+            alert("Usuario no autenticado.");
+            return;
+        }
+
+        const updatedName = document.getElementById("userNameInput").value.trim();
+        const updatedRut = document.getElementById("userRutInput").value.trim();
+
+        if (!updatedName || !updatedRut) {
+            alert("Por favor, completa todos los campos.");
+            return;
+        }
+
+        try {
+            // Actualizar en Firestore
+            await db.collection("users").doc(user.uid).update({
+                name: updatedName,
+                rut: updatedRut,
+            });
+
+            // Actualizar la vista
+            userNameDisplay.textContent = updatedName;
+            userRutDisplay.textContent = updatedRut;
+
+            editProfileButton.textContent = "Editar perfil";
+            isEditing = false;
+        } catch (error) {
+            console.error("Error al guardar los cambios:", error);
+            alert("Hubo un problema al guardar los cambios.");
+        }
+    };
+
+    editProfileButton.addEventListener("click", () => {
+        if (isEditing) {
+            saveChanges();
+        } else {
+            enableEditing();
+        }
+    });
+
+    // Cargar datos del usuario al iniciar
+    await loadUserData();
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Lógica para cargar evaluaciones asignadas específicamente a un usuario
 const loadEvaluations = async () => {
@@ -983,15 +1118,10 @@ const loadUserData = async () => {
 // Variables globales
 let pdfDoc = null; // Documento PDF
 let currentPage = 1; // Página actual
+let isRendering = false; // Bandera para evitar renderizados múltiples
 const pdfContainer = document.getElementById('pdf-container');
 const notesField = document.getElementById('notes');
-const saveNotesButton = document.getElementById('save-notes');
-
-
-if (!pdfContainer) {
-} else {
-
-}
+const saveStatus = document.getElementById('save-status'); // Elemento para mostrar estado de guardado
 
 // Obtener la URL del manual desde Firestore
 const getManualURL = async (evaluationId) => {
@@ -999,14 +1129,15 @@ const getManualURL = async (evaluationId) => {
     if (doc.exists) {
         return doc.data().manualURL; // Devuelve la URL del manual
     } else {
-
+        return null;
     }
 };
 
-
-
 // Renderizar una página específica del PDF
-const renderPage = async (pageNum, scale = 5) => { // Aumenta la escala
+const renderPage = async (pageNum, scale = 5) => {
+    if (isRendering) return; // Si ya está renderizando, no continuar
+    isRendering = true; // Establecer la bandera como true
+
     try {
         const page = await pdfDoc.getPage(pageNum);
         const viewport = page.getViewport({ scale });
@@ -1019,56 +1150,58 @@ const renderPage = async (pageNum, scale = 5) => { // Aumenta la escala
 
         await page.render({ canvasContext: context, viewport }).promise;
     } catch (error) {
+        console.error("Error al renderizar la página:", error);
+    } finally {
+        isRendering = false; // Liberar la bandera después de completar
     }
 };
-
-
-
 
 // Cargar el PDF desde Firebase Storage
 const loadPDF = async () => {
     try {
         const url = await getManualURL(evaluationId); // Obtener la URL desde Firestore
         if (!url) {
+            console.warn("No se encontró la URL del manual.");
             return;
         }
 
-
         pdfDoc = await pdfjsLib.getDocument(url).promise; // Intenta cargar el PDF
-
         renderPage(currentPage); // Renderiza la primera página
+        loadNotes(); // Cargar notas de la primera página
     } catch (error) {
-
+        console.error("Error al cargar el PDF:", error);
     }
 };
 
-
-
-
-
-// Guardar notas en Firestore
-saveNotesButton.addEventListener('click', async () => {
+// Guardar notas en Firestore automáticamente
+const saveNotes = async () => {
     const notes = notesField.value;
-
     const user = auth.currentUser;
     if (!user) {
-        alert("Debes iniciar sesión para guardar notas.");
+        console.warn("Usuario no autenticado. No se pueden guardar notas.");
         return;
     }
 
     try {
-        await db.collection('manual-notes').doc(user.uid).collection('notes').doc(`${evaluationId}_page_${currentPage}`).set({
-            manualId: evaluationId,
-            page: currentPage,
-            notes,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-        });
-        alert("Notas guardadas con éxito.");
+        await db.collection('manual-notes')
+            .doc(user.uid)
+            .collection('notes')
+            .doc(`${evaluationId}_page_${currentPage}`)
+            .set({
+                manualId: evaluationId,
+                page: currentPage,
+                notes,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+
+        // Actualizar estado de guardado
+        saveStatus.textContent = "Notas guardadas automáticamente";
+        setTimeout(() => (saveStatus.textContent = ""), 2000); // Ocultar estado después de 2 segundos
     } catch (error) {
-        console.error("Error al guardar notas:", error);
-        alert("Hubo un problema al guardar tus notas.");
+        console.error("Error al guardar notas automáticamente:", error);
+        saveStatus.textContent = "Error al guardar notas";
     }
-});
+};
 
 // Cargar notas guardadas para la página actual
 const loadNotes = async () => {
@@ -1076,7 +1209,12 @@ const loadNotes = async () => {
     if (!user) return;
 
     try {
-        const doc = await db.collection('manual-notes').doc(user.uid).collection('notes').doc(`${evaluationId}_page_${currentPage}`).get();
+        const doc = await db.collection('manual-notes')
+            .doc(user.uid)
+            .collection('notes')
+            .doc(`${evaluationId}_page_${currentPage}`)
+            .get();
+
         if (doc.exists) {
             notesField.value = doc.data().notes || '';
         } else {
@@ -1090,11 +1228,17 @@ const loadNotes = async () => {
 // Cambiar de página en el visor del PDF
 const changePage = (pageNum) => {
     if (pageNum > 0 && pageNum <= pdfDoc.numPages) {
+        saveNotes(); // Guardar notas automáticamente antes de cambiar de página
         currentPage = pageNum;
         renderPage(currentPage);
-        loadNotes();
+        loadNotes(); // Cargar las notas de la nueva página
     }
 };
+
+// Evento para guardar notas automáticamente cuando se escriben
+notesField.addEventListener('input', () => {
+    saveNotes();
+});
 
 // Botones para cambiar de página
 document.getElementById('prev-page').addEventListener('click', () => {
