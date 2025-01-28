@@ -20,13 +20,20 @@
         </a>
     </header>
 
+    <div id="user-info" style="position: absolute; top: 10px; left: 10px;">
+        <p id="userNameDisplay"></p>
+        <p id="userRutDisplay"></p>
+        <button id="editProfileButton" style="cursor: pointer;">Editar perfil</button>
+    </div>
+    
+
     <div class="dashboard-container">
         <!-- Contenedor de Evaluaciones -->
         <div id="evaluationsSection">
             <h2>Cursos Disponibles</h2>
             <div id="evaluationsList"></div>
         </div>
-    
+
         <!-- Contenedor de Resultados -->
         <div id="responsesSection">
             <h2>Resultados</h2>
@@ -34,7 +41,6 @@
         </div>
     </div>
     
-
     <div id="logoutContainer">
         <button id="logoutButton" style="margin-top: 20px; padding: 10px 20px; background-color: #ff4d4d; color: white; border: none; border-radius: 5px; cursor: pointer;">
             Cerrar Sesión
