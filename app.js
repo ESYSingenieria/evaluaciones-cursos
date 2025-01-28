@@ -20,6 +20,11 @@ if (typeof pdfjsLib === 'undefined') {
 }
 
 
+
+
+
+
+
 // Función para cambiar la contraseña mediante el correo electrónico
 const changePassword = async () => {
     // Solicitar correo electrónico al usuario
@@ -31,30 +36,17 @@ const changePassword = async () => {
     }
 
     try {
-        // Verificar si el correo está registrado en Firebase
-        const signInMethods = await auth.fetchSignInMethodsForEmail(email);
-
-        if (signInMethods.length === 0) {
-            alert("El correo ingresado no está registrado en la plataforma.");
-            return;
-        }
-
-        // Enviar correo de restablecimiento de contraseña
-        await auth.sendPasswordResetEmail(email);
-        alert(`Se ha enviado un correo para restablecer tu contraseña a ${email}.`);
+        // Enviar correo de restablecimiento de contraseña directamente
+        await firebase.auth().sendPasswordResetEmail(email.trim());
+        alert(`Si su email ${email.trim()} se encuentra registrado en nuestra plataforma, se le enviará un correo con el enlace para redirigirse a la página donde podrá restablecer su contraseña`);
     } catch (error) {
         console.error("Error al intentar cambiar la contraseña:", error);
 
         // Manejo de errores comunes
-        switch (error.code) {
-            case 'auth/invalid-email':
-                alert("El correo ingresado no es válido.");
-                break;
-            case 'auth/user-not-found':
-                alert("El correo ingresado no está registrado en la plataforma.");
-                break;
-            default:
-                alert("Ocurrió un error al intentar cambiar la contraseña. Inténtalo de nuevo.");
+        if (error.code === 'auth/invalid-email') {
+            alert("El correo ingresado no es válido.");
+        } else {
+            alert("Ocurrió un error inesperado. Inténtalo de nuevo.");
         }
     }
 };
