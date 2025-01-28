@@ -586,71 +586,55 @@ body.modal-open {
 
 
 
-/* Contenedor Principal */
-#manual-container {
-    display: flex;
-    flex-direction: row;
-    gap: 20px;
-    justify-content: center;
-    align-items: flex-start;
-    margin: 20px auto;
-    max-width: 1200px;
-}
 
-/* Canvas del PDF */
-#pdf-renderer {
-    flex: 2;
-    max-height: 600px;
-    width: 100%;
-    background-color: #f9f9f9;
-    border: none;
-    box-shadow: none;
-}
 
-/* Contenedor de Notas */
-#notes-container {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
 
-#notes-container h3 {
-    margin: 0;
-    text-align: center;
-}
 
-#notes {
-    width: 100%;
-    height: 400px;
-    resize: none;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-}
 
-#save-notes {
-    align-self: center;
-    padding: 10px 20px;
-    background-color: #4CAF50;
+
+
+
+
+
+
+
+
+
+.password-reset button {
+    background-color: #ff4e4e;
     color: white;
     border: none;
+    padding: 10px 20px;
     border-radius: 5px;
     cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s ease;
 }
 
-/* Botones de Navegación */
-#prev-page, #next-page {
-    margin: 10px;
-    padding: 10px 20px;
+.password-reset button:hover {
+    background-color: #0056b3;
+}
+
+#user-info {
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+#user-info p {
+    margin: 5px 0;
+}
+
+#editProfileButton {
     background-color: #007BFF;
     color: white;
     border: none;
-    border-radius: 5px;
-    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-size: 14px;
 }
 
-#prev-page:hover, #next-page:hover {
+#editProfileButton:hover {
     background-color: #0056b3;
 }
 
