@@ -22,6 +22,7 @@ if (typeof pdfjsLib === 'undefined') {
 
 // Función para cambiar la contraseña mediante el correo electrónico
 const changePassword = async () => {
+    // Solicitar correo electrónico al usuario
     const email = prompt("Por favor, ingresa tu correo electrónico:");
 
     if (!email) {
@@ -30,10 +31,11 @@ const changePassword = async () => {
     }
 
     try {
-        // Verificar si el correo existe en la autenticación de Firebase
-        const userExists = await auth.fetchSignInMethodsForEmail(email);
-        if (userExists.length === 0) {
-            alert("El correo ingresado no está registrado.");
+        // Verificar si el correo está registrado en Firebase
+        const signInMethods = await auth.fetchSignInMethodsForEmail(email);
+
+        if (signInMethods.length === 0) {
+            alert("El correo ingresado no está registrado en la plataforma.");
             return;
         }
 
@@ -41,16 +43,23 @@ const changePassword = async () => {
         await auth.sendPasswordResetEmail(email);
         alert(`Se ha enviado un correo para restablecer tu contraseña a ${email}.`);
     } catch (error) {
-        console.error("Error al enviar el correo de restablecimiento:", error);
-        if (error.code === 'auth/invalid-email') {
-            alert("El correo ingresado no es válido.");
-        } else {
-            alert("Hubo un problema al intentar cambiar tu contraseña. Por favor, inténtalo nuevamente.");
+        console.error("Error al intentar cambiar la contraseña:", error);
+
+        // Manejo de errores comunes
+        switch (error.code) {
+            case 'auth/invalid-email':
+                alert("El correo ingresado no es válido.");
+                break;
+            case 'auth/user-not-found':
+                alert("El correo ingresado no está registrado en la plataforma.");
+                break;
+            default:
+                alert("Ocurrió un error al intentar cambiar la contraseña. Inténtalo de nuevo.");
         }
     }
 };
 
-// Evento para el botón de cambio de contraseña
+// Evento para el botón de cambiar contraseña
 document.addEventListener("DOMContentLoaded", () => {
     const changePasswordButton = document.getElementById("changePasswordButton");
 
@@ -58,6 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
         changePasswordButton.addEventListener("click", changePassword);
     }
 });
+
 
 
 
