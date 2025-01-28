@@ -4,6 +4,93 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manual</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            min-height: 100vh;
+            background-color: #f9f9f9;
+        }
+
+        header {
+            margin: 0;
+            padding: 10px 0;
+            text-align: center;
+            background-color: #ffffff;
+            width: 100%;
+        }
+
+        header img {
+            max-width: 200px;
+            height: auto;
+        }
+
+        #manual-container {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            justify-content: center;
+            align-items: center;
+            width: 90%;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        #pdf-renderer {
+            flex: 2;
+            max-height: 600px;
+            width: 100%;
+            border: 1px solid #ccc;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        #notes-container {
+            flex: 1.5; /* Incrementa ligeramente el espacio relativo */
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 500px; /* Ancho máximo controlado */
+            min-width: 400px; /* Asegura un ancho mínimo */
+            height: 560px;
+            box-sizing: border-box;
+        }
+
+        #notes {
+            width: 100%;
+            height: 100%;
+            resize: none;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        #button-container {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        #button-container button {
+            padding: 10px 20px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+
+        #button-container button:hover {
+            background-color: #0056b3;
+        }
+    </style>
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
@@ -12,34 +99,28 @@
 </head>
 <body>
 
-    <header style="text-align: center; padding: 0px; background-color: #ffffff;">
+    <header>
         <a href="https://esys.cl/"> <!-- Enlace al logo -->
-            <img src="logo.png" alt="Logo de la Empresa" style="max-width: 200px; height: auto;">
+            <img src="logo.png" alt="Logo de la Empresa">
         </a>
     </header>
 
-    <div id="manual-container" style="display: flex; flex-direction: row; gap: 20px; justify-content: center; align-items: flex-start;">
+    <div id="manual-container">
         <!-- Lado del Manual -->
-        <canvas id="pdf-renderer" style="flex: 2; margin-top: 15px; max-height: 450px; max-width: 800px; border: none;"></canvas>
+        <canvas id="pdf-renderer"></canvas>
     
         <!-- Lado de Notas -->
-        <div id="notes-container" style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
-            <h3 style="margin: 0; text-align: center;">Notas</h3>
-            <textarea id="notes" placeholder="Escribe tus notas aquí..." style="width: 100%; height: 400px; max-width: 680px; resize: none; padding: 10px;"></textarea>
-            <button id="save-notes" style="align-self: center; padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Guardar Notas</button>
+        <div id="notes-container">
+            <h3>Notas</h3>
+            <textarea id="notes" placeholder="Escribe tus notas aquí..."></textarea>     
         </div>
     </div>
     
     <!-- Botones de Navegación -->
-    <div style="margin-top: -20px; text-align: center; margin-left: -750px;">
-        <button id="prev-page" style="margin-right: 30px; padding: 10px 20px; background-color: #007BFF; color: white; border: none; border-radius: 5px; cursor: pointer;">Página Anterior</button>
-        <button id="next-page" style="padding: 10px 20px; background-color: #007BFF; color: white; border: none; border-radius: 5px; cursor: pointer;">Página Siguiente</button>
+    <div id="button-container">
+        <button id="prev-page">Página Anterior</button>
+        <button id="next-page">Página Siguiente</button>
     </div>
-    
-    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.worker.min.js"></script>
-    <script src="app.js"></script>
-      
 
     <script>
         // Obtener el evaluationId desde la URL
