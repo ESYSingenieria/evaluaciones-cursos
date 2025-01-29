@@ -74,20 +74,19 @@ auth.onAuthStateChanged(async (user) => {
     if (!user) {
         console.log("No hay usuario autenticado.");
 
-        // Redirigir al inicio de sesión solo si no estás ya en 'index.html'
-        if (!window.location.pathname.includes("index.html")) {
+        // Permitir acceso libre a verificar.html
+        if (!window.location.pathname.includes("index.html") && !window.location.pathname.includes("verificar.html")) {
             window.location.href = "index.html";
         }
     } else {
         console.log("Usuario autenticado:", user.uid);
 
         try {
-            // Asegúrate de que todas las funciones relacionadas con datos de usuario se ejecuten aquí
-            const userData = await loadUserData(); // Cargar datos del usuario de la base de datos
+            // Aquí se cargan los datos del usuario
+            const userData = await loadUserData(); 
             console.log("Datos del usuario cargados:", userData);
 
             if (window.location.pathname.includes("dashboard.html")) {
-                // Mostrar datos del usuario en el Dashboard
                 const userNameElement = document.getElementById("userNameDisplay");
                 const userRutElement = document.getElementById("userRutDisplay");
 
