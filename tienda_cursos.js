@@ -182,9 +182,6 @@ async function processCheckout() {
         return;
     }
 
-    // Guardar el carrito en localStorage antes de enviar a Webpay
-    localStorage.setItem("cart", JSON.stringify(cart));
-
     let totalAmount = cart.reduce((sum, course) => sum + calculateDiscount(course.id, course.quantity, course.price), 0);
 
     try {
@@ -196,6 +193,7 @@ async function processCheckout() {
             body: JSON.stringify({
                 amount: totalAmount,
                 items: cart.map(course => ({
+                    id: course.id,
                     name: course.name,
                     quantity: course.quantity,
                     price: calculateDiscount(course.id, course.quantity, course.price)
@@ -206,7 +204,9 @@ async function processCheckout() {
         const data = await response.json();
 
         if (data.url && data.token) {
-            window.location.href = `${data.url}?token_ws=${data.token}`;
+            // Codificamos el carrito y lo pasamos en la URL
+            const carritoEncoded = encodeURIComponent(JSON.stringify(cart));
+            window.location.href = `${data.url}?token_ws=${data.token}&carrito=${carritoEncoded}`;
         } else {
             alert("Error al iniciar el pago. Intenta nuevamente.");
         }
@@ -216,6 +216,7 @@ async function processCheckout() {
     }
 }
 
+
 document.addEventListener("DOMContentLoaded", () => {
     const checkoutButton = document.getElementById("checkout-button");
     
@@ -223,12 +224,5 @@ document.addEventListener("DOMContentLoaded", () => {
         checkoutButton.addEventListener("click", processCheckout);
     } else {
         console.error("Error: Botón de pago no encontrado en el DOM");
-    }
-
-    // Recuperar el carrito desde localStorage si existe
-    const savedCart = localStorage.getItem("cart");
-    if (savedCart) {
-        cart = JSON.parse(savedCart);
-        renderCart(); // Asegura que el carrito se muestra correctamente
     }
 });
