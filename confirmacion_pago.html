@@ -4,18 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Confirmación de Pago</title>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"></script>    
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>    
     <script>
-const firebaseConfig = {
-    apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
-    authDomain: "plataforma-de-cursos-esys.firebaseapp.com",
-    projectId: "plataforma-de-cursos-esys",
-    storageBucket: "plataforma-de-cursos-esys.firebasestorage.app",
-    messagingSenderId: "950684050808",
-    appId: "1:950684050808:web:33d2ef70f2343642f4548d"
-};
+    const firebaseConfig = {
+        apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
+        authDomain: "plataforma-de-cursos-esys.firebaseapp.com",
+        projectId: "plataforma-de-cursos-esys",
+        storageBucket: "plataforma-de-cursos-esys.firebasestorage.app",
+        messagingSenderId: "950684050808",
+        appId: "1:950684050808:web:33d2ef70f2343642f4548d"
+    };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
     </script>
@@ -26,7 +26,7 @@ const firebaseConfig = {
             <img src="logo.png" alt="Logo de la Empresa" style="max-width: 200px; height: auto;">
         </a>
     </header>
-    
+
     <h2>Pago Confirmado</h2>
     <p>Ingresa los datos de los inscritos para el curso</p>
     
@@ -43,73 +43,56 @@ const firebaseConfig = {
     </form>
     
     <script>
-        document.addEventListener("DOMContentLoaded", async function () {
-            const urlParams = new URLSearchParams(window.location.search);
-            const purchasedCourses = JSON.parse(urlParams.get("courses"));
-            const courseSelect = document.getElementById("course");
-            const dateSelect = document.getElementById("date");
-            const inscriptionFields = document.getElementById("inscription-fields");
-            
-            purchasedCourses.forEach(course => {
-                const option = document.createElement("option");
-                option.value = course.id;
-                option.textContent = `${course.name} - ${course.quantity} cupos`;
-                courseSelect.appendChild(option);
+document.addEventListener("DOMContentLoaded", async () => {
+    const courseSelect = document.getElementById("courseSelect");
+    const dateSelect = document.getElementById("dateSelect");
+
+    let pagoConfirmado = JSON.parse(localStorage.getItem("pagoConfirmado")) || [];
+
+    // ✅ Verificamos que el array no esté vacío antes de usar forEach()
+    if (!Array.isArray(pagoConfirmado) || pagoConfirmado.length === 0) {
+        console.error("No hay datos de compra en localStorage o el formato es incorrecto.");
+        return;
+    }
+
+    pagoConfirmado.forEach(course => {
+        let option = document.createElement("option");
+        option.value = course.id;
+        option.textContent = course.name;
+        courseSelect.appendChild(option);
+    });
+
+    courseSelect.addEventListener("change", async () => {
+        let selectedCourse = courseSelect.value;
+        dateSelect.innerHTML = "";
+
+        try {
+            let courseDoc = await db.collection("courses").doc(selectedCourse).get();
+            let availableDates = courseDoc.data()?.dates || [];
+
+            // ✅ Verificamos que availableDates sea un array antes de usar forEach()
+            if (!Array.isArray(availableDates) || availableDates.length === 0) {
+                console.warn("No hay fechas disponibles para este curso.");
+                return;
+            }
+
+            availableDates.forEach(date => {
+                let dateOption = document.createElement("option");
+                dateOption.value = date;
+                dateOption.textContent = date;
+                dateSelect.appendChild(dateOption);
             });
-            
-            courseSelect.addEventListener("change", async function () {
-                const courseId = this.value;
-                dateSelect.innerHTML = "";
-                const snapshot = await db.collection("courses").doc(courseId).get();
-                const dates = snapshot.data().availableDates || [];
-                
-                dates.forEach(date => {
-                    const option = document.createElement("option");
-                    option.value = date;
-                    option.textContent = date;
-                    dateSelect.appendChild(option);
-                });
-            });
-            
-            document.getElementById("inscription-form").addEventListener("submit", async function (e) {
-                e.preventDefault();
-                const courseId = courseSelect.value;
-                const selectedDate = dateSelect.value;
-                const numSlots = purchasedCourses.find(c => c.id === courseId).quantity;
-                
-                let inscriptions = [];
-                for (let i = 0; i < numSlots; i++) {
-                    const name = prompt(`Nombre del inscrito ${i + 1}:`);
-                    const rut = prompt(`RUT del inscrito ${i + 1}:`);
-                    const email = prompt(`Correo del inscrito ${i + 1}:`);
-                    const company = prompt(`Empresa del inscrito ${i + 1} (opcional):`) || "";
-                    inscriptions.push({ name, rut, email, company });
-                }
-                
-                const docRef = db.collection("inscriptions").doc(`${courseId}_${selectedDate}`);
-                const docSnap = await docRef.get();
-                
-                if (docSnap.exists) {
-                    const data = docSnap.data();
-                    await docRef.update({
-                        participants: firebase.firestore.FieldValue.arrayUnion(...inscriptions),
-                        totalInscritos: data.totalInscritos + numSlots,
-                        totalPagado: data.totalPagado + purchasedCourses.find(c => c.id === courseId).price * numSlots
-                    });
-                } else {
-                    await docRef.set({
-                        courseId,
-                        fecha: selectedDate,
-                        participants: inscriptions,
-                        totalInscritos: numSlots,
-                        totalPagado: purchasedCourses.find(c => c.id === courseId).price * numSlots
-                    });
-                }
-                
-                alert("Inscripción confirmada correctamente.");
-                window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
-            });
-        });
+        } catch (error) {
+            console.error("Error obteniendo fechas de inscripción:", error);
+        }
+    });
+
+    // ✅ Disparamos evento para cargar fechas del primer curso seleccionado
+    if (pagoConfirmado.length > 0) {
+        courseSelect.dispatchEvent(new Event("change"));
+    }
+});
+
     </script>
 </body>
 </html>
