@@ -14,12 +14,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     const courseSelect = document.getElementById("course");
     const dateSelect = document.getElementById("date");
 
-    let pagoConfirmado = JSON.parse(localStorage.getItem("pagoConfirmado"));
-    
-    if (!pagoConfirmado || pagoConfirmado.length === 0) {
-        console.error("No hay datos de compra en localStorage o el formato es incorrecto.");
+    // Obtener los parámetros de la URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const cartData = urlParams.get("cart");
+
+    if (!cartData) {
+        console.error("No hay datos de compra en la URL.");
         return;
     }
+
+    let pagoConfirmado = JSON.parse(decodeURIComponent(cartData));
 
     // Llenar el select con los cursos comprados
     pagoConfirmado.forEach(course => {
@@ -33,7 +37,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     async function loadDates(courseId) {
         dateSelect.innerHTML = ""; // Limpiar las fechas previas
         try {
-            const doc = await db.collection("courses").doc(courseId).get();
+            const doc = await firebase.firestore().collection("courses").doc(courseId).get();
             if (doc.exists) {
                 const courseData = doc.data();
                 if (courseData.availableDates && courseData.availableDates.length > 0) {
