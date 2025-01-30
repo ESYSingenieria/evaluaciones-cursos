@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resultado del Pago</title>
+    <script>
+        async function confirmarPago() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token_ws = urlParams.get("token_ws");
+
+            if (!token_ws) {
+                document.getElementById("mensaje").innerText = "❌ Pago cancelado por el usuario.";
+                setTimeout(() => {
+                    window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
+                }, 4000);
+                return;
+            }
+
+            try {
+                const response = await fetch("https://confirmarpagowebpay-wf5bhi5ova-uc.a.run.app", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token_ws })
+                });
+
+                const result = await response.text();
+
+                if (result.includes("Pago exitoso")) {
+                    document.getElementById("mensaje").innerText = "✅ Pago exitoso. Gracias por tu compra.";
+                    setTimeout(() => {
+                        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
+                    }, 3000);
+                } else {
+                    document.getElementById("mensaje").innerText = "⚠️ Pago rechazado o anulado.";
+                    setTimeout(() => {
+                        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
+                    }, 4000);
+                }
+            } catch (error) {
+                document.getElementById("mensaje").innerText = "⚠️ Error al procesar la transacción.";
+                setTimeout(() => {
+                    window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
+                }, 5000);
+            }
+        }
+    </script>
+</head>
+<body onload="confirmarPago()">
+    <h2>Procesando pago...</h2>
+    <p id="mensaje">Por favor, espera...</p>
+</body>
+</html>

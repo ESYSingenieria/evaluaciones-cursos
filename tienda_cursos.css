@@ -1,0 +1,132 @@
+/* Estilos generales */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f9f9f9;
+}
+
+header {
+    background-color: #007bff;
+    color: white;
+    padding: 1em;
+    text-align: center;
+}
+
+main {
+    margin: 2em;
+}
+
+h1, h2 {
+    color: #333;
+}
+
+/* Lista de cursos */
+#course-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1em;
+}
+
+.course-card {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    padding: 1em;
+    width: calc(33.333% - 1em);
+    text-align: center;
+}
+
+.course-card h3 {
+    margin: 0.5em 0;
+}
+
+.course-card p {
+    color: #666;
+}
+
+.course-card button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 0.5em 1em;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.course-card button:hover {
+    background-color: #0056b3;
+}
+
+/* Carrito de compras */
+#cart {
+    margin-top: 2em;
+    padding: 1em;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+#cart-items {
+    margin-bottom: 1em;
+}
+
+.cart-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5em 0;
+    border-bottom: 1px solid #eee;
+}
+
+.cart-item:last-child {
+    border-bottom: none;
+}
+
+#checkout-button {
+    background-color: #28a745;
+    color: white;
+    border: none;
+    padding: 0.5em 1em;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#checkout-button:hover {
+    background-color: #218838;
+}
+
+/* Formulario de fecha y datos */
+#date-and-data-form {
+    margin-top: 2em;
+    padding: 1em;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+form label {
+    display: block;
+    margin: 1em 0 0.5em;
+}
+
+form input, form select {
+    width: 100%;
+    padding: 0.5em;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-bottom: 1em;
+}
+
+form button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 0.5em 1em;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+form button:hover {
+    background-color: #0056b3;
+}
