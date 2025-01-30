@@ -14,16 +14,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     const courseSelect = document.getElementById("course");
     const dateSelect = document.getElementById("date");
 
-    // Obtener los parámetros de la URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const cartData = urlParams.get("cart");
+    // Recuperar los datos desde sessionStorage
+    let pagoConfirmado = JSON.parse(sessionStorage.getItem("pagoConfirmado"));
 
-    if (!cartData) {
-        console.error("No hay datos de compra en la URL.");
+    if (!pagoConfirmado || pagoConfirmado.length === 0) {
+        console.error("⚠️ No hay datos de compra en sessionStorage o el formato es incorrecto.");
         return;
     }
 
-    let pagoConfirmado = JSON.parse(decodeURIComponent(cartData));
+    console.log("✅ Carrito recuperado después del pago:", pagoConfirmado);
 
     // Llenar el select con los cursos comprados
     pagoConfirmado.forEach(course => {
@@ -48,13 +47,13 @@ document.addEventListener("DOMContentLoaded", async () => {
                         dateSelect.appendChild(dateOption);
                     });
                 } else {
-                    console.warn("El curso no tiene fechas disponibles.");
+                    console.warn("⚠️ El curso no tiene fechas disponibles.");
                 }
             } else {
-                console.error("El curso no existe en Firebase.");
+                console.error("⚠️ El curso no existe en Firebase.");
             }
         } catch (error) {
-            console.error("Error obteniendo fechas:", error);
+            console.error("❌ Error obteniendo fechas:", error);
         }
     }
 
