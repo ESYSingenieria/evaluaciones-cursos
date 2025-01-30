@@ -76,7 +76,6 @@ async function loadDates(courseId, selectId) {
 
 
     
-    // Función para generar campos de inscripción según la cantidad de cursos comprados
 function generateInscriptionFields(courseId, quantity, container) {
     container.innerHTML = ""; // Limpiar campos previos
 
@@ -117,6 +116,7 @@ function copyPrevious(index, courseId) {
     document.getElementById(`email-${courseId}-${index}`).value = document.getElementById(`email-${courseId}-${prevIndex}`).value;
     document.getElementById(`company-${courseId}-${index}`).value = document.getElementById(`company-${courseId}-${prevIndex}`).value;
 }
+
 
 // Ejecutar cuando se seleccione un curso
 courseSelect.addEventListener("change", () => {
