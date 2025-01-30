@@ -182,6 +182,9 @@ async function processCheckout() {
         return;
     }
 
+    // Guardar el carrito en localStorage antes de enviar a Webpay
+    localStorage.setItem("cart", JSON.stringify(cart));
+
     let totalAmount = cart.reduce((sum, course) => sum + calculateDiscount(course.id, course.quantity, course.price), 0);
 
     try {
@@ -220,5 +223,12 @@ document.addEventListener("DOMContentLoaded", () => {
         checkoutButton.addEventListener("click", processCheckout);
     } else {
         console.error("Error: Botón de pago no encontrado en el DOM");
+    }
+
+    // Recuperar el carrito desde localStorage si existe
+    const savedCart = localStorage.getItem("cart");
+    if (savedCart) {
+        cart = JSON.parse(savedCart);
+        renderCart(); // Asegura que el carrito se muestra correctamente
     }
 });
