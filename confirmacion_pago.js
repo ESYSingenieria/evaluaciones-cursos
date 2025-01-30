@@ -65,29 +65,45 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     
     // Función para generar campos de inscripción según la cantidad de cursos comprados
-function generateInscriptionFields(courseId, quantity) {
-    const inscriptionFieldsContainer = document.getElementById("inscription-fields");
-    inscriptionFieldsContainer.innerHTML = ""; // Limpiar campos previos
+function generateInscriptionFields(courseId, quantity, container) {
+    container.innerHTML = ""; // Limpiar campos previos
 
     for (let i = 0; i < quantity; i++) {
-        let container = document.createElement("div");
-        container.className = "inscription-container";
-        container.innerHTML = `
+        let div = document.createElement("div");
+        div.className = "inscription-container";
+        div.innerHTML = `
             <h3>Inscrito ${i + 1}</h3>
-            <label for="name-${i}">Nombre:</label>
-            <input type="text" id="name-${i}" required>
+            <label for="name-${courseId}-${i}">Nombre:</label>
+            <input type="text" id="name-${courseId}-${i}" required>
             
-            <label for="rut-${i}">RUT:</label>
-            <input type="text" id="rut-${i}" required>
+            <label for="rut-${courseId}-${i}">RUT:</label>
+            <input type="text" id="rut-${courseId}-${i}" required>
             
-            <label for="email-${i}">Correo Electrónico:</label>
-            <input type="email" id="email-${i}" required>
+            <label for="email-${courseId}-${i}">Correo Electrónico:</label>
+            <input type="email" id="email-${courseId}-${i}" required>
             
-            <label for="company-${i}">Empresa (Opcional):</label>
-            <input type="text" id="company-${i}">
+            <label for="company-${courseId}-${i}">Empresa (Opcional):</label>
+            <input type="text" id="company-${courseId}-${i}">
+
+            <div class="copy-checkbox">
+                <input type="checkbox" id="copy-${courseId}-${i}" onchange="copyPrevious(${i}, '${courseId}')">
+                <label for="copy-${courseId}-${i}">Usar los mismos datos del anterior</label>
+            </div>
         `;
-        inscriptionFieldsContainer.appendChild(container);
+        container.appendChild(div);
     }
+}
+
+// Función para copiar datos del inscrito anterior
+function copyPrevious(index, courseId) {
+    if (index === 0) return; // No se puede copiar en el primero
+    
+    const prevIndex = index - 1;
+    
+    document.getElementById(`name-${courseId}-${index}`).value = document.getElementById(`name-${courseId}-${prevIndex}`).value;
+    document.getElementById(`rut-${courseId}-${index}`).value = document.getElementById(`rut-${courseId}-${prevIndex}`).value;
+    document.getElementById(`email-${courseId}-${index}`).value = document.getElementById(`email-${courseId}-${prevIndex}`).value;
+    document.getElementById(`company-${courseId}-${index}`).value = document.getElementById(`company-${courseId}-${prevIndex}`).value;
 }
 
 // Ejecutar cuando se seleccione un curso
