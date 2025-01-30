@@ -38,6 +38,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         let inscriptionsContainer = document.getElementById(`inscriptions-${course.id}`);
         generateInscriptionFields(course.id, course.quantity, inscriptionsContainer);
     });
+});
 
 // Función para cargar fechas de inscripción en el select
 async function loadDates(courseId, selectId) {
@@ -65,6 +66,7 @@ async function loadDates(courseId, selectId) {
         console.error("Error obteniendo fechas:", error);
     }
 }
+
 
 
 
