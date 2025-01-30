@@ -204,13 +204,11 @@ async function processCheckout() {
         const data = await response.json();
 
         if (data.url && data.token) {
-            // Convertimos el carrito en un string JSON y lo pasamos en la URL
-            const carritoEncoded = encodeURIComponent(JSON.stringify(cart));
-            const redirectUrl = `${data.url}?token_ws=${data.token}&cart=${carritoEncoded}`;
+            // Guardar carrito antes de ir a Webpay
+            sessionStorage.setItem("pagoConfirmado", JSON.stringify(cart));
 
-            console.log("🔹 URL con carrito antes de ir a Webpay:", redirectUrl); // Verifica que la URL sea correcta
-
-            window.location.href = redirectUrl;
+            // Redirigir a Webpay
+            window.location.href = `${data.url}?token_ws=${data.token}`;
         } else {
             alert("Error al iniciar el pago. Intenta nuevamente.");
         }
