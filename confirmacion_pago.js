@@ -11,51 +11,62 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 document.addEventListener("DOMContentLoaded", async () => {
-    const courseSelect = document.getElementById("course");
-    const dateSelect = document.getElementById("date");
-
-    // Recuperar los datos desde sessionStorage
-    let pagoConfirmado = JSON.parse(sessionStorage.getItem("pagoConfirmado"));
-
+    const formContainer = document.getElementById("inscription-fields");
+    
+    let pagoConfirmado = JSON.parse(localStorage.getItem("pagoConfirmado"));
+    
     if (!pagoConfirmado || pagoConfirmado.length === 0) {
-        console.error("⚠️ No hay datos de compra en sessionStorage o el formato es incorrecto.");
+        console.error("No hay datos de compra en localStorage o el formato es incorrecto.");
         return;
     }
 
-    console.log("✅ Carrito recuperado después del pago:", pagoConfirmado);
+    pagoConfirmado.forEach(async (course) => {
+        let courseContainer = document.createElement("div");
+        courseContainer.className = "course-container";
 
-    // Llenar el select con los cursos comprados
-    pagoConfirmado.forEach(course => {
-        let option = document.createElement("option");
-        option.value = course.id;
-        option.textContent = course.name;
-        courseSelect.appendChild(option);
+        courseContainer.innerHTML = `
+            <h2>${course.name}</h2>
+            <label for="date-${course.id}">Fecha de Inscripción:</label>
+            <select id="date-${course.id}" required></select>
+            <div id="inscriptions-${course.id}"></div>
+        `;
+
+        formContainer.appendChild(courseContainer);
+
+        await loadDates(course.id, `date-${course.id}`);
+
+        let inscriptionsContainer = document.getElementById(`inscriptions-${course.id}`);
+        generateInscriptionFields(course.id, course.quantity, inscriptionsContainer);
     });
+});
 
-    // Función para cargar fechas cuando se selecciona un curso
-    async function loadDates(courseId) {
-        dateSelect.innerHTML = ""; // Limpiar las fechas previas
-        try {
-            const doc = await firebase.firestore().collection("courses").doc(courseId).get();
-            if (doc.exists) {
-                const courseData = doc.data();
-                if (courseData.availableDates && courseData.availableDates.length > 0) {
-                    courseData.availableDates.forEach(date => {
-                        let dateOption = document.createElement("option");
-                        dateOption.value = date;
-                        dateOption.textContent = date;
-                        dateSelect.appendChild(dateOption);
-                    });
-                } else {
-                    console.warn("⚠️ El curso no tiene fechas disponibles.");
-                }
+// Función para cargar fechas de inscripción en el select
+async function loadDates(courseId, selectId) {
+    let dateSelect = document.getElementById(selectId);
+    dateSelect.innerHTML = "";
+
+    try {
+        const doc = await firebase.firestore().collection("courses").doc(courseId).get();
+        if (doc.exists) {
+            const courseData = doc.data();
+            if (courseData.availableDates && courseData.availableDates.length > 0) {
+                courseData.availableDates.forEach(date => {
+                    let dateOption = document.createElement("option");
+                    dateOption.value = date;
+                    dateOption.textContent = date;
+                    dateSelect.appendChild(dateOption);
+                });
             } else {
-                console.error("⚠️ El curso no existe en Firebase.");
+                console.warn("El curso no tiene fechas disponibles.");
             }
-        } catch (error) {
-            console.error("❌ Error obteniendo fechas:", error);
+        } else {
+            console.error("El curso no existe en Firebase.");
         }
+    } catch (error) {
+        console.error("Error obteniendo fechas:", error);
     }
+}
+
 
 
 
