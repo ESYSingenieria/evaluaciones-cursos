@@ -204,9 +204,9 @@ async function processCheckout() {
         const data = await response.json();
 
         if (data.url && data.token) {
-            // Codificamos el carrito y lo pasamos en la URL
+            // Convertimos el carrito en un string JSON y lo pasamos en la URL
             const carritoEncoded = encodeURIComponent(JSON.stringify(cart));
-            window.location.href = `${data.url}?token_ws=${data.token}&carrito=${carritoEncoded}`;
+            window.location.href = `${data.url}?token_ws=${data.token}&cart=${carritoEncoded}`;
         } else {
             alert("Error al iniciar el pago. Intenta nuevamente.");
         }
@@ -215,6 +215,7 @@ async function processCheckout() {
         alert("Hubo un problema al procesar el pago.");
     }
 }
+
 
 
 document.addEventListener("DOMContentLoaded", () => {
