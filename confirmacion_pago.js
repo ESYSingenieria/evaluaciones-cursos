@@ -125,7 +125,7 @@ function copyInscriptionData(fromCourseId, toCourseId) {
 
 // Ejecutar cuando se seleccione un curso
 courseSelect.addEventListener("change", () => {
-    let selectedCourseId = courseSelect.value;
+    let selectedCourseId = document.querySelector(".course-container select")?.value;
     let selectedCourse = pagoConfirmado.find(course => course.id === selectedCourseId);
     if (selectedCourse) {
         generateInscriptionFields(selectedCourseId, selectedCourse.quantity);
@@ -150,7 +150,7 @@ if (pagoConfirmado.length > 0) {
     document.getElementById("inscription-form").addEventListener("submit", async function (event) {
     event.preventDefault();
 
-    let selectedCourseId = pagoConfirmado[0].id; // Usamos el primer curso como referencia
+    let pagoConfirmado = JSON.parse(localStorage.getItem("pagoConfirmado")) || [];
     let selectedDate = dateSelect.value;
     let selectedCourse = pagoConfirmado.find(course => course.id === selectedCourseId);
 
