@@ -51,7 +51,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 // Función para cargar fechas de inscripción en el select
 async function loadDates(courseId, selectId) {
-    let dateSelect = document.getElementById(selectId);
+    let dateSelect = document.getElementById(`date-${selectedCourseId}`);
     dateSelect.innerHTML = "";
 
     try {
@@ -121,29 +121,6 @@ function copyInscriptionData(fromCourseId, toCourseId) {
     });
 }
 
-
-
-    
-let courseSelect = document.getElementById("course");
-if (!courseSelect) {
-    console.error("Error: No se encontró el elemento 'course'");
-    return;
-}
-
-// Ejecutar cuando se seleccione un curso
-courseSelect.addEventListener("change", () => {
-    let selectedCourseId = document.querySelector(".course-container select")?.value;
-    let selectedCourse = pagoConfirmado.find(course => course.id === selectedCourseId);
-    if (selectedCourse) {
-        generateInscriptionFields(selectedCourseId, selectedCourse.quantity);
-    }
-});
-
-// Generar automáticamente los campos para el primer curso
-if (pagoConfirmado.length > 0) {
-    generateInscriptionFields(pagoConfirmado[0].id, pagoConfirmado[0].quantity);
-}
-
 });
 
 
@@ -154,12 +131,6 @@ if (pagoConfirmado.length > 0) {
 
     document.getElementById("inscription-form").addEventListener("submit", async function (event) {
     event.preventDefault();
-
-        let dateSelect = document.getElementById("date");
-if (!dateSelect) {
-    console.error("Error: No se encontró el elemento 'date'");
-    return;
-}
         
     let pagoConfirmado = JSON.parse(localStorage.getItem("pagoConfirmado")) || [];
     let selectedDate = dateSelect.value;
