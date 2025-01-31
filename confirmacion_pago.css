@@ -66,20 +66,23 @@ button:hover {
 .course-container {
     background: #ffffff;
     padding: 20px;
-    margin: 20px;
+    margin: 10px;
     border-radius: 10px;
     box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
     display: inline-block;
-    width: 48%;
+    width: calc(50% - 20px); /* Permite que haya dos cursos en la misma fila */
     vertical-align: top;
+    text-align: center;
 }
 
+
 .inscription-container {
-    background: #f8f8f8;
+    background: #e8e8e8; /* Un color más oscuro para mejorar contraste */
     padding: 15px;
     margin: 10px 0;
     border-radius: 8px;
-    box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.1);
+    box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.2);
+    text-align: left;
 }
 
 .inscription-container h3 {
