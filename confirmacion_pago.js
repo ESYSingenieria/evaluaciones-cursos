@@ -52,7 +52,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 // Función para cargar fechas de inscripción en el select
 async function loadDates(courseId, selectId) {
     
-    let selectedCourseId = event.target.getAttribute("data-course-id");  
+    let selectedCourseId = courseId; // Ya lo recibimos como parámetro en la función
     let dateSelect = document.getElementById(`date-${selectedCourseId}`);
     if (!dateSelect) {
         console.error(`Error: No se encontró el elemento de fecha para el curso ${selectedCourseId}`);
