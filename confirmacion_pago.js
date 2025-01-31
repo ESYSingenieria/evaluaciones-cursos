@@ -123,6 +123,13 @@ function copyInscriptionData(fromCourseId, toCourseId) {
 
 
 
+    
+let courseSelect = document.getElementById("course");
+if (!courseSelect) {
+    console.error("Error: No se encontró el elemento 'course'");
+    return;
+}
+
 // Ejecutar cuando se seleccione un curso
 courseSelect.addEventListener("change", () => {
     let selectedCourseId = document.querySelector(".course-container select")?.value;
@@ -145,11 +152,15 @@ if (pagoConfirmado.length > 0) {
 
 
 
-
-
     document.getElementById("inscription-form").addEventListener("submit", async function (event) {
     event.preventDefault();
 
+        let dateSelect = document.getElementById("date");
+if (!dateSelect) {
+    console.error("Error: No se encontró el elemento 'date'");
+    return;
+}
+        
     let pagoConfirmado = JSON.parse(localStorage.getItem("pagoConfirmado")) || [];
     let selectedDate = dateSelect.value;
     let selectedCourse = pagoConfirmado.find(course => course.id === selectedCourseId);
