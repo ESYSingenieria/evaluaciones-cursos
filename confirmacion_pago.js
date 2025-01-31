@@ -39,6 +39,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         generateInscriptionFields(course.id, course.quantity, inscriptionsContainer);
     });
 
+    if (pagoConfirmado.length > 1) {
+    let copyButton = document.createElement("button");
+    copyButton.innerText = "Copiar datos entre cursos";
+    copyButton.onclick = () => {
+        copyInscriptionData(pagoConfirmado[0].id, pagoConfirmado[1].id);
+    };
+    formContainer.appendChild(copyButton);
+}
+
+
 // Función para cargar fechas de inscripción en el select
 async function loadDates(courseId, selectId) {
     let dateSelect = document.getElementById(selectId);
@@ -95,26 +105,22 @@ function generateInscriptionFields(courseId, quantity, container) {
             <label for="company-${courseId}-${i}">Empresa (Opcional):</label>
             <input type="text" id="company-${courseId}-${i}">
 
-            <div class="copy-checkbox">
-                <input type="checkbox" id="copy-${courseId}-${i}" onchange="copyPrevious(${i}, '${courseId}')">
-                <label for="copy-${courseId}-${i}">Usar los mismos datos del anterior</label>
-            </div>
         `;
         container.appendChild(div);
     }
 }
 
-// Función para copiar datos del inscrito anterior
-function copyPrevious(index, courseId) {
-    if (index === 0) return; // No se puede copiar en el primero
-    
-    const prevIndex = index - 1;
-    
-    document.getElementById(`name-${courseId}-${index}`).value = document.getElementById(`name-${courseId}-${prevIndex}`).value;
-    document.getElementById(`rut-${courseId}-${index}`).value = document.getElementById(`rut-${courseId}-${prevIndex}`).value;
-    document.getElementById(`email-${courseId}-${index}`).value = document.getElementById(`email-${courseId}-${prevIndex}`).value;
-    document.getElementById(`company-${courseId}-${index}`).value = document.getElementById(`company-${courseId}-${prevIndex}`).value;
+function copyInscriptionData(fromCourseId, toCourseId) {
+    let fromInputs = document.querySelectorAll(`[id^="name-${fromCourseId}-"], [id^="rut-${fromCourseId}-"], [id^="email-${fromCourseId}-"], [id^="company-${fromCourseId}-"]`);
+    let toInputs = document.querySelectorAll(`[id^="name-${toCourseId}-"], [id^="rut-${toCourseId}-"], [id^="email-${toCourseId}-"], [id^="company-${toCourseId}-"]`);
+
+    fromInputs.forEach((input, index) => {
+        if (toInputs[index]) {
+            toInputs[index].value = input.value;
+        }
+    });
 }
+
 
 
 // Ejecutar cuando se seleccione un curso
@@ -144,7 +150,7 @@ if (pagoConfirmado.length > 0) {
     document.getElementById("inscription-form").addEventListener("submit", async function (event) {
     event.preventDefault();
 
-    let selectedCourseId = courseSelect.value;
+    let selectedCourseId = pagoConfirmado[0].id; // Usamos el primer curso como referencia
     let selectedDate = dateSelect.value;
     let selectedCourse = pagoConfirmado.find(course => course.id === selectedCourseId);
 
