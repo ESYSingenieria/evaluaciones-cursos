@@ -16,7 +16,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     let pagoConfirmado = JSON.parse(sessionStorage.getItem("pagoConfirmado"));
     
     if (!pagoConfirmado || pagoConfirmado.length === 0) {
-        console.error("No hay datos de compra en localStorage o el formato es incorrecto.");
+        console.error("No hay datos de compra en sessionStorage o el formato es incorrecto.");
         return;
     }
 
