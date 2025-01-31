@@ -141,7 +141,12 @@ function copyInscriptionData(fromCourseId, toCourseId) {
         
     let pagoConfirmado = JSON.parse(localStorage.getItem("pagoConfirmado")) || [];
     
-    let selectedCourseId = event.target.getAttribute("data-course-id");  
+    let selectedCourseId = document.querySelector(".course-container select")?.id.replace("date-", "");
+    if (!selectedCourseId) {
+        console.error("Error: No se pudo determinar el curso seleccionado.");
+        return;
+    }
+
     let dateSelect = document.getElementById(`date-${selectedCourseId}`);
     if (!dateSelect) {
         console.error(`Error: No se encontró el elemento de fecha para el curso ${selectedCourseId}`);
