@@ -13,7 +13,7 @@ const db = firebase.firestore();
 document.addEventListener("DOMContentLoaded", async () => {
     const formContainer = document.getElementById("inscription-fields");
     
-    let pagoConfirmado = JSON.parse(localStorage.getItem("pagoConfirmado"));
+    let pagoConfirmado = JSON.parse(sessionStorage.getItem("pagoConfirmado"));
     
     if (!pagoConfirmado || pagoConfirmado.length === 0) {
         console.error("No hay datos de compra en localStorage o el formato es incorrecto.");
