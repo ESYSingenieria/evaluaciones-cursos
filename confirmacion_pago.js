@@ -10,6 +10,17 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
+
+document.addEventListener("DOMContentLoaded", async () => {
+    let inscripcionConfirmada = sessionStorage.getItem("inscripcionConfirmada");
+    
+    // ❌ Si la inscripción ya fue confirmada, redirigir al usuario a la página principal
+    if (inscripcionConfirmada === "true") {
+        window.location.replace("https://esysingenieria.github.io/evaluaciones-cursos/");
+    }
+});
+
+
 document.addEventListener("DOMContentLoaded", async () => {
     const formContainer = document.getElementById("inscription-fields");
     
@@ -133,6 +144,12 @@ function copyInscriptionData(fromCourseId, toCourseId) {
     });
 }
 
+
+    window.history.pushState(null, "", window.location.href);
+window.onpopstate = function () {
+    window.history.pushState(null, "", window.location.href);
+};
+
 });
 
 
@@ -193,11 +210,18 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
                 transaction.set(courseRef, existingData);
             });
 
-            console.log(`✅ Inscripción guardada con éxito para ${selectedCourse.name}`);
-        } catch (error) {
-            console.error("Error al registrar la inscripción:", error);
-            alert("Hubo un problema al registrar la inscripción.");
-        }
+    // ✅ Marcar la inscripción como confirmada en sessionStorage
+    sessionStorage.setItem("inscripcionConfirmada", "true");
+
+    // ✅ Borrar datos de los inscritos solo después de que la inscripción se confirme
+    sessionStorage.removeItem("pagoConfirmado");
+
+    alert("Inscripción confirmada con éxito.");
+    window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
+} catch (error) {
+    console.error("Error al registrar la inscripción:", error);
+    alert("Hubo un problema al registrar la inscripción.");
+}
     }
 
     alert("Todas las inscripciones se han confirmado correctamente.");
