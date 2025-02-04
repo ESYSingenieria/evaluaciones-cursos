@@ -39,14 +39,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         generateInscriptionFields(course.id, course.quantity, inscriptionsContainer);
     });
 
-    if (pagoConfirmado.length > 1) {
+if (pagoConfirmado.length > 1) {
     let copyButton = document.createElement("button");
     copyButton.innerText = "Copiar datos entre cursos";
-    copyButton.onclick = () => {
+    copyButton.id = "copy-data-button"; // Asigna un ID para manejarlo después
+    copyButton.addEventListener("click", function (event) {
+        event.preventDefault(); // ✅ Evita que el formulario se envíe automáticamente
+
         copyInscriptionData(pagoConfirmado[0].id, pagoConfirmado[1].id);
-    };
+        alert("✅ Datos copiados entre cursos con éxito.");
+    });
     formContainer.appendChild(copyButton);
 }
+
 
 
 // Función para cargar fechas de inscripción en el select
@@ -140,65 +145,61 @@ let pagoConfirmado = JSON.parse(sessionStorage.getItem("pagoConfirmado")) || [];
 document.getElementById("inscription-form").addEventListener("submit", async function (event) {
     event.preventDefault();
 
-    let selectedCourseId;
-    let selectedDate;
-    
     let allCourses = document.querySelectorAll(".course-container");
-
-    allCourses.forEach(course => {
-        let dateSelect = course.querySelector("select");
-        if (dateSelect) {
-            selectedCourseId = dateSelect.id.replace("date-", "");
-            selectedDate = dateSelect.value;
-        }
-    });
-
-    if (!selectedCourseId || !selectedDate) {
-        console.error("Error: No se pudo determinar el curso seleccionado o la fecha.");
-        alert("Selecciona un curso y una fecha válida.");
-        return;
-    }
-
-    let selectedCourse = pagoConfirmado.find(course => course.id === selectedCourseId);
-    if (!selectedCourse) {
-        console.error(`Error: No se encontró información para el curso ${selectedCourseId}`);
-        return;
-    }
-
-    let inscriptions = [];
-    for (let i = 0; i < selectedCourse.quantity; i++) {
-        let name = document.getElementById(`name-${selectedCourseId}-${i}`).value.trim();
-        let rut = document.getElementById(`rut-${selectedCourseId}-${i}`).value.trim();
-        let email = document.getElementById(`email-${selectedCourseId}-${i}`).value.trim();
-        let company = document.getElementById(`company-${selectedCourseId}-${i}`).value.trim() || null;
-
-        if (!name || !rut || !email) {
-            alert(`Completa todos los campos obligatorios para el inscrito ${i + 1}.`);
+    
+    for (let course of allCourses) {
+        let selectedCourseId = course.querySelector("select").id.replace("date-", "");
+        let selectedDate = course.querySelector("select").value;
+        
+        if (!selectedCourseId || !selectedDate) {
+            console.error(`Error: No se pudo determinar el curso seleccionado o la fecha.`);
+            alert("Selecciona un curso y una fecha válida.");
             return;
         }
 
-        inscriptions.push({ name, rut, email, company });
+        let selectedCourse = pagoConfirmado.find(course => course.id === selectedCourseId);
+        if (!selectedCourse) {
+            console.error(`Error: No se encontró información para el curso ${selectedCourseId}`);
+            return;
+        }
+
+        let inscriptions = [];
+        for (let i = 0; i < selectedCourse.quantity; i++) {
+            let name = document.getElementById(`name-${selectedCourseId}-${i}`).value.trim();
+            let rut = document.getElementById(`rut-${selectedCourseId}-${i}`).value.trim();
+            let email = document.getElementById(`email-${selectedCourseId}-${i}`).value.trim();
+            let company = document.getElementById(`company-${selectedCourseId}-${i}`).value.trim() || null;
+
+            if (!name || !rut || !email) {
+                alert(`Completa todos los campos obligatorios para el inscrito ${i + 1}.`);
+                return;
+            }
+
+            inscriptions.push({ name, rut, email, company });
+        }
+
+        let docId = `${selectedCourseId}_${selectedDate}`;
+        let courseRef = db.collection("inscriptions").doc(docId);
+
+        try {
+            await db.runTransaction(async (transaction) => {
+                let doc = await transaction.get(courseRef);
+                let existingData = doc.exists ? doc.data() : { inscriptions: [], totalInscritos: 0, totalPagado: 0 };
+
+                existingData.inscriptions.push(...inscriptions);
+                existingData.totalInscritos += inscriptions.length;
+                existingData.totalPagado += selectedCourse.price * selectedCourse.quantity;
+
+                transaction.set(courseRef, existingData);
+            });
+
+            console.log(`✅ Inscripción guardada con éxito para ${selectedCourse.name}`);
+        } catch (error) {
+            console.error("Error al registrar la inscripción:", error);
+            alert("Hubo un problema al registrar la inscripción.");
+        }
     }
 
-    let docId = `${selectedCourseId}_${selectedDate}`;
-    let courseRef = db.collection("inscriptions").doc(docId);
-
-    try {
-        await db.runTransaction(async (transaction) => {
-            let doc = await transaction.get(courseRef);
-            let existingData = doc.exists ? doc.data() : { inscriptions: [], totalInscritos: 0, totalPagado: 0 };
-
-            existingData.inscriptions.push(...inscriptions);
-            existingData.totalInscritos += inscriptions.length;
-            existingData.totalPagado += selectedCourse.price * selectedCourse.quantity;
-
-            transaction.set(courseRef, existingData);
-        });
-
-        alert("Inscripción confirmada con éxito.");
-        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
-    } catch (error) {
-        console.error("Error al registrar la inscripción:", error);
-        alert("Hubo un problema al registrar la inscripción.");
-    }
+    alert("Todas las inscripciones se han confirmado correctamente.");
+    window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
 });
