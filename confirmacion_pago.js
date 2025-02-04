@@ -141,7 +141,7 @@ function copyInscriptionData(fromCourseId, toCourseId) {
         
     let pagoConfirmado = JSON.parse(localStorage.getItem("pagoConfirmado")) || [];
     
-    let selectedCourseId = document.querySelector(".course-container select")?.id.replace("date-", "");
+    let selectedCourseId = event.target.closest(".course-container")?.querySelector("select")?.id.replace("date-", "");
     if (!selectedCourseId) {
         console.error("Error: No se pudo determinar el curso seleccionado.");
         return;
@@ -156,10 +156,10 @@ function copyInscriptionData(fromCourseId, toCourseId) {
 
     let selectedCourse = pagoConfirmado.find(course => course.id === selectedCourseId);
 
-    if (!selectedCourseId || !selectedDate || !selectedCourse) {
-        alert("Selecciona un curso y una fecha válida.");
-        return;
-    }
+if (!selectedCourse) {
+    console.error(`Error: No se encontró información para el curso ${selectedCourseId}`);
+    return;
+}
 
     let inscriptions = [];
     for (let i = 0; i < selectedCourse.quantity; i++) {
