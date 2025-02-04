@@ -134,6 +134,7 @@ function copyInscriptionData(fromCourseId, toCourseId) {
 
 
 
+let pagoConfirmado = JSON.parse(sessionStorage.getItem("pagoConfirmado")) || [];
 
 
 document.getElementById("inscription-form").addEventListener("submit", async function (event) {
@@ -201,6 +202,3 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
         alert("Hubo un problema al registrar la inscripción.");
     }
 });
-
-
-
