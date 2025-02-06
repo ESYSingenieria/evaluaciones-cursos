@@ -13,10 +13,11 @@ const db = firebase.firestore();
 
 document.addEventListener("DOMContentLoaded", async () => {
     let inscripcionConfirmada = sessionStorage.getItem("inscripcionConfirmada");
-    
-    // ❌ Si la inscripción ya fue confirmada, redirigir al usuario a la página principal
-    if (inscripcionConfirmada === "true") {
-        window.location.replace("https://esysingenieria.github.io/evaluaciones-cursos/");
+    let pagoConfirmado = JSON.parse(sessionStorage.getItem("pagoConfirmado"));
+
+    if (inscripcionConfirmada === "true" && (!pagoConfirmado || pagoConfirmado.length === 0)) {
+        // ❌ Solo bloquear si no hay datos de compra en sessionStorage
+        window.location.replace("https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html");
     }
 });
 
