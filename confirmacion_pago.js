@@ -11,6 +11,49 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 
+
+
+
+
+async function obtenerCodigoCompra() {
+    try {
+        const tokenWs = new URLSearchParams(window.location.search).get("token_ws");
+
+        if (!tokenWs) {
+            alert("No se encontró el token de Webpay.");
+            return;
+        }
+
+        // ✅ Hacer una petición al servidor para obtener el código de compra correcto
+        const response = await fetch("https://tu-funcion-cloud.confirmarPagoWebpay", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ token_ws: tokenWs })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // ✅ Mostrar el código en la página
+            document.getElementById("codigo-compra-texto").textContent = data.codigoCompra;
+            sessionStorage.setItem("codigoCompra", data.codigoCompra); // Guardamos el código actual
+        } else {
+            alert("Error al obtener el código de compra.");
+        }
+    } catch (error) {
+        console.error("Error al obtener código de compra:", error);
+    }
+}
+
+// ✅ Llamar a la función cuando se carga la página
+document.addEventListener("DOMContentLoaded", obtenerCodigoCompra);
+
+
+
+
+
 document.addEventListener("DOMContentLoaded", async () => {
     let inscripcionConfirmada = sessionStorage.getItem("inscripcionConfirmada");
     let pagoConfirmado = JSON.parse(sessionStorage.getItem("pagoConfirmado"));
