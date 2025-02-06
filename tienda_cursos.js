@@ -185,6 +185,9 @@ async function processCheckout() {
     let totalAmount = cart.reduce((sum, course) => sum + calculateDiscount(course.id, course.quantity, course.price), 0);
 
     try {
+
+        sessionStorage.removeItem("inscripcionConfirmada");
+        
         const response = await fetch("https://creartransaccionwebpay-wf5bhi5ova-uc.a.run.app", {
             method: "POST",
             headers: {
