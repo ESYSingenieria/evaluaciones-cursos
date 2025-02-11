@@ -27,7 +27,7 @@ async function obtenerCodigoCompra() {
         }
 
         // ✅ Hacer una petición al servidor para obtener el código de compra correcto
-        const response = await fetch("https://tu-funcion-cloud.confirmarPagoWebpay", {
+        const response = await fetch(" https://confirmarpagowebpay-wf5bhi5ova-uc.a.run.app", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
