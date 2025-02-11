@@ -17,7 +17,9 @@ const db = firebase.firestore();
 
 async function obtenerCodigoCompra() {
     try {
-        const tokenWs = new URLSearchParams(window.location.search).get("token_ws");
+        // ✅ Obtener parámetros de la URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const tokenWs = urlParams.get("token_ws");
 
         if (!tokenWs) {
             alert("No se encontró el token de Webpay.");
@@ -37,7 +39,7 @@ async function obtenerCodigoCompra() {
 
         if (data.success) {
             // ✅ Mostrar el código en la página
-            document.getElementById("codigo-compra-texto").textContent = data.codigoCompra;
+            document.getElementById("codigo-compra-texto").textContent = `Código de Compra: ${data.codigoCompra}`;
             sessionStorage.setItem("codigoCompra", data.codigoCompra); // Guardamos el código actual
         } else {
             alert("Error al obtener el código de compra.");
@@ -46,6 +48,7 @@ async function obtenerCodigoCompra() {
         console.error("Error al obtener código de compra:", error);
     }
 }
+
 
 // ✅ Llamar a la función cuando se carga la página
 document.addEventListener("DOMContentLoaded", obtenerCodigoCompra);
