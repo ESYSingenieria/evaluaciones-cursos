@@ -22,12 +22,15 @@ async function obtenerCodigoCompra() {
         const tokenWs = urlParams.get("token_ws");
 
         if (!tokenWs) {
-            alert("No se encontró el token de Webpay.");
+            alert("No se encontró el token de Webpay en la URL.");
+            console.error("Error: token_ws es null o undefined.");
             return;
         }
 
+        console.log(`Token WS obtenido: ${tokenWs}`);
+
         // ✅ Hacer una petición al servidor para obtener el código de compra correcto
-        const response = await fetch(" https://confirmarpagowebpay-wf5bhi5ova-uc.a.run.app", {
+        const response = await fetch("https://confirmarpagowebpay-wf5bhi5ova-uc.a.run.app", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
@@ -35,23 +38,34 @@ async function obtenerCodigoCompra() {
             body: JSON.stringify({ token_ws: tokenWs })
         });
 
+        // ✅ Verificar si la respuesta es JSON válido
+        if (!response.ok) {
+            const errorText = await response.text(); // Obtener el texto del error si no es JSON
+            console.error("Error en la respuesta del servidor:", errorText);
+            alert(`Error al obtener el código de compra: ${errorText}`);
+            return;
+        }
+
         const data = await response.json();
 
-        if (data.success) {
-            // ✅ Mostrar el código en la página
+        if (data.success && data.codigoCompra) {
+            // ✅ Mostrar el código de compra en la página
             document.getElementById("codigo-compra-texto").textContent = `Código de Compra: ${data.codigoCompra}`;
             sessionStorage.setItem("codigoCompra", data.codigoCompra); // Guardamos el código actual
+            console.log(`Código de compra obtenido y guardado: ${data.codigoCompra}`);
         } else {
             alert("Error al obtener el código de compra.");
+            console.error("Error en la estructura de la respuesta:", data);
         }
     } catch (error) {
         console.error("Error al obtener código de compra:", error);
+        alert("Hubo un error inesperado al obtener el código de compra.");
     }
 }
 
-
 // ✅ Llamar a la función cuando se carga la página
 document.addEventListener("DOMContentLoaded", obtenerCodigoCompra);
+
 
 
 
