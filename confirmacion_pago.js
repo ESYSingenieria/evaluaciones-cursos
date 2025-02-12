@@ -142,7 +142,6 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
     }
 
     let allCourses = document.querySelectorAll(".course-container");
-    let allInscriptions = [];
 
     for (let course of allCourses) {
         let selectedCourseId = course.querySelector("select").id.replace("date-", "");
@@ -152,6 +151,9 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
             alert("Selecciona un curso y una fecha válida.");
             return;
         }
+
+        let docId = `${selectedCourseId}_${selectedDate}`;
+        let courseRef = db.collection("inscriptions").doc(docId);
 
         let inscriptions = [];
         let inputs = course.querySelectorAll("input");
@@ -170,20 +172,29 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
             inscriptions.push({ name, rut, email, company });
         }
 
-        allInscriptions.push({ courseId: selectedCourseId, selectedDate, inscriptions });
+        try {
+            await db.runTransaction(async (transaction) => {
+                let doc = await transaction.get(courseRef);
+                let existingData = doc.exists ? doc.data() : { inscriptions: [], totalInscritos: 0, totalPagado: 0 };
+
+                existingData.inscriptions.push(...inscriptions);
+                existingData.totalInscritos += inscriptions.length;
+                existingData.totalPagado += inscriptions.length * course.price;
+
+                transaction.set(courseRef, existingData);
+            });
+
+            // 🔹 Actualizar estado de la compra en Firebase
+            await db.collection("compras").doc(codigoCompra).update({
+                estado: "finalizada"
+            });
+
+        } catch (error) {
+            console.error("Error al registrar la inscripción:", error);
+            alert("Hubo un problema al registrar la inscripción.");
+        }
     }
 
-    try {
-        await db.collection("inscriptions").doc(codigoCompra).set({
-            inscripciones: allInscriptions,
-            codigoCompra: codigoCompra,
-            timestamp: new Date()
-        });
-
-        alert("Inscripción confirmada con éxito.");
-        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
-    } catch (error) {
-        console.error("Error al registrar la inscripción:", error);
-        alert("Hubo un problema al registrar la inscripción.");
-    }
+    alert("Inscripción confirmada con éxito.");
+    window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
 });
