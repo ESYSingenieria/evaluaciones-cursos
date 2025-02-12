@@ -17,17 +17,31 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!codigoCompra) {
         alert("No se encontró un código de compra en la URL.");
+        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
         return;
     }
 
-    // Mostrar el código de compra en la página
+    // ✅ Consultar la compra en Firestore
+    const compraRef = db.collection("compras").doc(codigoCompra);
+    const compraSnap = await compraRef.get();
+
+    if (!compraSnap.exists) {
+        alert("No se encontró la compra en la base de datos.");
+        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
+        return;
+    }
+
+    const compraData = compraSnap.data();
+
+    // ✅ Bloquear si el estado es "finalizada"
+    if (compraData.estado === "finalizada") {
+        alert("Esta compra ya ha sido utilizada para inscribir personas.");
+        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
+        return;
+    }
+
+    // ✅ Mostrar código de compra en la página
     document.getElementById("codigo-compra-texto").textContent = `Código de Compra: ${codigoCompra}`;
-
-    // Guardar en sessionStorage
-    sessionStorage.setItem("codigoCompra", codigoCompra);
-
-    // Cargar cursos desde Firestore usando el código de compra
-    await cargarCursos(codigoCompra);
 });
 
 // Cargar los cursos desde Firestore según el código de compra
@@ -141,17 +155,18 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
     }
 
     try {
-        // ✅ Obtener datos de la compra desde Firestore
+        // ✅ Validar el estado de la compra antes de inscribir
         const compraRef = db.collection("compras").doc(codigoCompra);
         const compraSnap = await compraRef.get();
 
-        if (!compraSnap.exists) {
-            alert("No se encontró la compra en la base de datos.");
+        if (!compraSnap.exists || compraSnap.data().estado === "finalizada") {
+            alert("Esta compra ya ha sido utilizada o no es válida.");
+            window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
             return;
         }
 
         const compraData = compraSnap.data();
-        const items = compraData.items; // Cursos comprados
+        const items = compraData.items;
 
         if (!items || items.length === 0) {
             alert("No hay cursos asociados a esta compra.");
@@ -160,12 +175,11 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
 
         for (const item of items) {
             const courseId = item.id;
-            const courseName = item.name;
             const coursePrice = item.price;
             const selectedDate = document.getElementById(`date-${courseId}`).value;
 
             if (!selectedDate) {
-                alert(`Selecciona una fecha válida para ${courseName}.`);
+                alert(`Selecciona una fecha válida para ${item.name}.`);
                 return;
             }
 
@@ -175,7 +189,6 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
             let inscriptions = [];
             let existingData = { inscriptions: [], totalInscritos: 0, totalPagado: 0 };
 
-            // Obtener datos existentes
             await db.runTransaction(async (transaction) => {
                 const doc = await transaction.get(courseRef);
                 if (doc.exists) {
@@ -183,7 +196,6 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
                 }
             });
 
-            // Obtener inscritos del formulario
             for (let i = 0; i < item.quantity; i++) {
                 let name = document.getElementById(`name-${courseId}-${i}`).value.trim();
                 let rut = document.getElementById(`rut-${courseId}-${i}`).value.trim();
@@ -191,26 +203,24 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
                 let company = document.getElementById(`company-${courseId}-${i}`).value.trim() || null;
 
                 if (!name || !rut || !email) {
-                    alert(`Completa todos los campos obligatorios para el inscrito ${i + 1} en ${courseName}.`);
+                    alert(`Completa todos los campos para el inscrito ${i + 1} en ${item.name}.`);
                     return;
                 }
 
                 inscriptions.push({ name, rut, email, company });
             }
 
-            // Agregar inscritos y actualizar totales
             existingData.inscriptions.push(...inscriptions);
             existingData.totalInscritos += inscriptions.length;
-            existingData.totalPagado += coursePrice; // ✅ Se suma el total del curso correctamente
+            existingData.totalPagado += coursePrice;
 
-            // ✅ Guardar los datos en Firestore
             await courseRef.set(existingData, { merge: true });
         }
 
-        // ✅ Marcar la compra como "finalizada"
+        // ✅ Cambiar el estado de la compra a "finalizada"
         await compraRef.update({ estado: "finalizada" });
 
-        alert("Todas las inscripciones se han confirmado correctamente.");
+        alert("Inscripción confirmada con éxito.");
         window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
 
     } catch (error) {
