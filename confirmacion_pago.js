@@ -31,7 +31,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const esValido = await verificarCodigoCompra(codigoCompra);
     if (!esValido) return; // Bloquear si ya fue usado
 
-    cargarCursos();
+    await cargarCursos();
 });
 
 // ✅ Verificar si el código de compra ya ha sido utilizado
@@ -63,45 +63,37 @@ async function verificarCodigoCompra(codigoCompra) {
 
 // ✅ Cargar los cursos comprados y generar los formularios
 async function cargarCursos() {
-    const formContainer = document.getElementById("inscription-fields");
-    let pagoConfirmado = JSON.parse(sessionStorage.getItem("pagoConfirmado"));
+    let codigoCompra = sessionStorage.getItem("codigoCompra");
 
-    if (!pagoConfirmado || pagoConfirmado.length === 0) {
-        console.error("No hay datos de compra en sessionStorage o el formato es incorrecto.");
+    if (!codigoCompra) {
+        console.error("No se encontró un código de compra en sessionStorage.");
         return;
     }
 
-    pagoConfirmado.forEach(async (course) => {
-        let courseContainer = document.createElement("div");
-        courseContainer.className = "course-container";
+    try {
+        const compraRef = await firebase.firestore().collection("compras").doc(codigoCompra).get();
 
-        courseContainer.innerHTML = `
-            <h2>${course.name}</h2>
-            <label for="date-${course.id}">Fecha de Inscripción:</label>
-            <select id="date-${course.id}" required></select>
-            <div id="inscriptions-${course.id}"></div>
-        `;
+        if (!compraRef.exists) {
+            console.error("No se encontró la compra en Firebase.");
+            return;
+        }
 
-        formContainer.appendChild(courseContainer);
+        let compraData = compraRef.data();
 
-        await loadDates(course.id, `date-${course.id}`);
+        if (!compraData || !compraData.cursosComprados) {
+            console.error("Error: No hay cursos asociados a esta compra.");
+            return;
+        }
 
-        let inscriptionsContainer = document.getElementById(`inscriptions-${course.id}`);
-        generateInscriptionFields(course.id, course.quantity, inscriptionsContainer);
-    });
+        let pagoConfirmado = compraData.cursosComprados;
+        sessionStorage.setItem("pagoConfirmado", JSON.stringify(pagoConfirmado));
 
-    if (pagoConfirmado.length > 1) {
-        let copyButton = document.createElement("button");
-        copyButton.innerText = "Copiar datos entre cursos";
-        copyButton.id = "copy-data-button";
-        copyButton.addEventListener("click", function (event) {
-            event.preventDefault();
-            copyInscriptionData(pagoConfirmado[0].id, pagoConfirmado[1].id);
-            alert("✅ Datos copiados entre cursos con éxito.");
-        });
-        formContainer.appendChild(copyButton);
+        console.log("Cursos cargados:", pagoConfirmado);
+    } catch (error) {
+        console.error("Error obteniendo la compra desde Firebase:", error);
     }
 }
+
 
 // ✅ Función para cargar fechas de inscripción en los selects
 async function loadDates(courseId, selectId) {
