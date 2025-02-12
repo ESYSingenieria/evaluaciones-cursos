@@ -10,8 +10,8 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
+// Obtener código de compra desde la URL
 document.addEventListener("DOMContentLoaded", async () => {
-    // ✅ Obtener el código de compra desde la URL
     const urlParams = new URLSearchParams(window.location.search);
     const codigoCompra = urlParams.get("codigoCompra");
 
@@ -20,38 +20,35 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
     }
 
-    // ✅ Mostrar el código de compra en la página
+    // Mostrar el código de compra en la página
     document.getElementById("codigo-compra-texto").textContent = `Código de Compra: ${codigoCompra}`;
 
-    // ✅ Buscar en Firebase la compra asociada
-    try {
-        const compraRef = await db.collection("compras").doc(codigoCompra).get();
+    // Guardar en sessionStorage
+    sessionStorage.setItem("codigoCompra", codigoCompra);
 
-        if (!compraRef.exists) {
+    // Cargar cursos desde Firestore usando el código de compra
+    await cargarCursos(codigoCompra);
+});
+
+// Cargar los cursos desde Firestore según el código de compra
+async function cargarCursos(codigoCompra) {
+    try {
+        const compraDoc = await db.collection("compras").doc(codigoCompra).get();
+
+        if (!compraDoc.exists) {
             alert("No se encontró la compra en la base de datos.");
             return;
         }
 
-        const compraData = compraRef.data();
+        const compraData = compraDoc.data();
+        const formContainer = document.getElementById("inscription-fields");
 
-        // 🔹 Verificar si la compra ya tiene inscripciones en Firestore
-        const inscripcionRef = await db.collection("inscriptions").doc(codigoCompra).get();
-        if (inscripcionRef.exists) {
-            alert("Ya se realizó la inscripción para esta compra.");
-            window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
-            return;
-        }
-
-        // ✅ Extraer cursos comprados y generar los contenedores
-        const items = compraData.items || [];
-        if (items.length === 0) {
+        if (!compraData.items || compraData.items.length === 0) {
             alert("No hay cursos asociados a esta compra.");
             return;
         }
 
-        const formContainer = document.getElementById("inscription-fields");
-
-        items.forEach(course => {
+        compraData.items.forEach(async (course) => {
             let courseContainer = document.createElement("div");
             courseContainer.className = "course-container";
 
@@ -63,18 +60,18 @@ document.addEventListener("DOMContentLoaded", async () => {
             `;
 
             formContainer.appendChild(courseContainer);
-            loadDates(course.id, `date-${course.id}`);
+
+            await loadDates(course.id, `date-${course.id}`);
 
             let inscriptionsContainer = document.getElementById(`inscriptions-${course.id}`);
             generateInscriptionFields(course.id, course.quantity, inscriptionsContainer);
         });
-
     } catch (error) {
-        console.error("Error obteniendo la compra desde Firebase:", error);
+        console.error("Error al obtener los cursos de la compra:", error);
     }
-});
+}
 
-// ✅ Función para cargar las fechas disponibles en el select
+// Función para cargar fechas de inscripción
 async function loadDates(courseId, selectId) {
     let dateSelect = document.getElementById(selectId);
     if (!dateSelect) {
@@ -106,7 +103,7 @@ async function loadDates(courseId, selectId) {
     }
 }
 
-// ✅ Función para generar los campos de inscripción según la cantidad comprada
+// Generar los campos de inscripción
 function generateInscriptionFields(courseId, quantity, container) {
     container.innerHTML = "";
 
@@ -131,17 +128,24 @@ function generateInscriptionFields(courseId, quantity, container) {
     }
 }
 
-// ✅ Función para confirmar la inscripción y guardarla en Firestore
+// Confirmar inscripción y actualizar Firestore
 document.getElementById("inscription-form").addEventListener("submit", async function (event) {
     event.preventDefault();
+    const codigoCompra = sessionStorage.getItem("codigoCompra");
 
-    let codigoCompra = new URLSearchParams(window.location.search).get("codigoCompra");
     if (!codigoCompra) {
-        alert("Error: No se encontró un código de compra.");
+        alert("Error: Código de compra no encontrado.");
         return;
     }
 
-    let allCourses = document.querySelectorAll(".course-container");
+    const compraDoc = await db.collection("compras").doc(codigoCompra).get();
+    if (!compraDoc.exists) {
+        alert("No se encontró la compra en la base de datos.");
+        return;
+    }
+
+    const compraData = compraDoc.data();
+    const allCourses = document.querySelectorAll(".course-container");
 
     for (let course of allCourses) {
         let selectedCourseId = course.querySelector("select").id.replace("date-", "");
@@ -152,25 +156,29 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
             return;
         }
 
-        let docId = `${selectedCourseId}_${selectedDate}`;
-        let courseRef = db.collection("inscriptions").doc(docId);
+        let courseData = compraData.items.find(item => item.id === selectedCourseId);
+        if (!courseData) {
+            console.error(`Error: No se encontró información para el curso ${selectedCourseId}`);
+            return;
+        }
 
         let inscriptions = [];
-        let inputs = course.querySelectorAll("input");
-
-        for (let i = 0; i < inputs.length; i += 4) {
-            let name = inputs[i].value.trim();
-            let rut = inputs[i + 1].value.trim();
-            let email = inputs[i + 2].value.trim();
-            let company = inputs[i + 3].value.trim() || null;
+        for (let i = 0; i < courseData.quantity; i++) {
+            let name = document.getElementById(`name-${selectedCourseId}-${i}`).value.trim();
+            let rut = document.getElementById(`rut-${selectedCourseId}-${i}`).value.trim();
+            let email = document.getElementById(`email-${selectedCourseId}-${i}`).value.trim();
+            let company = document.getElementById(`company-${selectedCourseId}-${i}`).value.trim() || null;
 
             if (!name || !rut || !email) {
-                alert(`Completa todos los campos obligatorios.`);
+                alert(`Completa todos los campos obligatorios para el inscrito ${i + 1}.`);
                 return;
             }
 
             inscriptions.push({ name, rut, email, company });
         }
+
+        let docId = `${selectedCourseId}_${selectedDate}`;
+        let courseRef = db.collection("inscriptions").doc(docId);
 
         try {
             await db.runTransaction(async (transaction) => {
@@ -179,22 +187,18 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
 
                 existingData.inscriptions.push(...inscriptions);
                 existingData.totalInscritos += inscriptions.length;
-                existingData.totalPagado += inscriptions.length * course.price;
+                existingData.totalPagado += courseData.price; // ✅ Tomar el total pagado directamente del `price`
 
                 transaction.set(courseRef, existingData);
             });
 
-            // 🔹 Actualizar estado de la compra en Firebase
-            await db.collection("compras").doc(codigoCompra).update({
-                estado: "finalizada"
-            });
+            await db.collection("compras").doc(codigoCompra).update({ estado: "finalizada" });
 
+            alert("Inscripción confirmada con éxito.");
+            window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
         } catch (error) {
             console.error("Error al registrar la inscripción:", error);
             alert("Hubo un problema al registrar la inscripción.");
         }
     }
-
-    alert("Inscripción confirmada con éxito.");
-    window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
 });
