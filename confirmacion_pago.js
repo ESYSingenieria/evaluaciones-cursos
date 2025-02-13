@@ -14,9 +14,6 @@ const db = firebase.firestore();
 document.addEventListener("DOMContentLoaded", async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const codigoCompra = urlParams.get("codigoCompra");
-
-
-    
     const tokenWs = urlParams.get("token_ws");
 
     if (!tokenWs) {
@@ -25,17 +22,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
     }
 
-    verificarEstadoPago(tokenWs, codigoCompra);
-
-    
-    
     if (!codigoCompra) {
         alert("No se encontró un código de compra en la URL.");
         window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
         return;
     }
 
-    // ✅ Consultar la compra en Firestore
+    // ✅ Consultar la compra en Firestore ANTES de verificar el pago
     const compraRef = db.collection("compras").doc(codigoCompra);
     const compraSnap = await compraRef.get();
 
@@ -57,7 +50,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ✅ Mostrar código de compra en la página
     document.getElementById("codigo-compra-texto").textContent = `Código de Compra: ${codigoCompra}`;
 
-    // ✅ Llamar a cargarCursos después de verificar que la compra es válida
+    // ✅ Llamar a `verificarEstadoPago` después de validar en Firestore
+    await verificarEstadoPago(tokenWs, codigoCompra);
+
+    // ✅ Llamar a `cargarCursos` solo si el pago está aprobado
     cargarCursos(codigoCompra);
 
 });
@@ -75,11 +71,20 @@ async function verificarEstadoPago(tokenWs, codigoCompra) {
         const data = await response.json();
         console.log("📌 Respuesta del servidor:", data);
 
-        // ✅ Verificar explícitamente si el estado es "pagado"
-        if (data.estado === "pagado") {
-            console.log("✅ Pago aprobado. Cargando cursos...");
-            cargarCursos(codigoCompra); // Llamada a la función para cargar los cursos
+        // ✅ Verificar explícitamente si el pago fue aprobado
+        if (data.success === true && data.estado === "pagado") {
+            console.log("✅ Pago aprobado.");
+            // 🚨 Verificar si la compra está en Firestore antes de cargar cursos
+            const compraRef = db.collection("compras").doc(codigoCompra);
+            const compraSnap = await compraRef.get();
+            
+            if (!compraSnap.exists) {
+                alert("⚠️ El pago fue aprobado, pero no se encontró la compra en la base de datos. Contacta con soporte.");
+                return;
+            }
+            cargarCursos(codigoCompra);
         } else {
+            console.log("❌ Pago rechazado:", data);
             alert("❌ El pago no fue aprobado. No puedes inscribir personas.");
             window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
         }
