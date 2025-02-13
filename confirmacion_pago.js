@@ -65,9 +65,19 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 
 async function verificarEstadoPago(tokenWs, codigoCompra) {
+    console.log("📌 Token a verificar:", tokenWs);
+    
     try {
-        const response = await fetch(`https://confirmarpagowebpay-wf5bhi5ova-uc.a.run.app?token_ws=${tokenWs}`);
+        const response = await fetch("https://us-central1-plataforma-de-cursos-esys.cloudfunctions.net/consultarEstadoPago", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ token_ws: tokenWs }),
+        });
+
         const data = await response.json();
+        console.log("📌 Respuesta del servidor:", data);
 
         if (data.success && data.estado === "pagado") {
             console.log("✅ Pago verificado correctamente.");
@@ -82,6 +92,7 @@ async function verificarEstadoPago(tokenWs, codigoCompra) {
         window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
     }
 }
+
 
 
 
