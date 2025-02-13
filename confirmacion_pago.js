@@ -42,6 +42,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // ✅ Mostrar código de compra en la página
     document.getElementById("codigo-compra-texto").textContent = `Código de Compra: ${codigoCompra}`;
+
+    // ✅ Llamar a cargarCursos después de verificar que la compra es válida
+    cargarCursos(codigoCompra);
+
 });
 
 // Cargar los cursos desde Firestore según el código de compra
