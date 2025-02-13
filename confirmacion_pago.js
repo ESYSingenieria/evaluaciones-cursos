@@ -53,9 +53,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ✅ Llamar a `verificarEstadoPago` después de validar en Firestore
     await verificarEstadoPago(tokenWs, codigoCompra);
 
-    // ✅ Llamar a `cargarCursos` solo si el pago está aprobado
-    cargarCursos(codigoCompra);
-
 });
 
 
