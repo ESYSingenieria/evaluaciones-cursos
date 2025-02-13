@@ -75,15 +75,14 @@ async function verificarEstadoPago(tokenWs, codigoCompra) {
         const data = await response.json();
         console.log("📌 Respuesta del servidor:", data);
 
-        if (!data.success || data.estado !== "pagado") {
+        // ✅ Verificar explícitamente si el estado es "pagado"
+        if (data.estado === "pagado") {
+            console.log("✅ Pago aprobado. Cargando cursos...");
+            cargarCursos(codigoCompra); // Llamada a la función para cargar los cursos
+        } else {
             alert("❌ El pago no fue aprobado. No puedes inscribir personas.");
             window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
-            return;
         }
-
-        // Si el pago es aprobado, continuar con la lógica de inscripción
-        alert("✅ Pago aprobado. Puedes continuar con la inscripción.");
-        cargarCursos(codigoCompra);
     } catch (error) {
         console.error("🚨 Error al verificar el estado del pago:", error);
         alert("No se pudo verificar el pago. Intenta nuevamente.");
