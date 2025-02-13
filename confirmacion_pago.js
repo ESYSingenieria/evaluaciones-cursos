@@ -82,6 +82,7 @@ async function verificarEstadoPago(tokenWs, codigoCompra) {
         }
 
         // Si el pago es aprobado, continuar con la lógica de inscripción
+        alert("✅ Pago aprobado. Puedes continuar con la inscripción.");
         cargarCursos(codigoCompra);
     } catch (error) {
         console.error("🚨 Error al verificar el estado del pago:", error);
