@@ -15,6 +15,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const codigoCompra = urlParams.get("codigoCompra");
 
+
+    
+    const tokenWs = urlParams.get("token_ws");
+
+    if (!tokenWs) {
+        alert("No se encontró el token de transacción en la URL.");
+        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
+        return;
+    }
+
+    verificarEstadoPago(tokenWs, codigoCompra);
+
+    
+    
     if (!codigoCompra) {
         alert("No se encontró un código de compra en la URL.");
         window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
@@ -47,6 +61,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     cargarCursos(codigoCompra);
 
 });
+
+
+
+async function verificarEstadoPago(tokenWs, codigoCompra) {
+    try {
+        const response = await fetch(`https://confirmarpagowebpay-wf5bhi5ova-uc.a.run.app?token_ws=${tokenWs}`);
+        const data = await response.json();
+
+        if (data.success && data.estado === "pagado") {
+            console.log("✅ Pago verificado correctamente.");
+            cargarCursos(codigoCompra);
+        } else {
+            alert("❌ El pago no fue aprobado. No puedes inscribir personas.");
+            window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
+        }
+    } catch (error) {
+        console.error("🚨 Error al verificar el estado del pago:", error);
+        alert("No se pudo verificar el pago. Intenta nuevamente.");
+        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
+    }
+}
+
+
 
 // Cargar los cursos desde Firestore según el código de compra
 async function cargarCursos(codigoCompra) {
