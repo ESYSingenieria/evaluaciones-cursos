@@ -17,7 +17,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const tokenWs = urlParams.get("token_ws");
 
     if (!tokenWs) {
-        alert("No se encontró el token de transacción en la URL.");
         window.location.href = "https://esys.cl";
         return;
     }
