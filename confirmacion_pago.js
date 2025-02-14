@@ -16,11 +16,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     const codigoCompra = urlParams.get("codigoCompra");
     const tokenWs = urlParams.get("token_ws");
 
+    // ✅ Llamar a `verificarEstadoPago` después de validar en Firestore
+    await verificarEstadoPago(tokenWs, codigoCompra);
+    
     if (!tokenWs) {
         window.location.href = "https://esys.cl";
         return;
     }
-
+    
     if (!codigoCompra) {
         window.location.href = "https://esys.cl";
         return;
@@ -45,9 +48,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // ✅ Mostrar código de compra en la página
     document.getElementById("codigo-compra-texto").textContent = `Código de Compra: ${codigoCompra}`;
-
-    // ✅ Llamar a `verificarEstadoPago` después de validar en Firestore
-    await verificarEstadoPago(tokenWs, codigoCompra);
 
 });
 
