@@ -18,13 +18,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!tokenWs) {
         alert("No se encontró el token de transacción en la URL.");
-        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
+        window.location.href = "https://esys.cl";
         return;
     }
 
     if (!codigoCompra) {
-        alert("No se encontró un código de compra en la URL.");
-        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
+        window.location.href = "https://esys.cl";
         return;
     }
 
@@ -33,8 +32,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const compraSnap = await compraRef.get();
 
     if (!compraSnap.exists) {
-        alert("No se encontró la compra en la base de datos.");
-        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
+        window.location.href = "https://esys.cl";
         return;
     }
 
@@ -42,8 +40,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // ✅ Bloquear si el estado es "finalizada"
     if (compraData.estado === "finalizada") {
-        alert("Esta compra ya ha sido utilizada para inscribir personas.");
-        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
+        window.location.href = "https://esys.cl";
         return;
     }
 
@@ -76,18 +73,22 @@ async function verificarEstadoPago(tokenWs, codigoCompra) {
             const compraSnap = await compraRef.get();
             
             if (!compraSnap.exists) {
-                alert("⚠️ El pago fue aprobado, pero no se encontró la compra en la base de datos. Contacta con soporte.");
                 return;
             }
             cargarCursos(codigoCompra);
         } else {
             console.log("❌ Pago rechazado:", data);
-            alert("❌ El pago no fue aprobado. No puedes inscribir personas.");
+
+            // 🚨 Eliminar la compra de Firebase si el pago fue rechazado
+            const compraRef = db.collection("compras").doc(codigoCompra);
+            await compraRef.delete()
+                .then(() => console.log(`🚨 Compra ${codigoCompra} eliminada de Firebase por pago rechazado.`))
+                .catch((error) => console.error("❌ Error eliminando la compra:", error));
+
             window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
         }
     } catch (error) {
         console.error("🚨 Error al verificar el estado del pago:", error);
-        alert("No se pudo verificar el pago. Intenta nuevamente.");
         window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
     }
 }
@@ -101,7 +102,6 @@ async function cargarCursos(codigoCompra) {
         const compraDoc = await db.collection("compras").doc(codigoCompra).get();
 
         if (!compraDoc.exists) {
-            alert("No se encontró la compra en la base de datos.");
             return;
         }
 
@@ -109,7 +109,6 @@ async function cargarCursos(codigoCompra) {
         const formContainer = document.getElementById("inscription-fields");
 
         if (!compraData.items || compraData.items.length === 0) {
-            alert("No hay cursos asociados a esta compra.");
             return;
         }
 
@@ -201,7 +200,6 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
     const codigoCompra = urlParams.get("codigoCompra");
 
     if (!codigoCompra) {
-        alert("No se encontró un código de compra válido.");
         return;
     }
 
@@ -211,8 +209,7 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
         const compraSnap = await compraRef.get();
 
         if (!compraSnap.exists || compraSnap.data().estado === "finalizada") {
-            alert("Esta compra ya ha sido utilizada o no es válida.");
-            window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/tienda_cursos.html";
+            window.location.href = "https://esys.cl/";
             return;
         }
 
@@ -220,7 +217,6 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
         const items = compraData.items;
 
         if (!items || items.length === 0) {
-            alert("No hay cursos asociados a esta compra.");
             return;
         }
 
@@ -272,7 +268,7 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
         await compraRef.update({ estado: "finalizada" });
 
         alert("Inscripción confirmada con éxito.");
-        window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/";
+        window.location.href = "https://esys.cl/";
 
     } catch (error) {
         console.error("Error al registrar la inscripción:", error);
