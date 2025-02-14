@@ -14,7 +14,6 @@ const db = firebase.firestore();
 let cart = []; // Carrito de compras
 let courseDiscounts = {}; // Almacenar descuentos desde Firebase
 
-// Cargar cursos y descuentos desde Firebase
 document.addEventListener("DOMContentLoaded", async () => {
     const courseList = document.getElementById("course-list");
     try {
@@ -22,7 +21,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         snapshot.forEach((doc) => {
             const course = doc.data();
             courseDiscounts[doc.id] = course.discounts || [];
-            
+
+            // Obtener las fechas disponibles y la fecha actual
+            const today = new Date().toISOString().split("T")[0];
+            const availableDates = course.availableDates || [];
+            const hasValidDates = availableDates.some(date => date >= today);
+
+            // Si no hay fechas válidas, deshabilitar el botón
+            const isDisabled = !hasValidDates ? "disabled" : "";
+            const buttonStyle = !hasValidDates ? "background-color: gray; cursor: not-allowed; opacity: 0.6;" : "";
+
             const courseCard = document.createElement("div");
             courseCard.className = "course-card";
             courseCard.innerHTML = `
@@ -36,26 +44,28 @@ document.addEventListener("DOMContentLoaded", async () => {
                             <input type="text" id="quantity-${doc.id}" value="1" class="quantity-input" style="width: 50px; text-align: center; font-size: 18px; border-radius: 5px; border: 1px solid #ccc; padding: 5px;">
                             <button class="quantity-btn" style="padding: 5px 12px; border-radius: 5px; font-size: 16px;" onclick="adjustQuantity('${doc.id}', 1)">+</button>
                         </div>
-                        <button class="add-to-cart" data-id="${doc.id}" data-name="${course.name}" data-price="${course.price}" style="margin-top: 0px; background-color:rgb(24, 172, 56); color: white; padding: 0px 18px; border: none; border-radius: 5px; height: 30px; width: 150px; cursor: pointer; font-weight: bold;">Agregar al Carrito</button>
+                        <button class="add-to-cart" data-id="${doc.id}" data-name="${course.name}" data-price="${course.price}" ${isDisabled} style="margin-top: 0px; background-color:rgb(24, 172, 56); color: white; padding: 0px 18px; border: none; border-radius: 5px; height: 30px; width: 150px; cursor: pointer; font-weight: bold; ${buttonStyle}">Agregar al Carrito</button>
                     </div>
                 </div>
             `;
+
             courseList.appendChild(courseCard);
         });
 
-        document.querySelectorAll(".add-to-cart").forEach(button => {
+        // Añadir eventos solo a los botones habilitados
+        document.querySelectorAll(".add-to-cart:not([disabled])").forEach(button => {
             button.addEventListener("click", (event) => {
                 const courseId = event.target.getAttribute("data-id");
                 const courseName = event.target.getAttribute("data-name");
                 const coursePrice = parseFloat(event.target.getAttribute("data-price"));
                 const quantityInput = document.getElementById(`quantity-${courseId}`);
                 const quantity = parseInt(quantityInput.value, 10);
-                
+
                 if (isNaN(quantity) || quantity <= 0) {
                     alert("Ingrese una cantidad válida");
                     return;
                 }
-                
+
                 addToCart(courseId, courseName, coursePrice, quantity);
             });
         });
@@ -63,7 +73,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         console.error("Error al obtener los cursos: ", error);
     }
 });
-
 
 // Ajustar cantidad en la interfaz
 function adjustQuantity(courseId, change) {
