@@ -205,6 +205,7 @@ async function processCheckout() {
             },
             body: JSON.stringify({
                 amount: totalAmount,
+                currency: "CLP",  // Agregar esto
                 items: cart.map(course => ({
                     id: course.id,
                     name: course.name,
