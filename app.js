@@ -546,22 +546,33 @@ const loadResponses = async () => {
 
                         // Obtener fechas de expedición y caducidad
                         const issuedDate = new Date(certificateData.issuedDate); // Fecha de expedición
-                        const expirationDate = new Date(issuedDate);
-                        expirationDate.setFullYear(issuedDate.getFullYear() + 3); // Añadir 3 años
+                        // **Nueva lógica**: calcular fecha de expiración solo si `lastDate` existe
+                        let expirationDate = null;
+                        if (evaluationData.lastDate !== undefined && evaluationData.lastDate !== null) {
+                            expirationDate = new Date(issuedDate);
+                            expirationDate.setMonth(expirationDate.getMonth() + evaluationData.lastDate);
+                        }
 
-                        // Construir URL de LinkedIn con formato correcto
-                        const linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME` +
-                            `&name=${encodeURIComponent(certificateData.courseName)}` +
-                            `&organizationId=66227493` + // ID de la empresa ESYS en LinkedIn
-                            `&issueYear=${issuedDate.getFullYear()}` +
-                            `&issueMonth=${issuedDate.getMonth() + 1}` +
-                            `&expirationYear=${expirationDate.getFullYear()}` +
-                            `&expirationMonth=${expirationDate.getMonth() + 1}` +
-                            `&certUrl=${encodeURIComponent(`https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${certificateID}`)}` +
-                            `&certId=${encodeURIComponent(certificateID)}`;
+        // Construir URL de LinkedIn con formato correcto
+        let linkedInUrl = "https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME" +
+                          `&name=${encodeURIComponent(certificateData.courseName)}` +
+                          `&organizationId=66227493` +  // ID de la empresa (ESYS) en LinkedIn
+                          `&issueYear=${issuedDate.getFullYear()}` +
+                          `&issueMonth=${issuedDate.getMonth() + 1}`;
+        
+        // Si hay fecha de expiración calculada, incluirla en la URL
+        if (expirationDate) {
+            linkedInUrl += `&expirationYear=${expirationDate.getFullYear()}` +
+                           `&expirationMonth=${expirationDate.getMonth() + 1}`;
+        }
+        
+        // Continuar construyendo la URL con el enlace de verificación y el ID
+        linkedInUrl += `&certUrl=${encodeURIComponent(`https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${certificateID}`)}` +
+                       `&certId=${encodeURIComponent(certificateID)}`;
 
-                        // Redirigir a LinkedIn con el enlace generado
-                        window.open(linkedInUrl, "_blank");
+        // Redirigir a LinkedIn con el enlace generado
+        window.open(linkedInUrl, "_blank");
+                        
                     } catch (error) {
                         console.error("Error al añadir a LinkedIn:", error);
                         alert("Hubo un problema al intentar añadir el certificado a LinkedIn.");
