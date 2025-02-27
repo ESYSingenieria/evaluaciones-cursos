@@ -486,6 +486,7 @@ const loadResponses = async () => {
         for (const evaluationId in resultsMap) {
             const evaluationDoc = await db.collection('evaluations').doc(evaluationId).get();
             const evaluationTitle = evaluationDoc.exists ? evaluationDoc.data().title : "Nombre no disponible";
+            const passingScore = evaluationDoc.data().puntajeAprobacion;
 
             const highestResult = resultsMap[evaluationId];
             const div = document.createElement('div');
@@ -496,7 +497,7 @@ const loadResponses = async () => {
                 <p><strong>Estado de Aprobación:</strong> ${highestResult.grade}</p>
             `;
 
-            if (highestResult.score >= 92) {
+            if (highestResult.score >= passingScore) {
                 const approvalDate = highestResult.timestamp 
                     ? new Date(highestResult.timestamp.toDate()).toLocaleDateString()
                     : "Fecha no disponible";
