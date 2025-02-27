@@ -834,12 +834,16 @@ const calculateResult = async (evaluationId, userAnswers) => {
 
         const totalQuestions = questions.length;
         const score = Math.round((correctCount*4)); // Porcentaje
+        
+        const passingScore = doc.data().puntajeAprobacion;  // Obtener puntaje de aprobación dinámico
         let grade;
-
-        if (score >= 92) grade = "Aprobado";
-        else grade = "Reprobado";
-
+        if (score >= passingScore) {
+            grade = "Aprobado";
+        } else {
+            grade = "Reprobado";
+        }
         return { score, grade };
+        
     } catch (error) {
         console.error("Error al calcular el resultado:", error);
         return null;
@@ -868,8 +872,11 @@ async function calculateAndHandleResult(userId, evaluationId, answers) {
             timestamp,
         });
 
-        // Si el puntaje es suficiente para aprobar, genera el certificado
-        if (result.score >= 92) {
+        // Obtener puntaje de aprobación de Firestore
+        const evaluationDoc = await db.collection('evaluations').doc(evaluationId).get();
+        const passingScore = evaluationDoc.data().puntajeAprobacion;
+        // Generar certificado solo si el puntaje alcanza o supera el mínimo de aprobación
+        if (result.score >= passingScore) {
             console.log(`El usuario ${userId} aprobó la evaluación ${evaluationId}. Generando certificado...`);
             await handleEvaluationApproval(userId, evaluationId, result, timestamp);
         } else {
