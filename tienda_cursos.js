@@ -16,7 +16,7 @@ let courseDiscounts = {}; // Almacenar descuentos desde Firebase
 
 const GENERIC_DISCOUNT_CODE = "EXPO50";
 const GENERIC_DISCOUNT_PERCENT = 50;
-const GENERIC_DISCOUNT_START = new Date("2025-05-29T08:00:00-04:00"); // Chile continental UTC-4
+const GENERIC_DISCOUNT_START = new Date("2025-05-26T08:00:00-04:00"); // Chile continental UTC-4
 const GENERIC_DISCOUNT_END = new Date("2025-05-30T18:00:00-04:00");
 
 let appliedGenericDiscount = false;
