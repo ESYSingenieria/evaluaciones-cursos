@@ -14,6 +14,14 @@ const db = firebase.firestore();
 let cart = []; // Carrito de compras
 let courseDiscounts = {}; // Almacenar descuentos desde Firebase
 
+const GENERIC_DISCOUNT_CODE = "EXPO50";
+const GENERIC_DISCOUNT_PERCENT = 50;
+const GENERIC_DISCOUNT_START = new Date("2025-05-29T08:00:00-04:00"); // Chile continental UTC-4
+const GENERIC_DISCOUNT_END = new Date("2025-05-30T18:00:00-04:00");
+
+let appliedGenericDiscount = false;
+
+
 document.addEventListener("DOMContentLoaded", async () => {
     const courseList = document.getElementById("course-list");
     try {
@@ -118,45 +126,61 @@ function renderCart() {
     const totalAmount = document.getElementById("total-amount");
     const checkoutContainer = document.getElementById("checkout-container");
 
+    cartItems.innerHTML = ""; // Limpiar el contenido antes de actualizar
+    let total = 0;
+    cart.forEach((course) => {
+        const discountedPrice = calculateDiscount(course.id, course.quantity, course.price);
+        total += discountedPrice;
 
-cartItems.innerHTML = ""; // Limpiar el contenido antes de actualizar
-let total= 0;
-cart.forEach((course) => {
-    const discountedPrice = calculateDiscount(course.id, course.quantity, course.price);
-    total += discountedPrice; // Sumar el precio del curso al total
+        const cartItem = document.createElement("div");
+        cartItem.className = "cart-item-container";
+        cartItem.style.display = "flex";
+        cartItem.style.alignItems = "center";
+        cartItem.style.justifyContent = "space-between";
+        cartItem.style.padding = "10px";
+        cartItem.style.border = "1px solid #ccc";
+        cartItem.style.borderRadius = "8px";
+        cartItem.style.backgroundColor = "#fff";
+        cartItem.style.marginBottom = "10px";
 
-    const cartItem = document.createElement("div");
-    cartItem.className = "cart-item-container";
-    cartItem.style.display = "flex";
-    cartItem.style.alignItems = "center";
-    cartItem.style.justifyContent = "space-between";
-    cartItem.style.padding = "10px";
-    cartItem.style.border = "1px solid #ccc";
-    cartItem.style.borderRadius = "8px";
-    cartItem.style.backgroundColor = "#fff";
-    cartItem.style.marginBottom = "10px";
-
-    cartItem.innerHTML = `
-        <span class="cart-item-name">${course.name}</span>
-        <div class="quantity-wrapper">
-            <button class="quantity-btn" style="padding: 5px 12px; border-radius: 5px; font-size: 16px; background-color: #007bff; color: white; border: none;" onclick="updateCartQuantity('${course.id}', -1)">-</button>
-            <input type="text" value="${course.quantity}" class="quantity-input" style="width: 50px; text-align: center; font-size: 18px; border-radius: 5px; border: 1px solid #ccc; padding: 5px;">
-            <button class="quantity-btn" style="padding: 5px 12px; border-radius: 5px; font-size: 16px; background-color: #007bff; color: white; border: none;" onclick="updateCartQuantity('${course.id}', 1)">+</button>
-        </div>
-        <span class="price">$${calculateDiscount(course.id, course.quantity, course.price).toLocaleString("es-CL")}</span>
-        <button onclick="removeFromCart('${course.id}')" class="remove-button" style="padding: 5px 12px; border-radius: 5px; font-size: 16px; background-color:rgb(211, 0, 0); color: white; border: none;" >Eliminar</button>
-    `;
-    cartItems.appendChild(cartItem);
-
+        cartItem.innerHTML = `
+            <span class="cart-item-name">${course.name}</span>
+            <div class="quantity-wrapper">
+                <button class="quantity-btn" style="padding: 5px 12px; border-radius: 5px; font-size: 16px; background-color: #007bff; color: white; border: none;" onclick="updateCartQuantity('${course.id}', -1)">-</button>
+                <input type="text" value="${course.quantity}" class="quantity-input" style="width: 50px; text-align: center; font-size: 18px; border-radius: 5px; border: 1px solid #ccc; padding: 5px;">
+                <button class="quantity-btn" style="padding: 5px 12px; border-radius: 5px; font-size: 16px; background-color: #007bff; color: white; border: none;" onclick="updateCartQuantity('${course.id}', 1)">+</button>
+            </div>
+            <span class="price">$${discountedPrice.toLocaleString("es-CL")}</span>
+            <button onclick="removeFromCart('${course.id}')" class="remove-button" style="padding: 5px 12px; border-radius: 5px; font-size: 16px; background-color:rgb(211, 0, 0); color: white; border: none;" >Eliminar</button>
+        `;
+        cartItems.appendChild(cartItem);
     });
 
-    totalAmount.textContent = `$${total.toLocaleString("es-CL")}`;
+    // Aplicar descuento EXPO50 si corresponde
+    let discountAmount = 0;
+    if (typeof appliedGenericDiscount !== "undefined" && appliedGenericDiscount) {
+        discountAmount = Math.round(total * (GENERIC_DISCOUNT_PERCENT / 100));
+    }
+
+    let totalFinal = total - discountAmount;
+    if (totalFinal < 0) totalFinal = 0;
+
+    totalAmount.textContent = `$${totalFinal.toLocaleString("es-CL")}`;
+
+    // Mostrar mensaje del descuento
+    const discountInfo = document.getElementById("discount-message");
+    if (typeof appliedGenericDiscount !== "undefined" && appliedGenericDiscount && discountInfo) {
+        discountInfo.textContent = `Descuento aplicado: -$${discountAmount.toLocaleString("es-CL")} (${GENERIC_DISCOUNT_PERCENT}%)`;
+        discountInfo.style.color = "#28a745";
+    }
+
     checkoutContainer.style.display = "flex";
     checkoutContainer.style.justifyContent = "flex-end";
     checkoutContainer.style.alignItems = "center";
     checkoutContainer.style.marginTop = "20px";
     checkoutContainer.style.textAlign = "right";
 }
+
 
 // Modificar cantidad en el carrito
 function updateCartQuantity(courseId, change) {
@@ -243,3 +267,40 @@ document.addEventListener("DOMContentLoaded", () => {
         console.error("Error: Botón de pago no encontrado en el DOM");
     }
 });
+
+document.getElementById("apply-discount").addEventListener("click", () => {
+    const code = document.getElementById("discount-code").value.trim().toUpperCase();
+    const message = document.getElementById("discount-message");
+    const now = new Date();
+  
+    if (code !== GENERIC_DISCOUNT_CODE) {
+      message.textContent = "Código no válido.";
+      message.style.color = "red";
+      appliedGenericDiscount = false;
+      renderCart();
+      return;
+    }
+  
+    if (now < GENERIC_DISCOUNT_START) {
+      message.textContent = "El código todavía no está disponible.";
+      message.style.color = "red";
+      appliedGenericDiscount = false;
+      renderCart();
+      return;
+    }
+  
+    if (now > GENERIC_DISCOUNT_END) {
+      message.textContent = "El código ya expiró.";
+      message.style.color = "red";
+      appliedGenericDiscount = false;
+      renderCart();
+      return;
+    }
+  
+    // Si todo bien, aplicar el descuento
+    appliedGenericDiscount = true;
+    message.textContent = `¡Código válido! Obtienes ${GENERIC_DISCOUNT_PERCENT}% de descuento.`;
+    message.style.color = "#28a745";
+    renderCart();
+  });
+  
