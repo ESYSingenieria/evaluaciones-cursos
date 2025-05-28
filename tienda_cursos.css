@@ -130,3 +130,51 @@ form button {
 form button:hover {
     background-color: #0056b3;
 }
+
+/* --- Responsive para móviles --- */
+@media (max-width: 700px) {
+
+    /* Cursos: vertical */
+    #course-list {
+        flex-direction: column;
+        gap: 1em;
+    }
+    .course-card {
+        width: 100%;
+        min-width: unset;
+        max-width: unset;
+        margin: 0 auto;
+    }
+
+    /* Carrito en columna */
+    .cart-item-container {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        text-align: left;
+        gap: 0.5em;
+    }
+    .cart-item-name {
+        font-size: 1.1em;
+        margin-bottom: 0.3em;
+        font-weight: bold;
+        display: block;
+    }
+    .quantity-wrapper {
+        margin-bottom: 0.5em;
+        justify-content: flex-start !important;
+    }
+    .quantity-input {
+        margin: 0 0.5em;
+    }
+    .price {
+        margin-bottom: 0.5em;
+        font-weight: bold;
+        color: #333;
+        display: block;
+    }
+    .remove-button {
+        width: 100%;
+        margin: 0.2em 0 0.5em 0;
+        font-size: 1em;
+    }
+}
