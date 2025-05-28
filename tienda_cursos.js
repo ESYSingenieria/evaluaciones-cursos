@@ -118,45 +118,54 @@ function renderCart() {
     const totalAmount = document.getElementById("total-amount");
     const checkoutContainer = document.getElementById("checkout-container");
 
+    cartItems.innerHTML = ""; // Limpiar el contenido antes de actualizar
+    let total = 0;
+    cart.forEach((course) => {
+        const discountedPrice = calculateDiscount(course.id, course.quantity, course.price);
+        total += discountedPrice;
 
-cartItems.innerHTML = ""; // Limpiar el contenido antes de actualizar
-let total= 0;
-cart.forEach((course) => {
-    const discountedPrice = calculateDiscount(course.id, course.quantity, course.price);
-    total += discountedPrice; // Sumar el precio del curso al total
+        const cartItem = document.createElement("div");
+        cartItem.className = "cart-item-container";
+        cartItem.style.display = "flex";
+        cartItem.style.alignItems = "center";
+        cartItem.style.justifyContent = "space-between";
+        cartItem.style.padding = "10px";
+        cartItem.style.border = "1px solid #ccc";
+        cartItem.style.borderRadius = "8px";
+        cartItem.style.backgroundColor = "#fff";
+        cartItem.style.marginBottom = "10px";
 
-    const cartItem = document.createElement("div");
-    cartItem.className = "cart-item-container";
-    cartItem.style.display = "flex";
-    cartItem.style.alignItems = "center";
-    cartItem.style.justifyContent = "space-between";
-    cartItem.style.padding = "10px";
-    cartItem.style.border = "1px solid #ccc";
-    cartItem.style.borderRadius = "8px";
-    cartItem.style.backgroundColor = "#fff";
-    cartItem.style.marginBottom = "10px";
-
-    cartItem.innerHTML = `
-        <span class="cart-item-name">${course.name}</span>
-        <div class="quantity-wrapper">
-            <button class="quantity-btn" style="padding: 5px 12px; border-radius: 5px; font-size: 16px; background-color: #007bff; color: white; border: none;" onclick="updateCartQuantity('${course.id}', -1)">-</button>
-            <input type="text" value="${course.quantity}" class="quantity-input" style="width: 50px; text-align: center; font-size: 18px; border-radius: 5px; border: 1px solid #ccc; padding: 5px;">
-            <button class="quantity-btn" style="padding: 5px 12px; border-radius: 5px; font-size: 16px; background-color: #007bff; color: white; border: none;" onclick="updateCartQuantity('${course.id}', 1)">+</button>
-        </div>
-        <span class="price">$${calculateDiscount(course.id, course.quantity, course.price).toLocaleString("es-CL")}</span>
-        <button onclick="removeFromCart('${course.id}')" class="remove-button" style="padding: 5px 12px; border-radius: 5px; font-size: 16px; background-color:rgb(211, 0, 0); color: white; border: none;" >Eliminar</button>
-    `;
-    cartItems.appendChild(cartItem);
-
+        cartItem.innerHTML = `
+            <span class="cart-item-name">${course.name}</span>
+            <div class="quantity-wrapper">
+                <button class="quantity-btn" style="padding: 5px 12px; border-radius: 5px; font-size: 16px; background-color: #007bff; color: white; border: none;" onclick="updateCartQuantity('${course.id}', -1)">-</button>
+                <input type="text" value="${course.quantity}" class="quantity-input" style="width: 50px; text-align: center; font-size: 18px; border-radius: 5px; border: 1px solid #ccc; padding: 5px;">
+                <button class="quantity-btn" style="padding: 5px 12px; border-radius: 5px; font-size: 16px; background-color: #007bff; color: white; border: none;" onclick="updateCartQuantity('${course.id}', 1)">+</button>
+            </div>
+            <span class="price">$${discountedPrice.toLocaleString("es-CL")}</span>
+            <button onclick="removeFromCart('${course.id}')" class="remove-button" style="padding: 5px 12px; border-radius: 5px; font-size: 16px; background-color:rgb(211, 0, 0); color: white; border: none;" >Eliminar</button>
+        `;
+        cartItems.appendChild(cartItem);
     });
 
-    totalAmount.textContent = `$${total.toLocaleString("es-CL")}`;
+    // Aplicar descuento EXPO50 si corresponde
+    let discountAmount = 0;
+    if (appliedGenericDiscount && typeof appliedGenericDiscount === "object") {
+        discountAmount = Math.round(total * (appliedGenericDiscount.porcentaje / 100));
+    }    
+
+    let totalFinal = total - discountAmount;
+    if (totalFinal < 0) totalFinal = 0;
+
+    totalAmount.textContent = `$${totalFinal.toLocaleString("es-CL")}`;
+
     checkoutContainer.style.display = "flex";
     checkoutContainer.style.justifyContent = "flex-end";
     checkoutContainer.style.alignItems = "center";
     checkoutContainer.style.marginTop = "20px";
     checkoutContainer.style.textAlign = "right";
 }
+
 
 // Modificar cantidad en el carrito
 function updateCartQuantity(courseId, change) {
@@ -194,34 +203,40 @@ async function processCheckout() {
 
     let totalAmount = cart.reduce((sum, course) => sum + calculateDiscount(course.id, course.quantity, course.price), 0);
 
-    try {
+    let discountAmount = 0;
+    let discountCode = null;
+    if (appliedGenericDiscount && typeof appliedGenericDiscount === "object") {
+        discountAmount = Math.round(totalAmount * (appliedGenericDiscount.porcentaje / 100));
+        discountCode = appliedGenericDiscount.code;
+    }
+    let totalFinal = totalAmount - discountAmount;
+    if (totalFinal < 0) totalFinal = 0;
 
+    try {
         sessionStorage.removeItem("inscripcionConfirmada");
-        
+
         const response = await fetch("https://creartransaccionwebpay-wf5bhi5ova-uc.a.run.app", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                amount: totalAmount,
-                currency: "CLP",  // Agregar esto
+                amount: totalFinal,
+                currency: "CLP",
                 items: cart.map(course => ({
                     id: course.id,
                     name: course.name,
                     quantity: course.quantity,
                     price: calculateDiscount(course.id, course.quantity, course.price)
-                }))
+                })),
+                discountCode: discountCode // <--- enviamos el código al backend
             })
         });
 
         const data = await response.json();
 
         if (data.url && data.token) {
-            // Guardar carrito antes de ir a Webpay
             sessionStorage.setItem("pagoConfirmado", JSON.stringify(cart));
-
-            // Redirigir a Webpay
             window.location.href = `${data.url}?token_ws=${data.token}`;
         } else {
             alert("Error al iniciar el pago. Intenta nuevamente.");
@@ -234,6 +249,8 @@ async function processCheckout() {
 
 
 
+
+
 document.addEventListener("DOMContentLoaded", () => {
     const checkoutButton = document.getElementById("checkout-button");
     
@@ -241,5 +258,83 @@ document.addEventListener("DOMContentLoaded", () => {
         checkoutButton.addEventListener("click", processCheckout);
     } else {
         console.error("Error: Botón de pago no encontrado en el DOM");
+    }
+});
+
+// Variable global para guardar el descuento activo
+let appliedGenericDiscount = null;
+
+document.getElementById("apply-discount").addEventListener("click", async () => {
+    const code = document.getElementById("discount-code").value.trim().toUpperCase();
+    const message = document.getElementById("discount-message");
+
+    if (!code) {
+        message.textContent = "Ingrese un código.";
+        message.style.color = "red";
+        appliedGenericDiscount = null;
+        renderCart();
+        return;
+    }
+
+    try {
+        // Leer la colección descuentos y buscar el código ingresado
+        const docRef = await db.collection("descuentos").doc(code).get();
+        if (!docRef.exists) {
+            message.textContent = "Código no válido.";
+            message.style.color = "red";
+            appliedGenericDiscount = null;
+            renderCart();
+            return;
+        }
+
+        const data = docRef.data();
+        const porcentaje = data.porcentaje || 0;
+        const fecha_inicio = new Date(data.fecha_inicio);
+        const fecha_fin = new Date(data.fecha_fin);
+        const cupos = data.cupos || 0;
+        const usos = data.usos || 0;
+        const ahora = new Date();
+
+        if (ahora < fecha_inicio) {
+            message.textContent = "El código todavía no está disponible.";
+            message.style.color = "red";
+            appliedGenericDiscount = null;
+            renderCart();
+            return;
+        }
+
+        if (ahora > fecha_fin) {
+            message.textContent = "El código ya expiró.";
+            message.style.color = "red";
+            appliedGenericDiscount = null;
+            renderCart();
+            return;
+        }
+
+        if (usos >= cupos) {
+            message.textContent = "El código ya no tiene cupos disponibles.";
+            message.style.color = "red";
+            appliedGenericDiscount = null;
+            renderCart();
+            return;
+        }
+
+        // Si todo bien, guardar el descuento activo en memoria
+        appliedGenericDiscount = {
+            code: code,
+            porcentaje: porcentaje,
+            docId: docRef.id // para poder actualizar luego el uso si quieres
+        };
+
+        message.textContent = `¡Código válido! Obtienes ${porcentaje}% de descuento.`;
+        message.style.color = "#28a745";
+        renderCart();
+
+    } catch (error) {
+        console.error("Error al validar código de descuento:", error);
+        message.textContent = "Error al validar el código. Intente de nuevo.";
+        message.style.color = "red";
+        appliedGenericDiscount = null;
+        renderCart();
     }
 });
