@@ -1,143 +1,192 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manual</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            font-family: Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
-            min-height: 100vh;
-            background-color: #f9f9f9;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      background-color: #f9f9f9;
+    }
 
-        header {
-            margin: 0;
-            padding: 10px 0;
-            text-align: center;
-            background-color: #ffffff;
-            width: 100%;
-        }
+    header {
+      margin: 0;
+      padding: 10px 0;
+      text-align: center;
+      background-color: #ffffff;
+      width: 100%;
+    }
 
-        header img {
-            max-width: 200px;
-            height: auto;
-        }
+    header img {
+      max-width: 200px;
+      height: auto;
+    }
 
-        #manual-container {
-            display: flex;
-            flex-direction: row;
-            gap: 20px;
-            justify-content: center;
-            align-items: center;
-            width: 90%;
-            max-width: 1000px;
-            margin: 0 auto;
-        }
+    #manual-container {
+      display: flex;
+      flex-direction: row;
+      gap: 20px;
+      justify-content: center;
+      align-items: center;
+      width: 90%;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
 
-        #pdf-renderer {
-            flex: 2;
-            max-height: 600px;
-            width: 100%;
-            border: 1px solid #ccc;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
+    #pdf-renderer {
+      flex: 2;
+      max-height: 600px;
+      width: 100%;
+      border: 1px solid #ccc;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
 
-        #notes-container {
-            flex: 1.5;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            max-width: 500px;
-            min-width: 400px;
-            height: 560px;
-            box-sizing: border-box;
-        }
+    #notes-container {
+      flex: 1.5;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 500px;
+      min-width: 400px;
+      height: 560px;
+      box-sizing: border-box;
+    }
 
-        #notes {
-            width: 100%;
-            height: 100%;
-            resize: none;
-            padding: 10px;
-            box-sizing: border-box;
-        }
+    #notes {
+      width: 100%;
+      height: 100%;
+      resize: none;
+      padding: 10px;
+      box-sizing: border-box;
+    }
 
-        #button-container {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin: 20px 0;
-        }
+    #button-container {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin: 20px 0;
+      width: 90%;
+      max-width: 1000px;
+    }
 
-        #button-container button {
-            padding: 10px 20px;
-            background-color: #007BFF;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background-color 0.3s ease;
-        }
+    #button-container button {
+      padding: 10px 20px;
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.3s ease;
+    }
 
-        #button-container button:hover {
-            background-color: #0056b3;
-        }
-    </style>
+    #button-container button:hover {
+      background-color: #0056b3;
+    }
 
-    <!-- Firebase y PDF.js -->
-    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
+    /* ============================
+       MEDIA QUERY PARA MÓVIL (≤768px)
+       ============================ */
+    @media (max-width: 768px) {
+      /* 1) manual-container en columna */
+      #manual-container {
+        flex-direction: column;
+      }
+      /* 2) canvas ajustado */
+      #pdf-renderer {
+        max-height: none;
+        margin-bottom: 10px;
+      }
+      /* 3) prev/next centrados */
+      #button-container {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin: 10px auto;
+      }
+      /* 4) notas de ancho total y centradas */
+      #notes-container {
+        width: 90%;
+        max-width: 500px;
+        margin: 10px auto;
+      }
+      /* 5) botón descargar verde centrado y bloque */
+      #download-notes {
+        display: block;
+        margin: 10px auto 30px auto;
+      }
+    }
+  </style>
 
-    <!-- pdf-lib para generación de PDF con notas -->
-    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
-
-    <!-- Tu script principal -->
-    <script src="app.js" defer></script>
+  <!-- Firebase y PDF.js -->
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.min.js" defer></script>
+  <!-- pdf-lib para generación de PDF con notas -->
+  <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js" defer></script>
+  <!-- Tu script principal -->
+  <script src="app.js" defer></script>
 </head>
 <body>
 
-    <header>
-        <a href="https://esys.cl/">
-            <img src="logo.png" alt="Logo de la Empresa">
-        </a>
-    </header>
+  <header>
+    <a href="https://esys.cl/">
+      <img src="logo.png" alt="Logo de la Empresa">
+    </a>
+  </header>
 
-    <div id="manual-container">
-        <canvas id="pdf-renderer"></canvas>
-        <div id="notes-container">
-            <h3>Notas</h3>
-            <textarea id="notes" placeholder="Escribe tus notas aquí..."></textarea>     
-        </div>
+  <!-- 1) CONTENEDOR DEL PDF -->
+  <div id="manual-container">
+    <canvas id="pdf-renderer"></canvas>
+    <div id="notes-container">
+      <h3>Notas</h3>
+      <textarea id="notes" placeholder="Escribe tus notas aquí..."></textarea>
     </div>
-    
-    <div id="button-container">
-        <button id="prev-page">Página Anterior</button>
-        <button id="next-page">Página Siguiente</button>
-        <!-- NUEVO: botón para descargar con notas -->
-        <button id="download-notes">Descargar manual con notas</button>
-        <span id="save-status"></span>
-    </div>
+  </div>
 
-    <script>
-        // Obtener el evaluationId desde la URL
-        const queryString = window.location.search;
-        const urlParams = new URLSearchParams(queryString);
-        const evaluationId = urlParams.get('evaluationId');
+  <!-- 2) BOTONES Prev / Next y Descarga -->
+  <div id="button-container">
+    <button id="prev-page">Página Anterior</button>
+    <button id="next-page">Página Siguiente</button>
+    <button id="download-notes">Descargar manual con notas</button>
+    <span id="save-status"></span>
+  </div>
 
-        if (!evaluationId) {
-            alert("No se encontró el ID de la evaluación. Verifica la URL.");
-        }
-    </script>
+  <!-- 3) evaluationId desde URL -->
+  <script>
+    const queryString = window.location.search;
+    const urlParams = new URLSearchParams(queryString);
+    const evaluationId = urlParams.get('evaluationId');
+    if (!evaluationId) {
+      alert('No se encontró el ID de la evaluación. Verifica la URL.');
+    }
+  </script>
+
+  <!-- 4) REUBICAR ELEMENTOS EN MÓVIL -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.innerWidth <= 768) {
+        // Mover notas debajo de Prev/Next
+        const notes = document.getElementById('notes-container');
+        const buttons = document.getElementById('button-container');
+        buttons.insertAdjacentElement('afterend', notes);
+        // Mover botón descargar debajo de notas
+        const download = document.getElementById('download-notes');
+        download.remove();
+        notes.insertAdjacentElement('afterend', download);
+      }
+    });
+  </script>
 
 </body>
 </html>
