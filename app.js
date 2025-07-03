@@ -1292,8 +1292,9 @@ loadPDF();
 
 /**
  * Genera un PDF que copia cada página del manual,
- * añade un margen blanco abajo con líneas guías
- * y pinta ahí las notas del usuario.
+ * añade un margen blanco abajo con líneas guía
+ * y pinta las notas del usuario, envolviendo el texto
+ * para que jamás se salga de ese espacio.
  */
 async function generatePDFWithNotes() {
   // 1) Guarda automática la nota de la página actual
@@ -1322,49 +1323,70 @@ async function generatePDFWithNotes() {
 
   // 5) Crea nuevo PDF, embebe páginas y añade margen
   const pdfNew        = await PDFLib.PDFDocument.create();
-  const marginHeight  = 150; // espacio extra abajo
+  const marginHeight  = 150;    // espacio extra abajo
+  const marginLeft    = 40;     // margen lateral para texto y líneas
+  const lineCount     = 6;      // número de líneas guía
   const embeddedPages = await pdfNew.embedPages(origPages);
+  const helv          = await pdfNew.embedFont(PDFLib.StandardFonts.Helvetica);
+  const fontSize      = 12;
+  const lineColor     = PDFLib.rgb(0.8, 0.8, 0.8);
 
   for (let idx = 0; idx < embeddedPages.length; idx++) {
     const embed = embeddedPages[idx];
-    // **CORRECCIÓN**: usar width/height directos
     const width = embed.width;
     const origH = embed.height;
 
     // 5a) Añade página con altura original + margen
     const page = pdfNew.addPage([width, origH + marginHeight]);
 
-    // 5b) Dibuja la página original desplazada arriba
+    // 5b) Dibuja la página original desplazada hacia arriba
     page.drawPage(embed, { x: 0, y: marginHeight });
 
     // 5c) Dibuja líneas guía en el margen
-    const lineCount = 6;
-    const spacing   = marginHeight / (lineCount + 1);
+    const spacing = marginHeight / (lineCount + 1);
     for (let i = 1; i <= lineCount; i++) {
-      const y = marginHeight - i * spacing;
+      const yLine = marginHeight - i * spacing;
       page.drawLine({
-        start:     { x: 40,          y },
-        end:       { x: width - 40,  y },
+        start:     { x: marginLeft,        y: yLine },
+        end:       { x: width - marginLeft, y: yLine },
         thickness: 0.5,
-        color:     PDFLib.rgb(0.8, 0.8, 0.8),
+        color:     lineColor,
       });
     }
 
-    // 5d) Si existe nota, escribirla sobre las líneas
+    // 5d) Si existe nota, la envuelve y dibuja sobre las líneas
     const text = notesMap[idx + 1];
     if (text) {
-      const helv     = await pdfNew.embedFont(PDFLib.StandardFonts.Helvetica);
-      const fontSize = 12;
-      let yText      = marginHeight - spacing - fontSize;
-      text.split('\n').forEach(line => {
-        page.drawText(line, {
-          x:     45,
+      // máximo ancho para cada línea de texto
+      const maxWidth = width - marginLeft * 2;
+
+      // word-wrap manual usando medidas de font
+      const words = text.split(' ');
+      const wrapped = [];
+      let current = '';
+      for (const w of words) {
+        const testLine = current ? current + ' ' + w : w;
+        const testWidth = helv.widthOfTextAtSize(testLine, fontSize);
+        if (testWidth <= maxWidth) {
+          current = testLine;
+        } else {
+          wrapped.push(current);
+          current = w;
+        }
+      }
+      if (current) wrapped.push(current);
+
+      // dibuja cada línea envuelta justo sobre su guía
+      wrapped.forEach((lineText, i) => {
+        // y de la i-ésima línea: la guía i+1 menos un pequeño offset
+        const yText = marginHeight - (i + 1) * spacing + 2;
+        page.drawText(lineText, {
+          x:     marginLeft + 2,
           y:     yText,
           size:  fontSize,
           font:  helv,
           color: PDFLib.rgb(0, 0, 0),
         });
-        yText -= fontSize + 2;
       });
     }
   }
