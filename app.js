@@ -1290,63 +1290,86 @@ downloadBtn.addEventListener('click', generatePDFWithNotes);
 // Inicia la carga del PDF
 loadPDF();
 
-/**
- * Carga el PDF original, lee las notas guardadas en Firestore
- * y genera un nuevo PDF con pdf-lib, insertando las notas
- * en la esquina inferior de cada página.
- */
 async function generatePDFWithNotes() {
-  // 1) Cargar bytes del PDF original
-  const manualUrl = await getManualURL(evaluationId);
+  // 1) Guarda la nota actual
+  await saveNotes();
+
+  // 2) Carga bytes del manual original
+  const manualUrl     = await getManualURL(evaluationId);
   const originalBytes = await fetch(manualUrl).then(r => r.arrayBuffer());
 
-  // 2) Inicializar pdf-lib
-  const pdfDocLib = await PDFLib.PDFDocument.load(originalBytes);
-  const helvFont   = await pdfDocLib.embedFont(PDFLib.StandardFonts.Helvetica);
-  const pages      = pdfDocLib.getPages();
+  // 3) Carga y obtén páginas
+  const pdfOrig = await PDFLib.PDFDocument.load(originalBytes);
+  const origPages = pdfOrig.getPages();
 
-  // 3) Leer todas las notas del usuario desde Firestore
-  const user = auth.currentUser;
-  const snap = await db.collection('manual-notes')
-    .doc(user.uid)
+  // 4) Lee todas las notas del usuario
+  const snap = await db
+    .collection('manual-notes')
+    .doc(auth.currentUser.uid)
     .collection('notes')
     .where('manualId', '==', evaluationId)
     .get();
   const notesMap = {};
   snap.forEach(d => {
-    const data = d.data();
-    notesMap[data.page] = data.notes;
+    const { page, notes } = d.data();
+    notesMap[page] = notes;
   });
 
-  // 4) Para cada página, si hay nota, dibujarla
-  pages.forEach((page, idx) => {
-    const txt = notesMap[idx + 1];
-    if (!txt) return;
+  // 5) Crea nuevo PDF y embebe páginas originales
+  const pdfNew = await PDFLib.PDFDocument.create();
+  // marginHeight: espacio en blanco bajo cada página
+  const marginHeight = 150;
+  // Importa cada página como XObject
+  const embeddedPages = await pdfNew.embedPages(origPages);
 
-    const { width, height } = page.getSize();
-    const fontSize = 12;
-    const margin   = 40;
-    const lines    = txt.split('\n');
-    let yPos = margin + (lines.length - 1) * (fontSize + 2);
+  for (let idx = 0; idx < embeddedPages.length; idx++) {
+    const embed = embeddedPages[idx];
+    const { width, height: origH } = embed.size;
 
-    lines.forEach(line => {
-      page.drawText(line, {
-        x: margin,
-        y: yPos,
-        size: fontSize,
-        font: helvFont,
-        color: PDFLib.rgb(0, 0, 0),
+    // 5a) Añade página con altura extendida
+    const page = pdfNew.addPage([width, origH + marginHeight]);
+
+    // 5b) Dibuja el PDF original desplazado arriba
+    page.drawPage(embed, { x: 0, y: marginHeight });
+
+    // 5c) Dibuja líneas en el margen
+    const lineCount   = 6;
+    const spacing     = marginHeight / (lineCount + 1);
+    for (let i = 1; i <= lineCount; i++) {
+      const y = marginHeight - i * spacing;
+      page.drawLine({
+        start: { x: 40, y },
+        end:   { x: width - 40, y },
+        thickness: 0.5,
+        color: PDFLib.rgb(0.8, 0.8, 0.8),
       });
-      yPos -= fontSize + 2;
-    });
-  });
+    }
 
-  // 5) Guardar y forzar descarga
-  const modifiedBytes = await pdfDocLib.save();
-  const blob = new Blob([modifiedBytes], { type: 'application/pdf' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'Manual_con_notas.pdf';
+    // 5d) Si hay nota, la escribe sobre las líneas
+    const text = notesMap[idx + 1];
+    if (text) {
+      const helv = await pdfNew.embedFont(PDFLib.StandardFonts.Helvetica);
+      const fontSize = 12;
+      let yText = marginHeight - spacing - fontSize;
+      text.split('\n').forEach(line => {
+        page.drawText(line, {
+          x: 45,
+          y: yText,
+          size: fontSize,
+          font: helv,
+          color: PDFLib.rgb(0, 0, 0),
+        });
+        yText -= fontSize + 2;
+      });
+    }
+  }
+
+  // 6) Guarda y dispara descarga
+  const bytes = await pdfNew.save();
+  const blob  = new Blob([bytes], { type: 'application/pdf' });
+  const a     = document.createElement('a');
+  a.href      = URL.createObjectURL(blob);
+  a.download  = 'Manual_con_Notas.pdf';
   a.click();
 }
 
