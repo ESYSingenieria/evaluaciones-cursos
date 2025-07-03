@@ -51,12 +51,12 @@
         }
 
         #notes-container {
-            flex: 1.5; /* Incrementa ligeramente el espacio relativo */
+            flex: 1.5;
             display: flex;
             flex-direction: column;
             gap: 10px;
-            max-width: 500px; /* Ancho máximo controlado */
-            min-width: 400px; /* Asegura un ancho mínimo */
+            max-width: 500px;
+            min-width: 400px;
             height: 560px;
             box-sizing: border-box;
         }
@@ -91,35 +91,40 @@
             background-color: #0056b3;
         }
     </style>
+
+    <!-- Firebase y PDF.js -->
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
+
+    <!-- pdf-lib para generación de PDF con notas -->
+    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+
+    <!-- Tu script principal -->
     <script src="app.js" defer></script>
 </head>
 <body>
 
     <header>
-        <a href="https://esys.cl/"> <!-- Enlace al logo -->
+        <a href="https://esys.cl/">
             <img src="logo.png" alt="Logo de la Empresa">
         </a>
     </header>
 
     <div id="manual-container">
-        <!-- Lado del Manual -->
         <canvas id="pdf-renderer"></canvas>
-    
-        <!-- Lado de Notas -->
         <div id="notes-container">
             <h3>Notas</h3>
             <textarea id="notes" placeholder="Escribe tus notas aquí..."></textarea>     
         </div>
     </div>
     
-    <!-- Botones de Navegación -->
     <div id="button-container">
         <button id="prev-page">Página Anterior</button>
         <button id="next-page">Página Siguiente</button>
+        <!-- NUEVO: botón para descargar con notas -->
+        <button id="download-notes">Descargar manual con notas</button>
     </div>
 
     <script>
@@ -128,10 +133,10 @@
         const urlParams = new URLSearchParams(queryString);
         const evaluationId = urlParams.get('evaluationId');
 
-        // Verificar si se recibió correctamente
         if (!evaluationId) {
             alert("No se encontró el ID de la evaluación. Verifica la URL.");
         }
     </script>
+
 </body>
 </html>
