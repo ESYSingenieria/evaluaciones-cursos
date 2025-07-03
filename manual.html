@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manual</title>
-    <style>
+    <title>Manual</n>    <style>
         body {
             margin: 0;
             padding: 0;
@@ -31,6 +30,7 @@
             height: auto;
         }
 
+        /* Contenedor del PDF */
         #manual-container {
             display: flex;
             flex-direction: row;
@@ -39,7 +39,7 @@
             align-items: center;
             width: 90%;
             max-width: 1000px;
-            margin: 0 auto;
+            margin: 20px auto;
         }
 
         #pdf-renderer {
@@ -50,6 +50,7 @@
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
 
+        /* Contenedor de notas (desktop) */
         #notes-container {
             flex: 1.5;
             display: flex;
@@ -69,6 +70,7 @@
             box-sizing: border-box;
         }
 
+        /* Botones prev/next (desktop) */
         #button-container {
             display: flex;
             justify-content: center;
@@ -89,6 +91,58 @@
 
         #button-container button:hover {
             background-color: #0056b3;
+        }
+
+        /* Ocultar botón descarga en desktop */
+        #download-container {
+            display: none;
+        }
+
+        /* Estilos móviles */
+        @media (max-width: 768px) {
+            /* PDF en bloque completo */
+            #manual-container {
+                display: block;
+                width: 90%;
+                max-width: 500px;
+                margin: 20px auto;
+            }
+
+            #pdf-renderer {
+                max-height: none;
+                height: auto;
+            }
+
+            /* Botones prev/next centrados */
+            #button-container {
+                display: flex;
+                justify-content: center;
+                gap: 10px;
+                width: 90%;
+                max-width: 500px;
+                margin: 20px auto;
+            }
+
+            /* Notas en bloque completo */
+            #notes-container {
+                display: block;
+                width: 90%;
+                max-width: 500px;
+                margin: 20px auto;
+                height: auto;
+            }
+            #notes {
+                height: 300px;
+            }
+
+            /* Mostrar botón descarga debajo de notas */
+            #download-container {
+                display: block;
+                width: 90%;
+                max-width: 500px;
+                margin: 20px auto;
+                text-align: center;
+            }
         }
     </style>
 
@@ -112,21 +166,28 @@
         </a>
     </header>
 
+    <!-- Solo PDF -->
     <div id="manual-container">
         <canvas id="pdf-renderer"></canvas>
-        <div id="notes-container">
-            <h3>Notas</h3>
-            <textarea id="notes" placeholder="Escribe tus notas aquí..."></textarea>     
-        </div>
     </div>
-    
+
+    <!-- Botones navegación -->
     <div id="button-container">
         <button id="prev-page">Página Anterior</button>
         <button id="next-page">Página Siguiente</button>
-        <!-- NUEVO: botón para descargar con notas -->
-        <button id="download-notes">Descargar manual con notas</button>
-        <span id="save-status"></span>
     </div>
+
+    <!-- Sección de notas -->
+    <div id="notes-container">
+        <h3>Notas</h3>
+        <textarea id="notes" placeholder="Escribe tus notas aquí..."></textarea>
+    </div>
+
+    <!-- Botón de descarga -->
+    <div id="download-container">
+        <button id="download-notes">Descargar manual con notas</button>
+    </div>
+    <span id="save-status"></span>
 
     <script>
         // Obtener el evaluationId desde la URL
