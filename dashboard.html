@@ -1,51 +1,160 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Usuario</title>
-    <link rel="stylesheet" href="styles.css">
-    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.0.0/dist/fontkit.umd.min.js"></script>
-    <script src="app.js" defer></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Panel de Usuario</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* === HEADER: logo a la derecha, user-info a la izquierda === */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 20px;
+      background-color: #ffffff;
+    }
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 8px;
+      background-color: #fafafa;
+    }
+    .user-info p {
+      margin: 2px 0;
+      font-size: 14px;
+    }
+    .user-info button {
+      margin-top: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .logo {
+      max-width: 150px;
+      height: auto;
+    }
+
+    /* === CONTENEDOR PRINCIPAL (desktop) === */
+    .dashboard-container {
+      display: flex;
+      gap: 20px;
+      width: 90%;
+      max-width: 1000px;
+      margin: 20px auto;
+    }
+
+    #evaluationsSection,
+    #responsesSection {
+      flex: 1;
+    }
+    #evaluationsSection h2,
+    #responsesSection h2 {
+      margin-bottom: 10px;
+    }
+
+    /* === BOTÓN CERRAR SESIÓN === */
+    #logoutContainer {
+      width: 90%;
+      max-width: 1000px;
+      margin: 20px auto;
+      text-align: center;
+    }
+    #logoutButton {
+      padding: 10px 20px;
+      background-color: #ff4d4d;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    /* === ESTILOS MÓVIL (≤768px) === */
+    @media (max-width: 768px) {
+      /* 1) header sigue igual (user-info y logo) */
+
+      /* 2) contenedor principal en bloque */
+      .dashboard-container {
+        display: block;
+      }
+      /* 3) Cursos Disponibles: scroll horizontal */
+      #evaluationsList {
+        display: flex;
+        overflow-x: auto;
+        gap: 10px;
+        padding-bottom: 10px;
+      }
+      #evaluationsList > * {
+        flex: 0 0 auto;
+      }
+      /* 4) Resultados: scroll horizontal */
+      #responsesList {
+        display: flex;
+        overflow-x: auto;
+        gap: 10px;
+        padding-bottom: 10px;
+        margin-top: 20px;
+      }
+      #responsesList > * {
+        flex: 0 0 auto;
+      }
+      /* 5) Finalmente, botón Cerrar Sesión */
+      #logoutContainer {
+        margin-top: 20px;
+      }
+      /* 6) user-info comprimido con scroll interno */
+      .user-info {
+        max-width: 120px;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+    }
+  </style>
+
+  <!-- Firebase y Firestore -->
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
+  <!-- Tu lógica de app.js -->
+  <script src="app.js" defer></script>
 </head>
 <body>
-    
-    <header style="text-align: center; padding: 0px; background-color: #ffffff;">
-        <a href="https://esys.cl/"> <!-- Enlace al logo -->
-            <img src="logo.png" alt="Logo de la Empresa" style="max-width: 200px; height: auto;">
-        </a>
-    </header>
 
-    <div id="user-info" style="position: absolute; top: 10px; left: 10px;">
-        <p id="userNameDisplay"></p>
-        <p id="userRutDisplay"></p>
-        <button id="editProfileButton" style="cursor: pointer;">Editar perfil</button>
+  <header>
+    <!-- 1) User-info a la izquierda -->
+    <div id="user-info" class="user-info">
+      <p id="userNameDisplay"></p>
+      <p id="userRutDisplay"></p>
+      <button id="editProfileButton">Editar perfil</button>
     </div>
-    
 
-    <div class="dashboard-container">
-        <!-- Contenedor de Evaluaciones -->
-        <div id="evaluationsSection">
-            <h2>Cursos Disponibles</h2>
-            <div id="evaluationsList"></div>
-        </div>
+    <!-- 2) Logo ESYS a la derecha -->
+    <a href="https://esys.cl/">
+      <img src="logo.png" alt="Logo de la Empresa" class="logo" />
+    </a>
+  </header>
 
-        <!-- Contenedor de Resultados -->
-        <div id="responsesSection">
-            <h2>Resultados</h2>
-            <div id="responsesList"></div>
-        </div>
+  <!-- 3) Dashboard principal -->
+  <div class="dashboard-container">
+    <!-- Cursos Disponibles -->
+    <div id="evaluationsSection">
+      <h2>Cursos Disponibles</h2>
+      <div id="evaluationsList"></div>
     </div>
-    
-    <div id="logoutContainer">
-        <button id="logoutButton" style="margin-top: 20px; padding: 10px 20px; background-color: #ff4d4d; color: white; border: none; border-radius: 5px; cursor: pointer;">
-            Cerrar Sesión
-        </button>
+
+    <!-- Resultados -->
+    <div id="responsesSection">
+      <h2>Resultados</h2>
+      <div id="responsesList"></div>
     </div>
+  </div>
+
+  <!-- 4) Botón Cerrar Sesión -->
+  <div id="logoutContainer">
+    <button id="logoutButton">Cerrar Sesión</button>
+  </div>
 
 </body>
 </html>
