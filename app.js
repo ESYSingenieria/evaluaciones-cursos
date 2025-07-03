@@ -1351,41 +1351,43 @@ async function generatePDFWithNotes() {
       });
     }
 
-    // 5d) Si existe nota, la envuelve y dibuja sobre las líneas
-    const text = notesMap[idx + 1];
-    if (text) {
-      // máximo ancho para cada línea de texto
-      const maxWidth = width - marginLeft * 2;
+// 5d) Si existe nota, la prepara y dibuja sobre las líneas
+let raw = notesMap[idx + 1] || '';               // ➤ ①
+// elimina saltos de línea para evitar el error WinAnsi
+raw = raw.replace(/[\r\n]+/g, ' ');              // ➤ ②
 
-      // word-wrap manual usando medidas de font
-      const words = text.split(' ');
-      const wrapped = [];
-      let current = '';
-      for (const w of words) {
-        const testLine = current ? current + ' ' + w : w;
-        const testWidth = helv.widthOfTextAtSize(testLine, fontSize);
-        if (testWidth <= maxWidth) {
-          current = testLine;
-        } else {
-          wrapped.push(current);
-          current = w;
-        }
-      }
-      if (current) wrapped.push(current);
+// ancho máximo de texto dentro del margen
+const maxWidth = width - marginLeft * 2;         // ➤ ③
 
-      // dibuja cada línea envuelta justo sobre su guía
-      wrapped.forEach((lineText, i) => {
-        // y de la i-ésima línea: la guía i+1 menos un pequeño offset
-        const yText = marginHeight - (i + 1) * spacing + 2;
-        page.drawText(lineText, {
-          x:     marginLeft + 2,
-          y:     yText,
-          size:  fontSize,
-          font:  helv,
-          color: PDFLib.rgb(0, 0, 0),
-        });
-      });
-    }
+// word-wrap manual usando medidas de font
+const words = raw.split(' ');
+const wrapped = [];
+let current = '';
+for (const w of words) {
+  const testLine = current ? current + ' ' + w : w;
+  const testWidth = helv.widthOfTextAtSize(testLine, fontSize);
+  if (testWidth <= maxWidth) {
+    current = testLine;
+  } else {
+    wrapped.push(current);
+    current = w;
+  }
+}
+if (current) wrapped.push(current);
+
+// dibuja cada línea envuelta justo sobre su guía
+wrapped.forEach((lineText, i) => {
+  // y de la i-ésima línea: la guía i+1 menos un pequeño offset
+  const yText = marginHeight - (i + 1) * spacing + 2;  // ➤ ④
+  page.drawText(lineText, {
+    x:     marginLeft + 2,
+    y:     yText,
+    size:  fontSize,
+    font:  helv,
+    color: PDFLib.rgb(0, 0, 0),
+  });
+});
+
   }
 
   // 6) Guarda y dispara descarga
