@@ -1290,19 +1290,24 @@ downloadBtn.addEventListener('click', generatePDFWithNotes);
 // Inicia la carga del PDF
 loadPDF();
 
+/**
+ * Genera un PDF que copia cada página del manual,
+ * añade un margen blanco abajo con líneas guías
+ * y pinta ahí las notas del usuario.
+ */
 async function generatePDFWithNotes() {
-  // 1) Guarda la nota actual
+  // 1) Guarda automática la nota de la página actual
   await saveNotes();
 
-  // 2) Carga bytes del manual original
+  // 2) Carga bytes del PDF original
   const manualUrl     = await getManualURL(evaluationId);
   const originalBytes = await fetch(manualUrl).then(r => r.arrayBuffer());
 
-  // 3) Carga y obtén páginas
-  const pdfOrig = await PDFLib.PDFDocument.load(originalBytes);
+  // 3) Carga el PDF y obtiene sus páginas
+  const pdfOrig   = await PDFLib.PDFDocument.load(originalBytes);
   const origPages = pdfOrig.getPages();
 
-  // 4) Lee todas las notas del usuario
+  // 4) Recupera todas las notas del usuario para este manual
   const snap = await db
     .collection('manual-notes')
     .doc(auth.currentUser.uid)
@@ -1310,53 +1315,53 @@ async function generatePDFWithNotes() {
     .where('manualId', '==', evaluationId)
     .get();
   const notesMap = {};
-  snap.forEach(d => {
-    const { page, notes } = d.data();
+  snap.forEach(doc => {
+    const { page, notes } = doc.data();
     notesMap[page] = notes;
   });
 
-  // 5) Crea nuevo PDF y embebe páginas originales
-  const pdfNew = await PDFLib.PDFDocument.create();
-  // marginHeight: espacio en blanco bajo cada página
-  const marginHeight = 150;
-  // Importa cada página como XObject
+  // 5) Crea nuevo PDF, embebe páginas y añade margen
+  const pdfNew        = await PDFLib.PDFDocument.create();
+  const marginHeight  = 150; // espacio extra abajo
   const embeddedPages = await pdfNew.embedPages(origPages);
 
   for (let idx = 0; idx < embeddedPages.length; idx++) {
     const embed = embeddedPages[idx];
-    const { width, height: origH } = embed.size;
+    // **CORRECCIÓN**: usar width/height directos
+    const width = embed.width;
+    const origH = embed.height;
 
-    // 5a) Añade página con altura extendida
+    // 5a) Añade página con altura original + margen
     const page = pdfNew.addPage([width, origH + marginHeight]);
 
-    // 5b) Dibuja el PDF original desplazado arriba
+    // 5b) Dibuja la página original desplazada arriba
     page.drawPage(embed, { x: 0, y: marginHeight });
 
-    // 5c) Dibuja líneas en el margen
-    const lineCount   = 6;
-    const spacing     = marginHeight / (lineCount + 1);
+    // 5c) Dibuja líneas guía en el margen
+    const lineCount = 6;
+    const spacing   = marginHeight / (lineCount + 1);
     for (let i = 1; i <= lineCount; i++) {
       const y = marginHeight - i * spacing;
       page.drawLine({
-        start: { x: 40, y },
-        end:   { x: width - 40, y },
+        start:     { x: 40,          y },
+        end:       { x: width - 40,  y },
         thickness: 0.5,
-        color: PDFLib.rgb(0.8, 0.8, 0.8),
+        color:     PDFLib.rgb(0.8, 0.8, 0.8),
       });
     }
 
-    // 5d) Si hay nota, la escribe sobre las líneas
+    // 5d) Si existe nota, escribirla sobre las líneas
     const text = notesMap[idx + 1];
     if (text) {
-      const helv = await pdfNew.embedFont(PDFLib.StandardFonts.Helvetica);
+      const helv     = await pdfNew.embedFont(PDFLib.StandardFonts.Helvetica);
       const fontSize = 12;
-      let yText = marginHeight - spacing - fontSize;
+      let yText      = marginHeight - spacing - fontSize;
       text.split('\n').forEach(line => {
         page.drawText(line, {
-          x: 45,
-          y: yText,
-          size: fontSize,
-          font: helv,
+          x:     45,
+          y:     yText,
+          size:  fontSize,
+          font:  helv,
           color: PDFLib.rgb(0, 0, 0),
         });
         yText -= fontSize + 2;
