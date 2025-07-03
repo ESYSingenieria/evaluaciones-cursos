@@ -71,46 +71,65 @@
       cursor: pointer;
     }
 
-    /* === ESTILOS MÓVIL (≤768px) === */
-    @media (max-width: 768px) {
-      /* 1) header sigue igual (user-info y logo) */
+@media (max-width: 768px) {
+  /* 1) El dashboard principal pasa a bloque de ancho total */
+  .dashboard-container {
+    display: block;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+  }
 
-      /* 2) contenedor principal en bloque */
-      .dashboard-container {
-        display: block;
-      }
-      /* 3) Cursos Disponibles: scroll horizontal */
-      #evaluationsList {
-        display: flex;
-        overflow-x: auto;
-        gap: 10px;
-        padding-bottom: 10px;
-      }
-      #evaluationsList > * {
-        flex: 0 0 auto;
-      }
-      /* 4) Resultados: scroll horizontal */
-      #responsesList {
-        display: flex;
-        overflow-x: auto;
-        gap: 10px;
-        padding-bottom: 10px;
-        margin-top: 20px;
-      }
-      #responsesList > * {
-        flex: 0 0 auto;
-      }
-      /* 5) Finalmente, botón Cerrar Sesión */
-      #logoutContainer {
-        margin-top: 20px;
-      }
-      /* 6) user-info comprimido con scroll interno */
-      .user-info {
-        max-width: 120px;
-        overflow-x: auto;
-        white-space: nowrap;
-      }
-    }
+  /* 2) Cada sección ocupa el 100% del ancho del móvil */
+  #evaluationsSection,
+  #responsesSection {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 10px;
+    margin-bottom: 20px;
+  }
+
+  /* 3) El título se ajusta si hace falta */
+  #evaluationsSection h2,
+  #responsesSection h2 {
+    font-size: 1.2em;
+    margin-bottom: 10px;
+  }
+
+  /* 4) Las listas scrolleables llenan su contenedor y no desbordan */
+  #evaluationsList,
+  #responsesList {
+    display: flex;
+    overflow-x: auto;
+    gap: 10px;
+    width: 100%;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* 5) Cada tarjeta/card ocupa todo el ancho (o el 90%, al gusto) */
+  #evaluationsList > *,
+  #responsesList > * {
+    flex: 0 0 90%;
+    max-width: 90%;
+    scroll-snap-align: start;
+  }
+
+  /* 6) Botón Cerrar Sesión al final, centrado */
+  #logoutContainer {
+    margin: 20px 0;
+    width: 100%;
+    text-align: center;
+  }
+
+  /* 7) user-info comprimido con scroll si es muy largo */
+  .user-info {
+    max-width: 120px;
+    overflow-x: auto;
+    white-space: nowrap;
+    margin-right: 10px;
+  }
+}
+
   </style>
 
   <!-- Firebase y Firestore -->
