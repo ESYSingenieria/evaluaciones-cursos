@@ -1320,9 +1320,9 @@ async function generatePDFWithNotes() {
 
   // 5) Crea nuevo PDF, embebe páginas y añade margen
   const pdfNew        = await PDFLib.PDFDocument.create();
-  const marginHeight  = 150;    // espacio extra abajo
+  const marginHeight  = 300;    // espacio extra abajo
   const marginLeft    = 40;     // margen lateral para texto y líneas
-  const lineCount     = 6;      // número de líneas guía
+  const lineCount     = 12;      // número de líneas guía
   const embeddedPages = await pdfNew.embedPages(origPages);
   const helv          = await pdfNew.embedFont(PDFLib.StandardFonts.Helvetica);
   const fontSize      = 12;
