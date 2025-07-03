@@ -1229,9 +1229,6 @@ const saveNotes = async () => {
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
             });
 
-        // Actualizar estado de guardado
-        saveStatus.textContent = "Notas guardadas automáticamente";
-        setTimeout(() => (saveStatus.textContent = ""), 2000); // Ocultar estado después de 2 segundos
     } catch (error) {
         console.error("Error al guardar notas automáticamente:", error);
         saveStatus.textContent = "Error al guardar notas";
