@@ -1352,33 +1352,42 @@ async function generatePDFWithNotes() {
     }
 
 // 5d) Si existe nota, la prepara y dibuja sobre las líneas
-let raw = notesMap[idx + 1] || '';               // ➤ ①
-// elimina saltos de línea para evitar el error WinAnsi
-raw = raw.replace(/[\r\n]+/g, ' ');              // ➤ ②
+let raw = notesMap[idx + 1] || '';
+// ① elimina retornos de carro, deja saltos de línea
+raw = raw.replace(/\r+/g, '');
+// ② elimina todo char fuera de WinAnsi (rango U+0000–U+00FF)
+raw = raw.replace(/[^\x00-\xFF]/g, '');
 
-// ancho máximo de texto dentro del margen
-const maxWidth = width - marginLeft * 2;         // ➤ ③
+ // ③ separa en párrafos por cada '\n'
+const paras = raw.split('\n');
 
-// word-wrap manual usando medidas de font
-const words = raw.split(' ');
-const wrapped = [];
-let current = '';
-for (const w of words) {
-  const testLine = current ? current + ' ' + w : w;
-  const testWidth = helv.widthOfTextAtSize(testLine, fontSize);
-  if (testWidth <= maxWidth) {
-    current = testLine;
-  } else {
-    wrapped.push(current);
-    current = w;
+const maxWidth = width - marginLeft * 2;
+const lines    = [];
+
+// ④ word-wrap por párrafo
+paras.forEach((para, pi) => {
+  const words = para.split(' ');
+  let current = '';
+  for (const w of words) {
+    const testLine = current ? current + ' ' + w : w;
+    if (helv.widthOfTextAtSize(testLine, fontSize) <= maxWidth) {
+      current = testLine;
+    } else {
+      lines.push(current);
+      current = w;
+    }
   }
-}
-if (current) wrapped.push(current);
+  if (current) lines.push(current);
 
-// dibuja cada línea envuelta justo sobre su guía
-wrapped.forEach((lineText, i) => {
-  // y de la i-ésima línea: la guía i+1 menos un pequeño offset
-  const yText = marginHeight - (i + 1) * spacing + 2;  // ➤ ④
+  // inserta línea vacía entre párrafos
+  if (pi < paras.length - 1) {
+    lines.push('');
+  }
+});
+
+// ⑤ dibuja cada línea sobre su guía correspondiente
+lines.forEach((lineText, i) => {
+  const yText = marginHeight - (i + 1) * spacing + 2;
   page.drawText(lineText, {
     x:     marginLeft + 2,
     y:     yText,
@@ -1387,6 +1396,7 @@ wrapped.forEach((lineText, i) => {
     color: PDFLib.rgb(0, 0, 0),
   });
 });
+
 
   }
 
