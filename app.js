@@ -1154,6 +1154,9 @@ let isRendering = false; // Bandera para evitar renderizados múltiples
 const pdfContainer = document.getElementById('pdf-container');
 const notesField = document.getElementById('notes');
 const saveStatus = document.getElementById('save-status'); // Elemento para mostrar estado de guardado
+// ——— DESCARGA CON NOTAS ———
+// Botón para disparar la generación del PDF con notas
+const downloadBtn = document.getElementById('download-notes');
 
 // Obtener la URL del manual desde Firestore
 const getManualURL = async (evaluationId) => {
@@ -1281,9 +1284,71 @@ document.getElementById('next-page').addEventListener('click', () => {
     changePage(currentPage + 1);
 });
 
+// Al hacer clic, genera y descarga el PDF combinando manual + notas
+downloadBtn.addEventListener('click', generatePDFWithNotes);
+
 // Inicia la carga del PDF
 loadPDF();
 
+/**
+ * Carga el PDF original, lee las notas guardadas en Firestore
+ * y genera un nuevo PDF con pdf-lib, insertando las notas
+ * en la esquina inferior de cada página.
+ */
+async function generatePDFWithNotes() {
+  // 1) Cargar bytes del PDF original
+  const manualUrl = await getManualURL(evaluationId);
+  const originalBytes = await fetch(manualUrl).then(r => r.arrayBuffer());
+
+  // 2) Inicializar pdf-lib
+  const pdfDocLib = await PDFLib.PDFDocument.load(originalBytes);
+  const helvFont   = await pdfDocLib.embedFont(PDFLib.StandardFonts.Helvetica);
+  const pages      = pdfDocLib.getPages();
+
+  // 3) Leer todas las notas del usuario desde Firestore
+  const user = auth.currentUser;
+  const snap = await db.collection('manual-notes')
+    .doc(user.uid)
+    .collection('notes')
+    .where('manualId', '==', evaluationId)
+    .get();
+  const notesMap = {};
+  snap.forEach(d => {
+    const data = d.data();
+    notesMap[data.page] = data.notes;
+  });
+
+  // 4) Para cada página, si hay nota, dibujarla
+  pages.forEach((page, idx) => {
+    const txt = notesMap[idx + 1];
+    if (!txt) return;
+
+    const { width, height } = page.getSize();
+    const fontSize = 12;
+    const margin   = 40;
+    const lines    = txt.split('\n');
+    let yPos = margin + (lines.length - 1) * (fontSize + 2);
+
+    lines.forEach(line => {
+      page.drawText(line, {
+        x: margin,
+        y: yPos,
+        size: fontSize,
+        font: helvFont,
+        color: PDFLib.rgb(0, 0, 0),
+      });
+      yPos -= fontSize + 2;
+    });
+  });
+
+  // 5) Guardar y forzar descarga
+  const modifiedBytes = await pdfDocLib.save();
+  const blob = new Blob([modifiedBytes], { type: 'application/pdf' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Manual_con_notas.pdf';
+  a.click();
+}
 
 
 
