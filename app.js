@@ -1316,7 +1316,7 @@ async function generatePDFWithNotes() {
   // 3) Prepara nuevo PDF con pdf-lib
   const pdfNew       = await PDFLib.PDFDocument.create();
   const helv         = await pdfNew.embedFont(PDFLib.StandardFonts.Helvetica);
-  const fontSize     = 12;
+  const fontSize     = 10;
   const marginHeight = 500;
   const marginLeft   = 40;
   const lineCount    = 20;
