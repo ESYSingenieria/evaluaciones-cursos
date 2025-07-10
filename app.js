@@ -1294,18 +1294,26 @@ loadPDF();
  * para que jamás se salga de ese espacio.
  */
 async function generatePDFWithNotes() {
-  // 1) Guarda automática la nota de la página actual
+  // 1) Guarda nota de la página actual
   await saveNotes();
 
-  // 2) Carga bytes del PDF original
-  const manualUrl     = await getManualURL(evaluationId);
-  const originalBytes = await fetch(manualUrl).then(r => r.arrayBuffer());
+  // 2) URL y carga de PDF original con PDF.js
+  const manualUrl = await getManualURL(evaluationId);
+  const loadingTask = pdfjsLib.getDocument(manualUrl);
+  const pdfJsDoc = await loadingTask.promise;
+  const pageCount = pdfJsDoc.numPages;
 
-  // 3) Carga el PDF y obtiene sus páginas
-  const pdfOrig   = await PDFLib.PDFDocument.load(originalBytes);
-  const origPages = pdfOrig.getPages();
+  // 3) Prepara nuevo PDF con pdf-lib
+  const pdfNew = await PDFLib.PDFDocument.create();
+  const helv    = await pdfNew.embedFont(PDFLib.StandardFonts.Helvetica);
+  const fontSize     = 12;
+  const marginHeight = 150;
+  const marginLeft   = 40;
+  const lineCount    = 6;
+  const lineColor    = PDFLib.rgb(0.8, 0.8, 0.8);
+  const spacing      = marginHeight / (lineCount + 1);
 
-  // 4) Recupera todas las notas del usuario para este manual
+  // 4) Carga todas las notas de Firestore
   const snap = await db
     .collection('manual-notes')
     .doc(auth.currentUser.uid)
@@ -1313,99 +1321,90 @@ async function generatePDFWithNotes() {
     .where('manualId', '==', evaluationId)
     .get();
   const notesMap = {};
-  snap.forEach(doc => {
-    const { page, notes } = doc.data();
+  snap.forEach(d => {
+    const { page, notes } = d.data();
     notesMap[page] = notes;
   });
 
-  // 5) Crea nuevo PDF, embebe páginas y añade margen
-  const pdfNew        = await PDFLib.PDFDocument.create();
-  const marginHeight  = 450;    // espacio extra abajo
-  const marginLeft    = 40;     // margen lateral para texto y líneas
-  const lineCount     = 18;      // número de líneas guía
-  const embeddedPages = await pdfNew.embedPages(origPages);
-  const helv          = await pdfNew.embedFont(PDFLib.StandardFonts.Helvetica);
-  const fontSize      = 12;
-  const lineColor     = PDFLib.rgb(0.8, 0.8, 0.8);
+  // 5) Por cada página, renderiza y embebe como imagen
+  for (let i = 1; i <= pageCount; i++) {
+    // 5.1 Renderizar con PDF.js
+    const pageJs = await pdfJsDoc.getPage(i);
+    const viewport = pageJs.getViewport({ scale: 2 }); // escala 2 para buena calidad
+    const canvasTmp = document.createElement('canvas');
+    canvasTmp.width  = viewport.width;
+    canvasTmp.height = viewport.height;
+    await pageJs.render({ canvasContext: canvasTmp.getContext('2d'), viewport }).promise;
 
-  for (let idx = 0; idx < embeddedPages.length; idx++) {
-    const embed = embeddedPages[idx];
-    const width = embed.width;
-    const origH = embed.height;
+    // 5.2 Embeder PNG en pdf-lib
+    const imgData = canvasTmp.toDataURL('image/png');
+    const img     = await pdfNew.embedPng(imgData);
+    const imgDims = img.scale(1);
 
-    // 5a) Añade página con altura original + margen
-    const page = pdfNew.addPage([width, origH + marginHeight]);
+    // 5.3 Crear página nueva (altura original + margen)
+    const page = pdfNew.addPage([imgDims.width, imgDims.height + marginHeight]);
 
-    // 5b) Dibuja la página original desplazada hacia arriba
-    page.drawPage(embed, { x: 0, y: marginHeight });
+    // 5.4 Dibujar la imagen de la página original arriba
+    page.drawImage(img, {
+      x: 0,
+      y: marginHeight,
+      width: imgDims.width,
+      height: imgDims.height,
+    });
 
-    // 5c) Dibuja líneas guía en el margen
-    const spacing = marginHeight / (lineCount + 1);
-    for (let i = 1; i <= lineCount; i++) {
-      const yLine = marginHeight - i * spacing;
+    // 5.5 Dibujar líneas guía en el margen
+    for (let ln = 1; ln <= lineCount; ln++) {
+      const yLine = marginHeight - ln * spacing;
       page.drawLine({
-        start:     { x: marginLeft,        y: yLine },
-        end:       { x: width - marginLeft, y: yLine },
+        start:     { x: marginLeft,         y: yLine },
+        end:       { x: imgDims.width - marginLeft, y: yLine },
         thickness: 0.5,
         color:     lineColor,
       });
     }
 
-// 5d) Si existe nota, la prepara y dibuja sobre las líneas
-let raw = notesMap[idx + 1] || '';
-// ① elimina retornos de carro, deja saltos de línea
-raw = raw.replace(/\r+/g, '');
-// ② elimina todo char fuera de WinAnsi (rango U+0000–U+00FF)
-raw = raw.replace(/[^\x00-\xFF]/g, '');
+    // 5.6 Escribir la nota, con word-wrap sencillo
+    let raw = notesMap[i] || '';
+    raw = raw.replace(/\r+/g, '');            // quita CR
+    raw = raw.replace(/[^\x00-\xFF]/g, '');   // quita chars fuera de WinAnsi
+    const paras = raw.split('\n');
+    const maxWidth = imgDims.width - marginLeft * 2;
+    const lines = [];
 
- // ③ separa en párrafos por cada '\n'
-const paras = raw.split('\n');
+    paras.forEach((para, pi) => {
+      const words = para.split(' ');
+      let cur = '';
+      for (const w of words) {
+        const test = cur ? cur + ' ' + w : w;
+        if (helv.widthOfTextAtSize(test, fontSize) <= maxWidth) {
+          cur = test;
+        } else {
+          lines.push(cur);
+          cur = w;
+        }
+      }
+      if (cur) lines.push(cur);
+      if (pi < paras.length - 1) lines.push('');
+    });
 
-const maxWidth = width - marginLeft * 2;
-const lines    = [];
-
-// ④ word-wrap por párrafo
-paras.forEach((para, pi) => {
-  const words = para.split(' ');
-  let current = '';
-  for (const w of words) {
-    const testLine = current ? current + ' ' + w : w;
-    if (helv.widthOfTextAtSize(testLine, fontSize) <= maxWidth) {
-      current = testLine;
-    } else {
-      lines.push(current);
-      current = w;
-    }
-  }
-  if (current) lines.push(current);
-
-  // inserta línea vacía entre párrafos
-  if (pi < paras.length - 1) {
-    lines.push('');
-  }
-});
-
-// ⑤ dibuja cada línea sobre su guía correspondiente
-lines.forEach((lineText, i) => {
-  const yText = marginHeight - (i + 1) * spacing + 2;
-  page.drawText(lineText, {
-    x:     marginLeft + 2,
-    y:     yText,
-    size:  fontSize,
-    font:  helv,
-    color: PDFLib.rgb(0, 0, 0),
-  });
-});
-
-
+    lines.forEach((txt, k) => {
+      const yText = marginHeight - (k + 1) * spacing + 2;
+      page.drawText(txt, {
+        x:    marginLeft + 2,
+        y:    yText,
+        size: fontSize,
+        font: helv,
+        color: PDFLib.rgb(0, 0, 0),
+      });
+    });
   }
 
   // 6) Guarda y dispara descarga
-  const bytes = await pdfNew.save();
-  const blob  = new Blob([bytes], { type: 'application/pdf' });
-  const a     = document.createElement('a');
-  a.href      = URL.createObjectURL(blob);
-  a.download  = 'Manual_con_Notas.pdf';
+  const pdfBytes = await pdfNew.save();
+  const blob     = new Blob([pdfBytes], { type: 'application/pdf' });
+  const a        = document.createElement('a');
+  a.href         = URL.createObjectURL(blob);
+  a.download     = 'Manual_con_Notas.pdf';
   a.click();
 }
 
