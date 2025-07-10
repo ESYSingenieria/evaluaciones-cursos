@@ -1024,7 +1024,7 @@ const generateCertificateFromPDF = async (userName, evaluationID, score, approva
         const { width, height } = firstPage.getSize();
 
         // Registrar fontkit
-        pdfDoc.registerFontkit(window.fontkit);
+        pdfDoc.registerFontkit(fontkit);
 
         // Cargar fuentes personalizadas
         const monotypeFontBytes = await fetch("fonts/MonotypeCorsiva.ttf").then(res => res.arrayBuffer());
