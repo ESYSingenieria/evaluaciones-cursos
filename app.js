@@ -1307,9 +1307,9 @@ async function generatePDFWithNotes() {
   const pdfNew = await PDFLib.PDFDocument.create();
   const helv    = await pdfNew.embedFont(PDFLib.StandardFonts.Helvetica);
   const fontSize     = 12;
-  const marginHeight = 450;
+  const marginHeight = 500;
   const marginLeft   = 40;
-  const lineCount    = 18;
+  const lineCount    = 20;
   const lineColor    = PDFLib.rgb(0.8, 0.8, 0.8);
   const spacing      = marginHeight / (lineCount + 1);
 
@@ -1371,20 +1371,20 @@ async function generatePDFWithNotes() {
     const maxWidth = imgDims.width - marginLeft * 2;
     const lines = [];
 
-    paras.forEach((para, pi) => {
+    paras.forEach(para => {
       const words = para.split(' ');
-      let cur = '';
+      let current = '';
       for (const w of words) {
-        const test = cur ? cur + ' ' + w : w;
-        if (helv.widthOfTextAtSize(test, fontSize) <= maxWidth) {
-          cur = test;
+        const testLine = current ? current + ' ' + w : w;
+        if (helv.widthOfTextAtSize(testLine, fontSize) <= maxWidth) {
+          current = testLine;
         } else {
-          lines.push(cur);
-          cur = w;
+           lines.push(current);
+           current = w;
         }
       }
-      if (cur) lines.push(cur);
-      if (pi < paras.length - 1) lines.push('');
+      if (current) lines.push(current);
+      // ya no hay lines.push('') extra
     });
 
     lines.forEach((txt, k) => {
