@@ -1307,9 +1307,9 @@ async function generatePDFWithNotes() {
   const pdfNew = await PDFLib.PDFDocument.create();
   const helv    = await pdfNew.embedFont(PDFLib.StandardFonts.Helvetica);
   const fontSize     = 12;
-  const marginHeight = 150;
+  const marginHeight = 450;
   const marginLeft   = 40;
-  const lineCount    = 6;
+  const lineCount    = 18;
   const lineColor    = PDFLib.rgb(0.8, 0.8, 0.8);
   const spacing      = marginHeight / (lineCount + 1);
 
