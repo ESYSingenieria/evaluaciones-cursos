@@ -1328,27 +1328,35 @@ async function generatePDFWithNotes() {
 
   // 5) Por cada página, renderiza y embebe como imagen
   for (let i = 1; i <= pageCount; i++) {
-    // 5.1 Renderizar con PDF.js
-    const pageJs = await pdfJsDoc.getPage(i);
-    const viewport = pageJs.getViewport({ scale: 4 }); // escala 2 para buena calidad
+    // 5.1 Renderizar con PDF.js a alta resolución
+    const pageJs   = await pdfJsDoc.getPage(i);
+    // el "scale" alto para alta calidad (~300 DPI)
+    const scale    = 4; 
+    const viewport = pageJs.getViewport({ scale });
+
     const canvasTmp = document.createElement('canvas');
-    canvasTmp.width  = viewport.width;
-    canvasTmp.height = viewport.height;
-    await pageJs.render({ canvasContext: canvasTmp.getContext('2d'), viewport }).promise;
+    canvasTmp.width  = Math.floor(viewport.width);
+    canvasTmp.height = Math.floor(viewport.height);
+    await pageJs.render({
+      canvasContext: canvasTmp.getContext('2d'),
+      viewport
+    }).promise;
 
     // 5.2 Embeder PNG en pdf-lib
     const imgData = canvasTmp.toDataURL('image/png');
     const img     = await pdfNew.embedPng(imgData);
-    const imgDims = img.scale(1);
 
-    // 5.3 Crear página nueva (altura original + margen)
-    const page = pdfNew.addPage([imgDims.width, imgDims.height + marginHeight]);
+    // ← aquí hacemos el truco: escalamos la imagen de vuelta 1/scale
+    const imgDims = img.scale(1 / scale);
 
-    // 5.4 Dibujar la imagen de la página original arriba
+    // 5.3 Crear página nueva usando imgDims, no viewport.width
+    const page = pdfNew.addPage([ imgDims.width, imgDims.height + marginHeight ]);
+
+    // 5.4 Dibujar la imagen original —ahora en el tamaño que tocaba—
     page.drawImage(img, {
-      x: 0,
-      y: marginHeight,
-      width: imgDims.width,
+      x:      0,
+      y:      marginHeight,
+      width:  imgDims.width,
       height: imgDims.height,
     });
 
