@@ -1319,7 +1319,7 @@ async function generatePDFWithNotes() {
   const fontSize     = 10;
   const marginHeight = 500;
   const marginLeft   = 40;
-  const lineCount    = 20;
+  const lineCount    = 25;
   const lineColor    = PDFLib.rgb(0.8, 0.8, 0.8);
   const spacing      = marginHeight / (lineCount + 1);
 
