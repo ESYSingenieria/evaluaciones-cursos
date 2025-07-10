@@ -1330,7 +1330,7 @@ async function generatePDFWithNotes() {
   for (let i = 1; i <= pageCount; i++) {
     // 5.1 Renderizar con PDF.js
     const pageJs = await pdfJsDoc.getPage(i);
-    const viewport = pageJs.getViewport({ scale: 2 }); // escala 2 para buena calidad
+    const viewport = pageJs.getViewport({ scale: 4 }); // escala 2 para buena calidad
     const canvasTmp = document.createElement('canvas');
     canvasTmp.width  = viewport.width;
     canvasTmp.height = viewport.height;
