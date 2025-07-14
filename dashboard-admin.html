@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Dashboard Admin</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    .user-item { border: 1px solid #ccc; padding: 1rem; margin-bottom: 1rem; }
+    .eval-item { margin-left: 1rem; margin-top: .5rem; }
+    button { margin-right: .5rem; margin-top: .25rem; }
+  </style>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+  <!-- jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+  <h1>🔒 Panel de Administración</h1>
+  <div id="usersList">Cargando usuarios…</div>
+  <script src="dashboard-admin.js"></script>
+</body>
+</html>
