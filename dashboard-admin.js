@@ -121,9 +121,23 @@ async function loadAllUsers() {
       evalDiv.appendChild(btnLock);
 
       // 3.6) Botón de certificado si aprobó algún intento
-      const passed = respDocs.some(d =>
-        d.data().result.grade === 'Aprobado'
+      const passedDoc = respDocs.find(d =>
+        d.data().result?.grade === 'Aprobado'
       );
+      if (passedDoc) {
+        const passData = passedDoc.data();
+        const score   = passData.result?.score ?? 'N/A';
+        const dateStr = passData.timestamp
+          ? passData.timestamp.toDate().toLocaleDateString()
+          : '';
+        const btnCert = document.createElement('button');
+        btnCert.textContent = 'Descargar Certificado';
+        btnCert.addEventListener('click', () =>
+          generateCertificateFromPDF(u.name, ev, score, dateStr)
+        );
+        evalDiv.appendChild(btnCert);
+      }
+      
       if (passed) {
         const passDoc = respDocs.find(d =>
           d.data().result.grade === 'Aprobado'
