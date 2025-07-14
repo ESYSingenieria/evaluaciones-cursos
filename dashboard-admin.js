@@ -81,10 +81,14 @@ async function loadAllUsers() {
 
       // 3.1) Traer todos los intentos de este usuario en este curso
       const respSnap = await db.collection('responses')
-        .where('userId', '==', uid)
-        .where('evaluationId', '==', ev)
-        .orderBy('timestamp', 'asc')
+        .where('userId','==',uid)
+        .where('evaluationId','==',ev)
         .get();
+
+      // ordenar manualmente por timestamp:
+      const respDocs = respSnap.docs.sort((a, b) => 
+         a.data().timestamp.toDate() - b.data().timestamp.toDate()
+      );
 
       // 3.2) Botones individuales por cada intento
       respSnap.docs.forEach((d, i) => {
