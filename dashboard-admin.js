@@ -97,7 +97,7 @@ async function loadAllUsers() {
       // 3.3.c) Botón por CADA intento válido
       validAttempts.forEach((docSnap, i) => {
         const btn = document.createElement('button');
-        btn.textContent = `Desc. respuestas intento ${i+1} (PDF)`;
+        btn.textContent = `Respuestas Intento ${i+1} (PDF)`;
         btn.onclick = () =>
           downloadResponsePDFForAttempt(uid, ev, i);
         evalDiv.appendChild(btn);
@@ -105,29 +105,17 @@ async function loadAllUsers() {
 
       // 3.3.d) Reiniciar intentos
       const btnReset = document.createElement('button');
-      btnReset.textContent = 'Reiniciar intentos';
+      btnReset.textContent = 'Reiniciar Intentos';
       btnReset.onclick = () =>
         resetAttemptsForEvaluation(uid, ev);
       evalDiv.appendChild(btnReset);
 
       // 3.3.e) Descargar encuesta (una única posible)
       const btnSurvey = document.createElement('button');
-      btnSurvey.textContent = 'Descargar encuesta (PDF)';
+      btnSurvey.textContent = 'Encuesta de Satisfacción (PDF)';
       btnSurvey.onclick = () =>
         downloadSurveyPDF(uid, ev);
       evalDiv.appendChild(btnSurvey);
-
-      // 3.3.f) Bloquear/permitir evaluación
-      const locked = u.lockedEvaluations||[];
-      const btnLock = document.createElement('button');
-      btnLock.textContent = locked.includes(ev)
-        ? 'Permitir evaluación'
-        : 'Bloquear evaluación';
-      btnLock.onclick = async () => {
-        await toggleEvaluationAccess(uid, ev);
-        await loadAllUsers();
-      };
-      evalDiv.appendChild(btnLock);
 
       // 3.3.g) Botón de CERTIFICADO por cada curso APROBADO
       //    buscamos en validAttempts algún objeto con grade==='Aprobado'
@@ -265,17 +253,6 @@ async function downloadSurveyPDF(uid, ev) {
     });
 
   pdf.save(`Encuesta_${userName}_${ev}.pdf`);
-}
-
-// 4.e) Bloquear/permitir evaluación
-async function toggleEvaluationAccess(uid,ev) {
-  const ref = db.collection('users').doc(uid);
-  const data = (await ref.get()).data()||{};
-  const locked = data.lockedEvaluations||[];
-  const next   = locked.includes(ev)
-    ? locked.filter(x=>x!==ev)
-    : [...locked,ev];
-  await ref.update({ lockedEvaluations: next });
 }
 
 // 4.f) Generar certificado (tu función original adaptada)
