@@ -242,8 +242,8 @@ async function generateCertificateForUser(uid,evaluationID,score,approvalDate) {
     const pdfDoc = await PDFLib.PDFDocument.load(bytes);
     pdfDoc.registerFontkit(fontkit);
     const [b1,b2] = await Promise.all([
-      fetch('/fuentes/PerpetuaStd-Bold.otf').then(r=>r.arrayBuffer()),
-      fetch('/fuentes/TimesNewRomanPSMT.ttf').then(r=>r.arrayBuffer())
+      fetch('/fonts/PerpetuaStd-Bold.otf').then(r=>r.arrayBuffer()),
+      fetch('/fonts/TimesNewRomanPSMT.ttf').then(r=>r.arrayBuffer())
     ]);
     const fBold  = await pdfDoc.embedFont(b1);
     const fRoman = await pdfDoc.embedFont(b2);
