@@ -1,5 +1,5 @@
 // ————————————————————————————————————————————————
-// 1) Inicialización Firebase
+// 1) Inicialización de Firebase (igual que tu app original) :contentReference[oaicite:0]{index=0}
 const firebaseConfig = {
   apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
   authDomain: "plataforma-de-cursos-esys.firebaseapp.com",
@@ -11,229 +11,257 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db   = firebase.firestore();
-const { jsPDF } = window.jspdf;  // extraído de jspdf.umd.min.js
+
+// Cargamos jsPDF desde el HTML
+const { jsPDF } = window.jspdf;
 // ————————————————————————————————————————————————
 
-// 2) Protección de ruta: solo admin
-auth.onAuthStateChanged(async user => {
-  if (!user) return window.location = 'index.html';
-  const perfil = await db.collection('users').doc(user.uid).get();
-  if (!perfil.exists || perfil.data().role !== 'admin') {
-    return window.location = 'dashboard.html';
+// ————————————————————————————————————————————————
+// 2) Protegemos la ruta y redirigimos según role
+auth.onAuthStateChanged(async (user) => {
+  if (!user) {
+    return window.location = 'index.html';
   }
-  loadAllUsers();
-});
 
-// 3) Listar usuarios “user”
+  // Leemos role desde tu colección users
+  const perfil = await db.collection('users').doc(user.uid).get();
+  const role   = perfil.data()?.role;
+
+  // Si es admin y no estamos en su panel → redirigimos
+  if (role === 'admin' && !location.pathname.includes('dashboard-admin.html')) {
+    return location.href = 'dashboard-admin.html';
+  }
+  // Si NO es admin y estamos en el panel admin → mandamos al normal
+  if (role !== 'admin' && location.pathname.includes('dashboard-admin.html')) {
+    return location.href = 'dashboard.html';
+  }
+
+  // Si es admin y en su panel, cargamos los usuarios
+  if (location.pathname.includes('dashboard-admin.html')) {
+    await loadAllUsers();
+  }
+});
+// ————————————————————————————————————————————————
+
+// ————————————————————————————————————————————————
+// 3) Carga y renderizado de todos los usuarios “user”
 async function loadAllUsers() {
-  const div = document.getElementById('usersList');
+  const container = document.getElementById('usersList');
+  container.textContent = 'Cargando usuarios…';
+
   const snap = await db.collection('users')
-                       .where('role','==','user')
+                       .where('role', '==', 'user')
                        .get();
   if (snap.empty) {
-    div.textContent = 'No hay usuarios normales.';
+    container.textContent = 'No hay usuarios normales.';
     return;
   }
-  div.innerHTML = '';
-  snap.forEach(doc => {
-    const u = doc.data();
-    const lockedArr = u.lockedEvaluations || [];
-    const item = document.createElement('div');
-    item.className = 'user-item';
-    item.innerHTML = `
+
+  container.innerHTML = '';
+  for (const docUser of snap.docs) {
+    const u   = docUser.data();
+    const uid = docUser.id;
+
+    // Contenedor de usuario
+    const userDiv = document.createElement('div');
+    userDiv.className = 'user-item';
+    userDiv.innerHTML = `
       <strong>${u.name}</strong><br>
       RUT: ${u.rut}<br>
       CustomID: ${u.customID}<br>
       Empresa: ${u.company}<br>
-      <button onclick="viewCertificates('${doc.id}')">
-        Ver & descargar certificados aprobados
-      </button>
-      <div><em>Evaluaciones asignadas:</em></div>
+      <em>Evaluaciones asignadas:</em>
     `;
-    (u.assignedEvaluations||[]).forEach(ev => {
-      const ei = document.createElement('div');
-      ei.className = 'eval-item';
-      const isLocked = lockedArr.includes(ev);
-      ei.innerHTML = `
-        <strong>${ev}</strong><br>
-        <button onclick="viewScores('${doc.id}','${ev}')">Ver puntajes</button>
-        <button onclick="resetAttempts('${doc.id}','${ev}')">Reiniciar intentos</button>
-        <button onclick="downloadResponses('${doc.id}','${ev}')">
-          Descargar respuestas (PDF)
-        </button>
-        <button onclick="downloadSurveys('${doc.id}','${ev}')">
-          Descargar encuestas (PDF)
-        </button>
-        <button onclick="toggleEvaluationAccess('${doc.id}','${ev}')">
-          ${isLocked ? 'Permitir' : 'Bloquear'} evaluación
-        </button>
-      `;
-      item.appendChild(ei);
+
+    // Por cada curso asignado
+    for (const ev of (u.assignedEvaluations || [])) {
+      const evalDiv = document.createElement('div');
+      evalDiv.className = 'eval-item';
+      evalDiv.innerHTML = `<strong>${ev}</strong><br>`;
+
+      // 3.1) Traer todos los intentos de este usuario en este curso
+      const respSnap = await db.collection('responses')
+        .where('userId', '==', uid)
+        .where('evaluationId', '==', ev)
+        .orderBy('timestamp', 'asc')
+        .get();
+
+      // 3.2) Botones individuales por cada intento
+      respSnap.docs.forEach((d, i) => {
+        const btn = document.createElement('button');
+        btn.textContent = `Desc. respuestas intento ${i+1} (PDF)`;
+        btn.addEventListener('click', () =>
+          downloadResponsePDFForAttempt(uid, ev, i)
+        );
+        evalDiv.appendChild(btn);
+      });
+
+      // 3.3) Reiniciar todos los intentos de este curso
+      const btnReset = document.createElement('button');
+      btnReset.textContent = 'Reiniciar intentos';
+      btnReset.addEventListener('click', () =>
+        resetAttemptsForEvaluation(uid, ev)
+      );
+      evalDiv.appendChild(btnReset);
+
+      // 3.4) Descargar encuesta (solo 1 posible)
+      const btnSurvey = document.createElement('button');
+      btnSurvey.textContent = 'Descargar encuesta (PDF)';
+      btnSurvey.addEventListener('click', () =>
+        downloadSurveyPDF(uid, ev)
+      );
+      evalDiv.appendChild(btnSurvey);
+
+      // 3.5) Bloquear/Permitir evaluación
+      const lockedArr = u.lockedEvaluations || [];
+      const isLocked  = lockedArr.includes(ev);
+      const btnLock   = document.createElement('button');
+      btnLock.textContent = isLocked
+        ? 'Permitir evaluación'
+        : 'Bloquear evaluación';
+      btnLock.addEventListener('click', async () => {
+        await toggleEvaluationAccess(uid, ev);
+        await loadAllUsers();
+      });
+      evalDiv.appendChild(btnLock);
+
+      // 3.6) Si aprobó al menos un intento, botón de certificado
+      const passed = respSnap.docs.some(d =>
+        d.data().result.grade === 'Aprobado'
+      );
+      if (passed) {
+        const passDoc = respSnap.docs.find(d =>
+          d.data().result.grade === 'Aprobado'
+        ).data();
+        const score   = passDoc.result.score;
+        const dateStr = passDoc.timestamp.toDate().toLocaleDateString();
+        const btnCert = document.createElement('button');
+        btnCert.textContent = 'Descargar Certificado';
+        btnCert.addEventListener('click', () =>
+          generateCertificateFromPDF(u.name, ev, score, dateStr)
+        );
+        evalDiv.appendChild(btnCert);
+      }
+
+      userDiv.appendChild(evalDiv);
+    }
+
+    container.appendChild(userDiv);
+  }
+}
+// ————————————————————————————————————————————————
+
+// ————————————————————————————————————————————————
+// 4) Funciones auxiliares
+
+// 4.a) Descargar respuestas de UN solo intento en PDF
+async function downloadResponsePDFForAttempt(uid, ev, attemptIndex) {
+  const respSnap = await db.collection('responses')
+    .where('userId', '==', uid)
+    .where('evaluationId', '==', ev)
+    .orderBy('timestamp', 'asc')
+    .get();
+  if (respSnap.empty || attemptIndex >= respSnap.size) {
+    return alert('Intento no encontrado.');
+  }
+  const r = respSnap.docs[attemptIndex].data();
+  await createSingleAttemptPDF(uid, ev, attemptIndex + 1, r);
+}
+
+// 4.b) Generar PDF de un solo intento
+async function createSingleAttemptPDF(uid, ev, intentoNum, r) {
+  // Traer nombre y preguntas
+  const [ userSnap, evalSnap ] = await Promise.all([
+    db.collection('users').doc(uid).get(),
+    db.collection('evaluations').doc(ev).get()
+  ]);
+  const userName   = userSnap.data().name;
+  const questions  = evalSnap.data().questions || [];
+
+  const pdf = new jsPDF();
+  let y = 10;
+  pdf.setFontSize(14);
+  pdf.text(`Nombre: ${userName}`, 10, y);           y += 10;
+  pdf.text(`Curso: ${ev}`,           10, y);           y += 10;
+  pdf.text(`Intento: ${intentoNum}`, 10, y);           y += 12;
+  pdf.setFontSize(12);
+
+  Object.entries(r.answers || {})
+    .sort((a,b)=>
+      +a[0].match(/\d+/)[0] - +b[0].match(/\d+/)[0]
+    )
+    .forEach(([qKey, ans]) => {
+      const idx = +qKey.match(/\d+/)[0];
+      const txt = questions[idx]?.text || `Pregunta ${idx+1}`;
+      pdf.text(`${idx+1}. ${txt}`, 10, y); y += 7;
+      pdf.text(`→ ${ans}`,         12, y); y += 8;
+      if (y > 280) { pdf.addPage(); y = 10; }
     });
-    div.appendChild(item);
-  });
+
+  pdf.save(`Respuestas_${userName}_${ev}_intento${intentoNum}.pdf`);
 }
 
-// 4.a) Ver certificados aprobados
-async function viewCertificates(uid) {
-  const certs = await db
-    .collection('users').doc(uid)
-    .collection('certificates')
-    .where('status','==','approved')
-    .get();
-  if (certs.empty) return alert('No hay certificados aprobados.');
-  certs.forEach(d => window.open(d.data().url, '_blank'));
-}
-
-// 4.b) Ver puntajes
-async function viewScores(uid, ev) {
-  const snap = await db
-    .collection('users').doc(uid)
-    .collection('responses')
-    .where('evaluationId','==',ev)
-    .orderBy('timestamp','asc')
-    .get();
-  if (snap.empty) return alert('Sin intentos para '+ev);
-  let txt = '';
-  snap.forEach(d => {
-    const r = d.data();
-    txt += `• ${r.timestamp.toDate().toLocaleString()}: ${r.result.score} pts\n`;
-  });
-  alert(`Puntajes de ${ev}:\n\n`+txt);
-}
-
-// 4.c) Reiniciar intentos
-async function resetAttempts(uid, ev) {
+// 4.c) Reiniciar intentos de un curso
+async function resetAttemptsForEvaluation(uid, ev) {
   if (!confirm(`¿Reiniciar intentos de ${ev}?`)) return;
-  const snap = await db
-    .collection('users').doc(uid)
-    .collection('responses')
+  const snap = await db.collection('responses')
+    .where('userId','==',uid)
     .where('evaluationId','==',ev)
     .get();
   const batch = db.batch();
   snap.forEach(d => batch.delete(d.ref));
   await batch.commit();
-  alert(`Intentos de ${ev} reiniciados.`);
+  alert('Intentos reiniciados.');
 }
 
-// 4.d) Descargar respuestas en PDF con texto de preguntas
-async function downloadResponses(uid, ev) {
-  const userRef = db.collection('users').doc(uid);
-  // 1) Traer nombre, puntaje y respuestas
-  const [ userSnap, respSnap, evalSnap ] = await Promise.all([
-    userRef.get(),
-    userRef.collection('responses')
-           .where('evaluationId','==',ev)
-           .orderBy('timestamp','asc')
-           .get(),
-    db.collection('evaluations').doc(ev).get()
-  ]);
-  const userName = userSnap.data().name || '—';
-  if (!respSnap.size) return alert('No hay respuestas para '+ev);
-
-  // Tomamos el primer intento para el puntaje
-  const score = respSnap.docs[0].data().result.score;
-  // Preguntas definidas en el evaluation doc
-  const questionsArr = (evalSnap.exists && evalSnap.data().questions) || [];
-
-  // 2) Crear PDF
-  const pdf = new jsPDF();
-  let y = 10;
-  pdf.setFontSize(14);
-  pdf.text(`Nombre: ${userName}`, 10, y);  y += 10;
-  pdf.text(`Puntaje: ${score}`,    10, y);  y += 12;
-  pdf.setFontSize(12);
-
-  // 3) Por cada intento:
-  respSnap.docs.forEach((docR, idx) => {
-    const r = docR.data();
-    pdf.text(`--- Intento ${idx+1} (${r.timestamp.toDate().toLocaleString()}) ---`, 10, y);
-    y += 8;
-
-    // Ordenar y mostrar cada pregunta con su texto real:
-    Object.entries(r.answers || {})
-      .sort((a,b)=>{
-        const ia = +a[0].match(/\d+/)[0], ib = +b[0].match(/\d+/)[0];
-        return ia - ib;
-      })
-      .forEach(([qKey, answer]) => {
-        const qIndex = +qKey.match(/\d+/)[0];
-        const questionText = questionsArr[qIndex]?.text || `Pregunta ${qIndex+1}`;
-        pdf.text(`${qIndex+1}. ${questionText}`, 10, y);
-        y += 7;
-        pdf.text(`   → ${answer}`, 12, y);
-        y += 8;
-        if (y > 280) { pdf.addPage(); y = 10; }
-      });
-
-    y += 6;
-    if (y > 280) { pdf.addPage(); y = 10; }
-  });
-
-  pdf.save(`Respuestas_${userName}_${ev}.pdf`);
-}
-
-// 4.e) Descargar encuestas en PDF con texto de preguntas
-async function downloadSurveys(uid, ev) {
-  const userRef = db.collection('users').doc(uid);
-  // 1) Traer nombre, encuestas y preguntas de encuesta
+// 4.d) Descargar encuesta en PDF
+async function downloadSurveyPDF(uid, ev) {
   const [ userSnap, surveySnap, sqSnap ] = await Promise.all([
-    userRef.get(),
-    userRef.collection('surveys')
-           .where('evaluationId','==',ev)
-           .orderBy('timestamp','asc')
-           .get(),
+    db.collection('users').doc(uid).get(),
+    db.collection('surveys')
+      .where('userId','==',uid)
+      .where('evaluationId','==',ev)
+      .orderBy('timestamp','asc')
+      .get(),
     db.collection('surveyQuestions').doc(ev).get()
   ]);
-  const userName = userSnap.data().name || '—';
-  if (!surveySnap.size) return alert('No hay encuestas para '+ev);
-  const surveyQs = (sqSnap.exists && sqSnap.data().questions) || [];
+  if (surveySnap.empty) return alert('Sin encuestas.');
+  const s     = surveySnap.docs[0].data();
+  const userName = userSnap.data().name;
+  const questions = sqSnap.data()?.questions || [];
 
-  // 2) Crear PDF
   const pdf = new jsPDF();
   let y = 10;
   pdf.setFontSize(14);
-  pdf.text(`Nombre: ${userName}`, 10, y);  y += 10;
-  pdf.text(`Encuesta: ${ev}`,     10, y);  y += 12;
+  pdf.text(`Nombre: ${userName}`, 10, y); y += 10;
+  pdf.text(`Encuesta: ${ev}`,     10, y); y += 12;
   pdf.setFontSize(12);
 
-  // 3) Por cada respuesta de encuesta:
-  surveySnap.docs.forEach((docS, idx) => {
-    const s = docS.data();
-    pdf.text(`--- Respuesta ${idx+1} (${s.timestamp.toDate().toLocaleString()}) ---`, 10, y);
-    y += 8;
-
-    Object.entries(s.surveyData || {})
-      .sort((a,b)=>{
-        const ia = +a[0].match(/\d+/)[0], ib = +b[0].match(/\d+/)[0];
-        return ia - ib;
-      })
-      .forEach(([qKey, answer])=>{
-        const qIndex = +qKey.match(/\d+/)[0];
-        const questionText = surveyQs[qIndex]?.text || `Pregunta ${qIndex+1}`;
-        pdf.text(`${qIndex+1}. ${questionText}`, 10, y);
-        y += 7;
-        pdf.text(`   → ${answer}`, 12, y);
-        y += 8;
-        if (y > 280) { pdf.addPage(); y = 10; }
-      });
-
-    y += 6;
-    if (y > 280) { pdf.addPage(); y = 10; }
-  });
+  Object.entries(s.surveyData || {})
+    .sort((a,b)=>
+      +a[0].match(/\d+/)[0] - +b[0].match(/\d+/)[0]
+    )
+    .forEach(([qKey, ans]) => {
+      const idx = +qKey.match(/\d+/)[0];
+      const txt = questions[idx]?.text || `Pregunta ${idx+1}`;
+      pdf.text(`${idx+1}. ${txt}`, 10, y); y += 7;
+      pdf.text(`→ ${ans}`,         12, y); y += 8;
+      if (y > 280) { pdf.addPage(); y = 10; }
+    });
 
   pdf.save(`Encuesta_${userName}_${ev}.pdf`);
 }
 
-// 4.f) Bloquear/permitir evaluación (sin cambios)
+// 4.e) Bloquear/Permitir evaluación en el perfil de usuario
 async function toggleEvaluationAccess(uid, ev) {
   const ref = db.collection('users').doc(uid);
-  const doc = await ref.get();
-  const locked = doc.data().lockedEvaluations || [];
-  const next = locked.includes(ev)
-             ? locked.filter(x=>x!==ev)
-             : [...locked, ev];
+  const u   = (await ref.get()).data();
+  const locked = u.lockedEvaluations||[];
+  const next   = locked.includes(ev)
+    ? locked.filter(x=>x!==ev)
+    : [...locked, ev];
   await ref.update({ lockedEvaluations: next });
-  alert(`Evaluación ${ev} ${locked.includes(ev)? 'permitida':'bloqueada'}.`);
-  loadAllUsers();
 }
+
+// 4.f) Generar certificado (se utiliza tu función original) :contentReference[oaicite:1]{index=1}
+//    generateCertificateFromPDF(userName, evaluationID, score, approvalDate);
