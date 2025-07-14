@@ -30,18 +30,21 @@ auth.onAuthStateChanged(async user => {
   }
 });
 
-// 3) Listar usuarios “user” y sus cursos/intentos
 async function loadAllUsers() {
   const container = document.getElementById('usersList');
   container.textContent = 'Cargando usuarios…';
 
-  const usersSnap = await db.collection('users').where('role','==','user').get();
+  // 1) Traer solo usuarios normales
+  const usersSnap = await db.collection('users')
+                            .where('role','==','user')
+                            .get();
   if (usersSnap.empty) {
     container.textContent = 'No hay usuarios normales.';
     return;
   }
   container.innerHTML = '';
 
+  // 2) Por cada usuario
   for (const userDoc of usersSnap.docs) {
     const u   = userDoc.data();
     const uid = userDoc.id;
@@ -56,64 +59,74 @@ async function loadAllUsers() {
       <em>Evaluaciones asignadas:</em>
     `;
 
+    // 3) Por cada curso asignado a este usuario
     for (const ev of (u.assignedEvaluations||[])) {
       const evalDiv = document.createElement('div');
       evalDiv.className = 'eval-item';
       evalDiv.innerHTML = `<strong>${ev}</strong><br>`;
 
-      // 3.1) Traer intentos y ordenarlos localmente
-      const raw = await db.collection('responses')
+      // 3.1) Traer **todos** los intentos de este usuario en este curso
+      const rawSnap = await db.collection('responses')
         .where('userId','==',uid)
         .where('evaluationId','==',ev)
         .get();
-      const respDocs = raw.docs.sort((a,b)=>
+
+      // Ordenar localmente por timestamp
+      const respDocs = rawSnap.docs.sort((a,b) =>
         a.data().timestamp.toDate() - b.data().timestamp.toDate()
       );
 
-      // 3.2) Botón por intento de respuesta
-      respDocs.forEach((d,i) => {
+      // 3.2) Botón **por cada** intento de respuesta
+      respDocs.forEach((docR, idx) => {
         const btn = document.createElement('button');
-        btn.textContent = `Desc. respuestas intento ${i+1} (PDF)`;
-        btn.onclick = () => downloadResponsePDFForAttempt(uid,ev,i);
+        btn.textContent = `Desc. respuestas intento ${idx+1} (PDF)`;
+        btn.onclick    = () => downloadResponsePDFForAttempt(uid, ev, idx);
         evalDiv.appendChild(btn);
       });
 
-      // 3.3) Reiniciar intentos
+      // 3.3) Botón “Reiniciar intentos”
       const btnReset = document.createElement('button');
       btnReset.textContent = 'Reiniciar intentos';
-      btnReset.onclick = () => resetAttemptsForEvaluation(uid,ev);
+      btnReset.onclick     = () => resetAttemptsForEvaluation(uid, ev);
       evalDiv.appendChild(btnReset);
 
-      // 3.4) Descargar encuesta
+      // 3.4) Botón “Descargar encuesta (PDF)”
       const btnSurvey = document.createElement('button');
       btnSurvey.textContent = 'Descargar encuesta (PDF)';
-      btnSurvey.onclick = () => downloadSurveyPDF(uid,ev);
+      btnSurvey.onclick     = () => downloadSurveyPDF(uid, ev);
       evalDiv.appendChild(btnSurvey);
 
-      // 3.5) Bloquear/permitir evaluación
-      const locked = u.lockedEvaluations||[];
+      // 3.5) Botón “Bloquear/Permitir evaluación”
+      const locked = u.lockedEvaluations || [];
       const btnLock = document.createElement('button');
       btnLock.textContent = locked.includes(ev)
         ? 'Permitir evaluación'
         : 'Bloquear evaluación';
       btnLock.onclick = async () => {
-        await toggleEvaluationAccess(uid,ev);
-        loadAllUsers();
+        await toggleEvaluationAccess(uid, ev);
+        await loadAllUsers();
       };
       evalDiv.appendChild(btnLock);
 
-      // 3.6) Botón de certificado si aprobó
-      const passedDoc = respDocs.find(d=> d.data().result?.grade==='Aprobado');
+      // ─────────────────────────────────────
+      // 3.6) **CERTIFICADO**: botón por **cada** curso APROBADO
+      // Comprobar si **algún** intento tiene result.grade === 'Aprobado'
+      const passedDoc = respDocs.find(d =>
+        d.data().result?.grade === 'Aprobado'
+      );
       if (passedDoc) {
+        // Si hay al menos uno aprobado, pintamos el botón
         const { score } = passedDoc.data().result;
         const dateStr   = passedDoc.data().timestamp
-          .toDate().toLocaleDateString();
+                            .toDate()
+                            .toLocaleDateString();
         const btnCert = document.createElement('button');
         btnCert.textContent = 'Descargar Certificado';
         btnCert.onclick = () =>
-          generateCertificateForUser(uid,ev,score,dateStr);
+          generateCertificateForUser(uid, ev, score, dateStr);
         evalDiv.appendChild(btnCert);
       }
+      // ─────────────────────────────────────
 
       userDiv.appendChild(evalDiv);
     }
@@ -121,6 +134,7 @@ async function loadAllUsers() {
     container.appendChild(userDiv);
   }
 }
+
 
 // 4.a) PDF de un solo intento
 async function downloadResponsePDFForAttempt(uid,ev,idx) {
