@@ -137,20 +137,6 @@ async function loadAllUsers() {
         );
         evalDiv.appendChild(btnCert);
       }
-      
-      if (passed) {
-        const passDoc = respDocs.find(d =>
-          d.data().result.grade === 'Aprobado'
-        ).data();
-        const score   = passDoc.result.score;
-        const dateStr = passDoc.timestamp.toDate().toLocaleDateString();
-        const btnCert = document.createElement('button');
-        btnCert.textContent = 'Descargar Certificado';
-        btnCert.addEventListener('click', () =>
-          generateCertificateFromPDF(u.name, ev, score, dateStr)
-        );
-        evalDiv.appendChild(btnCert);
-      }
 
       userDiv.appendChild(evalDiv);
     }
