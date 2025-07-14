@@ -69,52 +69,69 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-// Consolidar autenticación en una única función
 auth.onAuthStateChanged(async (user) => {
-    if (!user) {
-        console.log("No hay usuario autenticado.");
-
-        // Permitir acceso libre a verificar.html
-        if (!window.location.pathname.includes("index.html") && !window.location.pathname.includes("verificar.html")) {
-            window.location.href = "index.html";
-        }
-    } else {
-        console.log("Usuario autenticado:", user.uid);
-
-        try {
-            // Aquí se cargan los datos del usuario
-            const userData = await loadUserData(); 
-            console.log("Datos del usuario cargados:", userData);
-
-            if (window.location.pathname.includes("dashboard.html")) {
-                const userNameElement = document.getElementById("userNameDisplay");
-                const userRutElement = document.getElementById("userRutDisplay");
-
-                if (userNameElement) {
-                    userNameElement.textContent = userData.name || "Nombre no disponible";
-                }
-
-                if (userRutElement) {
-                    userRutElement.textContent = userData.rut || "RUT no disponible";
-                }
-
-                // Cargar evaluaciones y respuestas
-                await loadEvaluations();
-                await loadResponses();
-            }
-
-            if (window.location.pathname.includes("manual.html")) {
-                await loadPDF(); // Cargar el manual
-            }
-
-            if (window.location.pathname.includes("evaluation.html")) {
-                await loadEvaluation(); // Cargar la evaluación
-            }
-        } catch (error) {
-            console.error("Error al cargar los datos del usuario:", error);
-        }
+  if (!user) {
+    console.log("No hay usuario autenticado.");
+    if (
+      !window.location.pathname.includes("index.html") &&
+      !window.location.pathname.includes("verificar.html")
+    ) {
+      window.location.href = "index.html";
     }
+    return;
+  }
+
+  console.log("Usuario autenticado:", user.uid);
+
+  // 1) Leemos el perfil completo, que tu loadUserData debería devolver
+  //    un objeto con al menos { name, rut, role, … }
+  let userData;
+  try {
+    userData = await loadUserData();
+    console.log("Datos del usuario cargados:", userData);
+  } catch (err) {
+    console.error("Error al cargar userData:", err);
+    return;
+  }
+
+  // 2) Redirigir según role
+  if (userData.role === "admin") {
+    // si es admin y no está ya en dashboard-admin, vamos allí
+    if (!window.location.pathname.includes("dashboard-admin.html")) {
+      return (window.location.href = "dashboard-admin.html");
+    }
+  } else {
+    // si NO es admin y está en dashboard-admin, lo mandamos al dashboard normal
+    if (window.location.pathname.includes("dashboard-admin.html")) {
+      return (window.location.href = "dashboard.html");
+    }
+  }
+
+  // 3) A partir de aquí, sólo usuarios “correctos” se quedan en cada página
+  if (window.location.pathname.includes("dashboard.html")) {
+    const userNameElement = document.getElementById("userNameDisplay");
+    const userRutElement = document.getElementById("userRutDisplay");
+
+    if (userNameElement) {
+      userNameElement.textContent = userData.name || "Nombre no disponible";
+    }
+    if (userRutElement) {
+      userRutElement.textContent = userData.rut || "RUT no disponible";
+    }
+
+    await loadEvaluations();
+    await loadResponses();
+  }
+
+  if (window.location.pathname.includes("manual.html")) {
+    await loadPDF();
+  }
+
+  if (window.location.pathname.includes("evaluation.html")) {
+    await loadEvaluation();
+  }
 });
+
 
 // Manejo de inicio de sesión
 const loginForm = document.getElementById('loginForm');
@@ -125,8 +142,20 @@ if (loginForm) {
         const password = document.getElementById('password').value;
 
         try {
+            // ────────────────────────────────────────────────
+            // Después de autenticar, leemos su rol y redirigimos
             await auth.signInWithEmailAndPassword(email, password);
-            window.location.href = "dashboard.html";
+            const perfil = await db.collection('users')
+                                   .doc(auth.currentUser.uid)
+                                   .get();
+            const rol = perfil.data()?.role;
+            if (rol === 'admin') {
+              window.location.href = "dashboard-admin.html";
+            } else {
+              window.location.href = "dashboard.html";
+            }
+            // ────────────────────────────────────────────────
+
         } catch (error) {
             document.getElementById('errorMessage').innerText = error.message;
         }
