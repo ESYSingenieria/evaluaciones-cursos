@@ -65,18 +65,24 @@ async function loadAllUsers() {
       evalDiv.className = 'eval-item';
       evalDiv.innerHTML = `<strong>${ev}</strong><br>`;
 
-      // 3.1) Traer **todos** los intentos de este usuario en este curso
+      // 3.1) Traer todos los intentos de este usuario en este curso
       const rawSnap = await db.collection('responses')
         .where('userId','==',uid)
         .where('evaluationId','==',ev)
         .get();
 
+      // Filtrar solo documentos que tengan result.grade y result.score
+      let respDocs = rawSnap.docs.filter(d => {
+        const r = d.data().result;
+        return r != null && r.grade != null && typeof r.score === 'number';
+      });
+
       // Ordenar localmente por timestamp
-      const respDocs = rawSnap.docs.sort((a,b) =>
+      respDocs.sort((a,b) =>
         a.data().timestamp.toDate() - b.data().timestamp.toDate()
       );
 
-      // 3.2) Botón **por cada** intento de respuesta
+      // 3.2) Botón por cada intento válido
       respDocs.forEach((docR, idx) => {
         const btn = document.createElement('button');
         btn.textContent = `Desc. respuestas intento ${idx+1} (PDF)`;
@@ -108,14 +114,11 @@ async function loadAllUsers() {
       };
       evalDiv.appendChild(btnLock);
 
-      // ─────────────────────────────────────
-      // 3.6) **CERTIFICADO**: botón por **cada** curso APROBADO
-      // Comprobar si **algún** intento tiene result.grade === 'Aprobado'
+      // 3.6) CERTIFICADO: botón por cada curso aprobado
       const passedDoc = respDocs.find(d =>
-        d.data().result?.grade === 'Aprobado'
+        d.data().result.grade === 'Aprobado'
       );
       if (passedDoc) {
-        // Si hay al menos uno aprobado, pintamos el botón
         const { score } = passedDoc.data().result;
         const dateStr   = passedDoc.data().timestamp
                             .toDate()
@@ -126,7 +129,6 @@ async function loadAllUsers() {
           generateCertificateForUser(uid, ev, score, dateStr);
         evalDiv.appendChild(btnCert);
       }
-      // ─────────────────────────────────────
 
       userDiv.appendChild(evalDiv);
     }
@@ -134,7 +136,6 @@ async function loadAllUsers() {
     container.appendChild(userDiv);
   }
 }
-
 
 // 4.a) PDF de un solo intento
 async function downloadResponsePDFForAttempt(uid,ev,idx) {
