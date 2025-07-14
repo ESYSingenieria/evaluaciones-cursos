@@ -263,3 +263,76 @@ async function toggleEvaluationAccess(uid, ev) {
 
 // 4.f) Generar certificado con tu función original
 //    generateCertificateFromPDF(userName, evaluationID, score, approvalDate);
+
+/**
+ * Genera y descarga el certificado en PDF para un usuario dado.
+ * @param {string} uid                UID del usuario al que pertenece el certificado
+ * @param {string} evaluationID       Código de la evaluación (e.g. "SF6")
+ * @param {number|string} score       Puntaje obtenido
+ * @param {string} approvalDate       Fecha de aprobación ("dd/mm/yyyy")
+ */
+async function generateCertificateForUser(uid, evaluationID, score, approvalDate) {
+  try {
+    // 1) Traer datos del usuario objetivo
+    const userSnap = await db.collection('users').doc(uid).get();
+    if (!userSnap.exists) throw new Error("Usuario no encontrado.");
+    const { name: userNameDB, rut, company, customID } = userSnap.data();
+
+    // 2) Traer datos de la evaluación
+    const evalSnap = await db.collection('evaluations').doc(evaluationID).get();
+    if (!evalSnap.exists) throw new Error("Evaluación no existe.");
+    const ed = evalSnap.data();
+    const evaluationName     = ed.name;
+    const evaluationTime     = ed.timeEvaluation;
+    const certificateTemplate= ed.certificateTemplate || 'plantilla.pdf';
+    const evaluationIDNumber = ed.ID || '00';
+
+    // 3) Formatear la fecha y año de aprobación
+    const [d, m, y] = approvalDate.split('/');
+    const isoDate   = `${y}-${m}-${d}`;
+    const year      = new Date(isoDate).getFullYear();
+
+    // 4) Generar ID dinámico y cargar plantilla
+    const certificateID = `${evaluationIDNumber}${customID}${year}`;
+    const existingBytes = await fetch(certificateTemplate).then(r=>r.arrayBuffer());
+    const pdfDoc        = await PDFLib.PDFDocument.load(existingBytes);
+    pdfDoc.registerFontkit(fontkit);
+    // (aquí iría la carga de fuentes y textos clonados de tu función original…)
+
+    // 5) Escribir datos en la plantilla
+    const page       = pdfDoc.getPages()[0];
+    const { width, height } = page.getSize();
+    // (usa tu lógica de centerText, wrapText, etc., igual que en app (4).js)
+
+    // Por ejemplo:
+    const centerText = (text, yPos, font, size) => {
+      const textWidth = font.widthOfTextAtSize(text, size);
+      const x = (width - textWidth) / 2;
+      page.drawText(text, { x, y: yPos, size, font, color: PDFLib.rgb(0,0,0) });
+    };
+    // … repetir el bloque de drawText de tu plantilla …
+
+    // 6) Añadir fecha, puntaje y duración
+    page.drawText(`Fecha de Aprobación: ${approvalDate}`, {
+      x: 147, y: height - 548, size: 12, font: perpetuaFont, color: PDFLib.rgb(0,0,0)
+    });
+    page.drawText(`Duración: ${evaluationTime}`, {
+      x: 157, y: height - 562, size: 12, font: perpetuaFont, color: PDFLib.rgb(0,0,0)
+    });
+    page.drawText(`ID: ${certificateID}`, {
+      x: 184, y: height - 576, size: 12, font: perpetuaFont, color: PDFLib.rgb(0,0,0)
+    });
+
+    // 7) Guardar y forzar descarga
+    const pdfBytes = await pdfDoc.save();
+    const blob     = new Blob([pdfBytes], { type: 'application/pdf' });
+    const link     = document.createElement('a');
+    link.href      = URL.createObjectURL(blob);
+    link.download  = `Certificado_${evaluationName}_${userNameDB}.pdf`;
+    link.click();
+
+  } catch (err) {
+    console.error("Error generando certificado:", err);
+    alert("No se pudo generar el certificado. Revisa la consola.");
+  }
+}
