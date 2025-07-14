@@ -1,4 +1,7 @@
-// 1) Inicializar Firebase
+// public/dashboard-admin.js
+
+// ————————————————————————————————————————————————
+// 1) Inicialización de Firebase (idéntica a tu app original)
 const firebaseConfig = {
   apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
   authDomain: "plataforma-de-cursos-esys.firebaseapp.com",
@@ -10,31 +13,39 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db   = firebase.firestore();
-
-// Extraemos jsPDF
 const { jsPDF } = window.jspdf;
+// ————————————————————————————————————————————————
 
-// 2) Protector de ruta y redirección según rol
+// ————————————————————————————————————————————————
+// 2) Protector de ruta y redireccionamiento según rol
 auth.onAuthStateChanged(async user => {
-  if (!user) return location.href = 'index.html';
+  if (!user) {
+    location.href = 'index.html';
+    return;
+  }
   const perfil = await db.collection('users').doc(user.uid).get();
   const role   = perfil.data()?.role;
   if (role === 'admin' && !location.pathname.includes('dashboard-admin.html')) {
-    return location.href = 'dashboard-admin.html';
+    location.href = 'dashboard-admin.html';
+    return;
   }
   if (role !== 'admin' && location.pathname.includes('dashboard-admin.html')) {
-    return location.href = 'dashboard.html';
+    location.href = 'dashboard.html';
+    return;
   }
   if (location.pathname.includes('dashboard-admin.html')) {
-    loadAllUsers();
+    await loadAllUsers();
   }
 });
+// ————————————————————————————————————————————————
 
+// ————————————————————————————————————————————————
+// 3) Carga y renderizado de usuarios “user”
 async function loadAllUsers() {
   const container = document.getElementById('usersList');
   container.textContent = 'Cargando usuarios…';
 
-  // 1) Traer solo usuarios normales
+  // 3.1) Solo usuarios con role == 'user'
   const usersSnap = await db.collection('users')
                             .where('role','==','user')
                             .get();
@@ -44,9 +55,9 @@ async function loadAllUsers() {
   }
   container.innerHTML = '';
 
-  // 2) Por cada usuario
+  // 3.2) Recorrer cada usuario
   for (const userDoc of usersSnap.docs) {
-    const u   = userDoc.data();
+    const u = userDoc.data();
     const uid = userDoc.id;
 
     const userDiv = document.createElement('div');
@@ -59,51 +70,55 @@ async function loadAllUsers() {
       <em>Evaluaciones asignadas:</em>
     `;
 
-    // 3) Por cada curso asignado a este usuario
+    // 3.3) Por cada curso asignado…
     for (const ev of (u.assignedEvaluations||[])) {
       const evalDiv = document.createElement('div');
       evalDiv.className = 'eval-item';
       evalDiv.innerHTML = `<strong>${ev}</strong><br>`;
 
-      // 3.1) Traer todos los intentos de este usuario en este curso
+      // 3.3.a) Traer T O D O S los documentos de "responses" para este usuario+curso
       const rawSnap = await db.collection('responses')
         .where('userId','==',uid)
         .where('evaluationId','==',ev)
         .get();
+      // ordenar cronológicamente
+      const allDocs = rawSnap.docs
+        .map(d => d.data())
+        .sort((a,b)=>a.timestamp.toDate() - b.timestamp.toDate());
 
-      // Filtrar solo documentos que tengan result.grade y result.score
-      let respDocs = rawSnap.docs.filter(d => {
-        const r = d.data().result;
-        return r != null && r.grade != null && typeof r.score === 'number';
-      });
+      // 3.3.b) Filtrar solo intentos válidos: que tengan result.score y result.grade
+      const validAttempts = rawSnap.docs
+        .filter(d => {
+          const r = d.data().result;
+          return r && typeof r.score === 'number' && r.grade;
+        })
+        .sort((a,b)=>a.data().timestamp.toDate() - b.data().timestamp.toDate());
 
-      // Ordenar localmente por timestamp
-      respDocs.sort((a,b) =>
-        a.data().timestamp.toDate() - b.data().timestamp.toDate()
-      );
-
-      // 3.2) Botón por cada intento válido
-      respDocs.forEach((docR, idx) => {
+      // 3.3.c) Botón por CADA intento válido
+      validAttempts.forEach((docSnap, i) => {
         const btn = document.createElement('button');
-        btn.textContent = `Desc. respuestas intento ${idx+1} (PDF)`;
-        btn.onclick    = () => downloadResponsePDFForAttempt(uid, ev, idx);
+        btn.textContent = `Desc. respuestas intento ${i+1} (PDF)`;
+        btn.onclick = () =>
+          downloadResponsePDFForAttempt(uid, ev, i);
         evalDiv.appendChild(btn);
       });
 
-      // 3.3) Botón “Reiniciar intentos”
+      // 3.3.d) Reiniciar intentos
       const btnReset = document.createElement('button');
       btnReset.textContent = 'Reiniciar intentos';
-      btnReset.onclick     = () => resetAttemptsForEvaluation(uid, ev);
+      btnReset.onclick = () =>
+        resetAttemptsForEvaluation(uid, ev);
       evalDiv.appendChild(btnReset);
 
-      // 3.4) Botón “Descargar encuesta (PDF)”
+      // 3.3.e) Descargar encuesta (una única posible)
       const btnSurvey = document.createElement('button');
       btnSurvey.textContent = 'Descargar encuesta (PDF)';
-      btnSurvey.onclick     = () => downloadSurveyPDF(uid, ev);
+      btnSurvey.onclick = () =>
+        downloadSurveyPDF(uid, ev);
       evalDiv.appendChild(btnSurvey);
 
-      // 3.5) Botón “Bloquear/Permitir evaluación”
-      const locked = u.lockedEvaluations || [];
+      // 3.3.f) Bloquear/permitir evaluación
+      const locked = u.lockedEvaluations||[];
       const btnLock = document.createElement('button');
       btnLock.textContent = locked.includes(ev)
         ? 'Permitir evaluación'
@@ -114,13 +129,14 @@ async function loadAllUsers() {
       };
       evalDiv.appendChild(btnLock);
 
-      // 3.6) CERTIFICADO: botón por cada curso aprobado
-      const passedDoc = respDocs.find(d =>
+      // 3.3.g) Botón de CERTIFICADO por cada curso APROBADO
+      //    buscamos en validAttempts algún objeto con grade==='Aprobado'
+      const passedSnap = validAttempts.find(d => 
         d.data().result.grade === 'Aprobado'
       );
-      if (passedDoc) {
-        const { score } = passedDoc.data().result;
-        const dateStr   = passedDoc.data().timestamp
+      if (passedSnap) {
+        const { score } = passedSnap.data().result;
+        const dateStr   = passedSnap.data().timestamp
                             .toDate()
                             .toLocaleDateString();
         const btnCert = document.createElement('button');
@@ -132,27 +148,40 @@ async function loadAllUsers() {
 
       userDiv.appendChild(evalDiv);
     }
-
     container.appendChild(userDiv);
   }
 }
+// ————————————————————————————————————————————————
 
-// 4.a) PDF de un solo intento
-async function downloadResponsePDFForAttempt(uid,ev,idx) {
-  const raw = await db.collection('responses')
+// ————————————————————————————————————————————————
+// 4) Funciones auxiliares
+
+// 4.a) Descargar respuestas de un intento válido
+async function downloadResponsePDFForAttempt(uid, ev, idx) {
+  // Repetimos la lógica de filtro de validAttempts
+  const rawSnap = await db.collection('responses')
     .where('userId','==',uid)
     .where('evaluationId','==',ev)
     .get();
-  const docs = raw.docs.sort((a,b)=>
-    a.data().timestamp.toDate() - b.data().timestamp.toDate()
+  const validDocs = rawSnap.docs
+    .filter(d => {
+      const r = d.data().result;
+      return r && typeof r.score==='number' && r.grade;
+    })
+    .sort((a,b)=>a.data().timestamp.toDate() - b.data().timestamp.toDate());
+  if (!validDocs[idx]) {
+    alert('Intento no encontrado.');
+    return;
+  }
+  await createSingleAttemptPDF(
+    uid, ev, idx+1,
+    validDocs[idx].data()
   );
-  if (!docs[idx]) return alert('Intento no encontrado.');
-  await createSingleAttemptPDF(uid,ev,idx+1,docs[idx].data());
 }
 
-// 4.b) Crear PDF de intento
+// 4.b) Crear PDF de intento (incluye puntaje y estado)
 async function createSingleAttemptPDF(uid,ev,intentoNum,r) {
-  const [uSnap,eSnap] = await Promise.all([
+  const [ uSnap, eSnap ] = await Promise.all([
     db.collection('users').doc(uid).get(),
     db.collection('evaluations').doc(ev).get()
   ]);
@@ -162,19 +191,24 @@ async function createSingleAttemptPDF(uid,ev,intentoNum,r) {
   const pdf = new jsPDF();
   let y = 10;
   pdf.setFontSize(14);
-  pdf.text(`Nombre: ${userName}`,10,y);       y+=10;
-  pdf.text(`Curso: ${ev}`,10,y);              y+=10;
-  pdf.text(`Intento: ${intentoNum}`,10,y);    y+=12;
+  pdf.text(`Nombre: ${userName}`,10,y); y+=10;
+  pdf.text(`Curso: ${ev}`,10,y);        y+=10;
+  pdf.text(`Intento: ${intentoNum}`,10,y); y+=12;
+  
+  // **Agregamos puntaje y grade**
+  pdf.setFontSize(12);
+  pdf.text(`Puntaje: ${r.result.score}`, 10, y);    y+=8;
+  pdf.text(`Estado: ${r.result.grade}`, 10, y);     y+=12;
   pdf.setFontSize(12);
 
   Object.entries(r.answers||{})
-    .sort((a,b)=>+a[0].match(/\d+/)[0]-+b[0].match(/\d+/)[0])
+    .sort((a,b)=> +a[0].match(/\d+/)[0] - +b[0].match(/\d+/)[0])
     .forEach(([k,ans])=>{
       const i = +k.match(/\d+/)[0];
       const txt = qs[i]?.text||`Pregunta ${i+1}`;
       pdf.text(`${i+1}. ${txt}`,10,y); y+=7;
       pdf.text(`→ ${ans}`,12,y);      y+=8;
-      if (y>280){pdf.addPage();y=10;}
+      if (y>280){pdf.addPage(); y=10;}
     });
 
   pdf.save(`Respuestas_${userName}_${ev}_intento${intentoNum}.pdf`);
@@ -193,9 +227,9 @@ async function resetAttemptsForEvaluation(uid,ev) {
   alert('Intentos reiniciados.');
 }
 
-// 4.d) Descargar encuesta en PDF
-async function downloadSurveyPDF(uid,ev) {
-  const [uSnap,sRaw,sqSnap] = await Promise.all([
+// 4.d) Descargar encuesta
+async function downloadSurveyPDF(uid, ev) {
+  const [ uSnap, sRaw, sqSnap ] = await Promise.all([
     db.collection('users').doc(uid).get(),
     db.collection('surveys')
       .where('userId','==',uid)
@@ -203,10 +237,12 @@ async function downloadSurveyPDF(uid,ev) {
       .get(),
     db.collection('surveyQuestions').doc(ev).get()
   ]);
-  if (sRaw.empty) return alert('Sin encuestas.');
-  const docs = sRaw.docs.sort((a,b)=>
-    a.data().timestamp.toDate()-b.data().timestamp.toDate()
-  );
+  if (sRaw.empty) {
+    alert('Sin encuestas.');
+    return;
+  }
+  const docs = sRaw.docs
+    .sort((a,b)=>a.data().timestamp.toDate() - b.data().timestamp.toDate());
   const s     = docs[0].data();
   const userName = uSnap.data().name;
   const qs       = sqSnap.data()?.questions||[];
@@ -219,7 +255,7 @@ async function downloadSurveyPDF(uid,ev) {
   pdf.setFontSize(12);
 
   Object.entries(s.surveyData||{})
-    .sort((a,b)=>+a[0].match(/\d+/)[0]-+b[0].match(/\d+/)[0])
+    .sort((a,b)=> +a[0].match(/\d+/)[0] - +b[0].match(/\d+/)[0])
     .forEach(([k,ans])=>{
       const i = +k.match(/\d+/)[0];
       const txt = qs[i]?.text||`Pregunta ${i+1}`;
@@ -234,119 +270,99 @@ async function downloadSurveyPDF(uid,ev) {
 // 4.e) Bloquear/permitir evaluación
 async function toggleEvaluationAccess(uid,ev) {
   const ref = db.collection('users').doc(uid);
-  const u   = (await ref.get()).data()||{};
-  const locked = u.lockedEvaluations||[];
+  const data = (await ref.get()).data()||{};
+  const locked = data.lockedEvaluations||[];
   const next   = locked.includes(ev)
     ? locked.filter(x=>x!==ev)
     : [...locked,ev];
   await ref.update({ lockedEvaluations: next });
 }
 
-// 4.f) Generar certificado con tu función original
+// 4.f) Generar certificado (tu función original adaptada)
 async function generateCertificateForUser(uid, evaluationID, score, approvalDate) {
-    try {
-        // 1) Leer datos del usuario desde Firestore
-        const userSnap = await db.collection('users').doc(uid).get();
-        if (!userSnap.exists) throw new Error("Usuario no encontrado");
-        const { name: userNameDB, rut, company, customID } = userSnap.data();
+  try {
+    // 1) Datos de usuario
+    const uS = await db.collection('users').doc(uid).get();
+    if (!uS.exists) throw new Error("Usuario no encontrado");
+    const { name:userNameDB, rut, company, customID } = uS.data();
 
-        // 2) Leer datos de la evaluación
-        const evalSnap = await db.collection('evaluations').doc(evaluationID).get();
-        if (!evalSnap.exists) throw new Error("Evaluación no encontrada");
-        const evalData       = evalSnap.data();
-        const evaluationName = evalData.name;
-        const evaluationTime = evalData.timeEvaluation;
-        const certificateTemplate = evalData.certificateTemplate;
-        const evaluationIDNumber  = evalData.ID;
+    // 2) Datos de evaluación
+    const eS = await db.collection('evaluations').doc(evaluationID).get();
+    if (!eS.exists) throw new Error("Evaluación no encontrada");
+    const ed = eS.data();
+    const tpl = ed.certificateTemplate;
+    const IDnum = ed.ID;
+    const [d,m,y] = approvalDate.split('-');
+    const certID = `${IDnum}${customID}${new Date(`${y}-${m}-${d}`).getFullYear()}`;
 
-        // 3) Calcular año e ID dinámico
-        const [d, m, y] = approvalDate.split('-');
-        const year       = new Date(`${y}-${m}-${d}`).getFullYear();
-        const certificateID = `${evaluationIDNumber}${customID}${year}`;
+    // 3) Carga plantilla y librerías
+    const tplBytes = await fetch(tpl).then(r=>r.arrayBuffer());
+    const pdfDoc   = await PDFLib.PDFDocument.load(tplBytes);
+    pdfDoc.registerFontkit(fontkit);
 
-        // 4) Cargar plantilla base
-        const tplBytes = await fetch(certificateTemplate).then(r => r.arrayBuffer());
-        const pdfDoc   = await PDFLib.PDFDocument.load(tplBytes);
-        pdfDoc.registerFontkit(fontkit);
+    // 4) Incrustar fuentes
+    const [monoB, perpB, perpItB] = await Promise.all([
+      fetch("fonts/MonotypeCorsiva.ttf").then(r=>r.arrayBuffer()),
+      fetch("fonts/Perpetua.ttf").then(r=>r.arrayBuffer()),
+      fetch("fonts/PerpetuaItalic.ttf").then(r=>r.arrayBuffer()),
+    ]);
+    const monoF = await pdfDoc.embedFont(monoB);
+    const perpF = await pdfDoc.embedFont(perpB);
+    const itF   = await pdfDoc.embedFont(perpItB);
 
-        // 5) Cargar e incrustar fuentes
-        const monoBytes    = await fetch("fonts/MonotypeCorsiva.ttf").then(r=>r.arrayBuffer());
-        const perpBytes    = await fetch("fonts/Perpetua.ttf").then(r=>r.arrayBuffer());
-        const perpItBytes  = await fetch("fonts/PerpetuaItalic.ttf").then(r=>r.arrayBuffer());
+    // 5) Preparar y pintar
+    const page = pdfDoc.getPages()[0];
+    const { width, height } = page.getSize();
+    const centerText = (txt, yPos, font, size) => {
+      const wTxt = font.widthOfTextAtSize(txt, size);
+      page.drawText(txt, {
+        x: (width - wTxt)/2,
+        y: yPos,
+        font, size,
+        color: PDFLib.rgb(0,0,0)
+      });
+    };
+    const wrapText = (txt,font,size,maxW)=>{
+      const ws=txt.split(' '), lines=[],cur='';
+      for(const w of ws){
+        const test = cur?`${cur} ${w}`:w;
+        if(font.widthOfTextAtSize(test,size)<=maxW) cur=test;
+        else{ lines.push(cur); cur=w; }
+      }
+      if(cur) lines.push(cur);
+      return lines;
+    };
 
-        const monotypeFont       = await pdfDoc.embedFont(monoBytes);
-        const perpetuaFont       = await pdfDoc.embedFont(perpBytes);
-        const perpetuaItalicFont = await pdfDoc.embedFont(perpItBytes);
-
-        // 6) Preparar página y dimensiones
-        const page  = pdfDoc.getPages()[0];
-        const { width, height } = page.getSize();
-
-        // 7) Auxiliar: centrar texto
-        const centerText = (txt, yPos, font, size) => {
-            const wTxt = font.widthOfTextAtSize(txt, size);
-            page.drawText(txt, {
-                x: (width - wTxt) / 2,
-                y: yPos,
-                font,
-                size,
-                color: PDFLib.rgb(0,0,0)
-            });
-        };
-
-        // 8) Auxiliar: envolver líneas
-        const wrapText = (txt, font, size, maxW) => {
-            const words = txt.split(' ');
-            const lines = [];
-            let line = '';
-            for (const w of words) {
-                const test = line ? line + ' ' + w : w;
-                if (font.widthOfTextAtSize(test, size) <= maxW) {
-                    line = test;
-                } else {
-                    lines.push(line);
-                    line = w;
-                }
-            }
-            if (line) lines.push(line);
-            return lines;
-        };
-
-        // 9) Pintar todos los campos
-        centerText(userNameDB,           height - 295, monotypeFont,       35);
-        centerText(`RUT: ${rut}`,        height - 340, perpetuaItalicFont, 19);
-        centerText(`Empresa: ${company}`,height - 360, perpetuaItalicFont, 19);
-
-        // Nombre de la evaluación con wrap
-        const maxW2 = width - 100;
-        const lines = wrapText(evaluationName, monotypeFont, 34, maxW2);
-        let y0 = height - 448;
-        for (const l of lines) {
-            centerText(l, y0, monotypeFont, 34);
-            y0 -= 40;
-        }
-
-        // Campos fijos
-        page.drawText(`Fecha de Aprobación: ${approvalDate}`, {
-            x: 147, y: height - 548, size: 12, font: perpetuaFont, color: PDFLib.rgb(0,0,0)
-        });
-        page.drawText(`Duración del Curso: ${evaluationTime}`, {
-            x: 157, y: height - 562, size: 12, font: perpetuaFont, color: PDFLib.rgb(0,0,0)
-        });
-        page.drawText(`ID: ${certificateID}`, {
-            x: 184, y: height - 576, size: 12, font: perpetuaFont, color: PDFLib.rgb(0,0,0)
-        });
-
-        // 10) Exportar y disparar descarga
-        const pdfBytes = await pdfDoc.save();
-        const blob     = new Blob([pdfBytes], { type: "application/pdf" });
-        const link     = document.createElement("a");
-        link.href      = URL.createObjectURL(blob);
-        link.download  = `Certificado_${evaluationName}.pdf`;
-        link.click();
-
-    } catch (error) {
-        console.error("Error generando certificado:", error);
-        alert("No se pudo generar el certificado. Revisa la consola.");
+    // 6) Pintado de campos
+    centerText(userNameDB, height-295, monoF, 35);
+    centerText(`RUT: ${rut}`, height-340, itF, 19);
+    centerText(`Empresa: ${company}`, height-360, itF, 19);
+    const lines = wrapText(ed.name, monoF, 34, width-100);
+    let y0 = height-448;
+    for (const l of lines) {
+      centerText(l, y0, monoF, 34);
+      y0 -= 40;
     }
+    page.drawText(`Fecha de Aprobación: ${approvalDate}`, {
+      x:147, y:height-548, size:12, font:perpF, color:PDFLib.rgb(0,0,0)
+    });
+    page.drawText(`Duración del Curso: ${ed.timeEvaluation}`, {
+      x:157, y:height-562, size:12, font:perpF, color:PDFLib.rgb(0,0,0)
+    });
+    page.drawText(`ID: ${certID}`, {
+      x:184, y:height-576, size:12, font:perpF, color:PDFLib.rgb(0,0,0)
+    });
+
+    // 7) Exportar y disparar descarga
+    const bytes = await pdfDoc.save();
+    const blob  = new Blob([bytes],{type:"application/pdf"});
+    const link  = document.createElement('a');
+    link.href   = URL.createObjectURL(blob);
+    link.download = `Certificado_${evaluationID}.pdf`;
+    link.click();
+
+  } catch(err) {
+    console.error("Error generando certificado:", err);
+    alert("No se pudo generar el certificado. Revisa la consola.");
+  }
 }
