@@ -239,7 +239,7 @@ function loadAllUsers() {
 }
 
 // ───────────────────────────────────────────────────
-// 7) PDF de un solo intento (limpiando "!'" en respuestas y sin duplicar número)
+// 7) PDF de un solo intento (limpiando prefijos y sin duplicar número)
 async function downloadResponsePDFForAttempt(uid,ev,idx) {
   const valids = allResponses
     .filter(r=>r.userId===uid && r.evaluationId===ev && typeof r.result?.score==="number")
@@ -273,7 +273,8 @@ async function createSingleAttemptPDF(uid,ev,intNum,r) {
     .forEach(([k,ans])=>{
       const i        = +k.match(/\d+/)[0];
       const question = qs[i]?.text || `Pregunta ${i+1}`;
-      const cleanAns = String(ans).replace(/^!['’]\s*/, '');
+      // eliminar cualquier ! ' o espacios al inicio
+      const cleanAns = String(ans).replace(/^[!'\s]+/, '');
       pdf.text(question,10,y); y+=7;
       pdf.text(`→ ${cleanAns}`,12,y);      y+=8;
       if (y>280){pdf.addPage();y=10;}
@@ -297,7 +298,7 @@ async function resetAttemptsForEvaluation(uid,ev) {
 }
 
 // ───────────────────────────────────────────────────
-// 9) PDF de encuesta (con texto de surveyQuestions y limpiando "!'" en respuestas)
+// 9) PDF de encuesta (sin duplicar número y limpiando prefijos)
 async function downloadSurveyPDF(uid,ev) {
   const docs = allSurveys
     .filter(s=>s.userId===uid && s.evaluationId===ev)
@@ -315,7 +316,7 @@ async function downloadSurveyPDF(uid,ev) {
   const pdf = new jsPDF();
   let y = 10;
   pdf.setFontSize(14);
-  pdf.text(`Nombre: ${userName}`,10,y);                     y+=10;
+  pdf.text(`Nombre: ${userName}`,10,y);                      y+=10;
   pdf.text(`Encuesta: ${allEvaluations[ev]?.name || ev}`,10,y); y+=12;
   pdf.setFontSize(12);
 
@@ -324,7 +325,8 @@ async function downloadSurveyPDF(uid,ev) {
     .forEach(([k,ans])=>{
       const i        = +k.match(/\d+/)[0];
       const question = qs[i]?.text || `Pregunta ${i+1}`;
-      const cleanAns = String(ans).replace(/^!['’]\s*/, '');
+      // eliminar ! ' iniciales
+      const cleanAns = String(ans).replace(/^[!'\s]+/, '');
       pdf.text(question,10,y); y+=7;
       pdf.text(`→ ${cleanAns}`,12,y);      y+=8;
       if (y>280){pdf.addPage();y=10;}
@@ -334,7 +336,7 @@ async function downloadSurveyPDF(uid,ev) {
 }
 
 // ───────────────────────────────────────────────────
-// 10) Generar certificado (sin cambios salvo nombre de descarga)
+// 10) Generar certificado (sin cambios salvo nombre de archivo)
 async function generateCertificateForUser(uid, evaluationID, score, approvalDate) {
   try {
     const userSnap = await db.collection("users").doc(uid).get();
