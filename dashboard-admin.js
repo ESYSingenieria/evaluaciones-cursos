@@ -16,7 +16,11 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db   = firebase.firestore();
-const { jsPDF } = window.jspdf;        // Para respuestas y encuestas
+const { jsPDF } = window.jspdf;  // respuestas y encuestas
+
+// Debes incluir en tu HTML:
+// <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+// <script src="https://unpkg.com/fontkit"></script>
 
 // ───────────────────────────────────────────────────
 // 2) Caché y estados de filtros/orden
@@ -38,8 +42,7 @@ auth.onAuthStateChanged(async user => {
     location.href = "index.html";
     return;
   }
-  const perfilSnap = await db.collection("users").doc(user.uid).get();
-  const role       = perfilSnap.data()?.role;
+  const role = (await db.collection("users").doc(user.uid).get()).data()?.role;
   if (role === "admin" && !location.pathname.includes("dashboard-admin.html")) {
     location.href = "dashboard-admin.html"; return;
   }
@@ -56,30 +59,32 @@ auth.onAuthStateChanged(async user => {
 // ───────────────────────────────────────────────────
 // 4) Precarga de datos
 async function initializeData() {
-  const usSnap = await db.collection("users").where("role","==","user").get();
-  allUsers = usSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  // usuarios
+  allUsers = (await db.collection("users").where("role", "==", "user").get())
+    .docs.map(d => ({ id: d.id, ...d.data() }));
 
-  const evSnap = await db.collection("evaluations").get();
-  evSnap.docs.forEach(d=> allEvaluations[d.id] = d.data());
+  // evaluations
+  (await db.collection("evaluations").get())
+    .docs.forEach(d => allEvaluations[d.id] = d.data());
 
-  const rSnap = await db.collection("responses").get();
-  allResponses = rSnap.docs.map(d=>{
-    const data = d.data();
-    return {
-      userId:       data.userId,
-      evaluationId: data.evaluationId,
-      timestamp:    data.timestamp?.toDate() || new Date(0),
-      result:       data.result || {},
-      answers:      data.answers || {}
-    };
-  });
+  // responses
+  allResponses = (await db.collection("responses").get())
+    .docs.map(d => {
+      const data = d.data();
+      return {
+        userId:       data.userId,
+        evaluationId: data.evaluationId,
+        timestamp:    data.timestamp?.toDate() || new Date(0),
+        result:       data.result || {},
+        answers:      data.answers || {}
+      };
+    });
 
-  const sSnap  = await db.collection("surveys").get();
-  allSurveys   = sSnap.docs.map(d=>({ id:d.id, ...d.data() }));
-  const sqSnap = await db.collection("surveyQuestions").get();
-  sqSnap.docs.forEach(d=>{
-    surveyQuestionsMap[d.id] = d.data().questions || [];
-  });
+  // surveys + preguntas encuesta
+  allSurveys = (await db.collection("surveys").get())
+    .docs.map(d => ({ id: d.id, ...d.data() }));
+  (await db.collection("surveyQuestions").get())
+    .docs.forEach(d => surveyQuestionsMap[d.id] = d.data().questions || []);
 }
 
 // ───────────────────────────────────────────────────
@@ -102,33 +107,40 @@ function setupFiltersUI() {
   `;
   document.querySelector("h1").insertAdjacentElement("afterend", bar);
 
-  Object.entries(allEvaluations).forEach(([code,data])=>{
+  // Agrupar cursos por nombre
+  const courseSelect = bar.querySelector("#f_course");
+  const nameToCodes = {};
+  Object.entries(allEvaluations).forEach(([code,data]) => {
     const name = data.name || code;
-    bar.querySelector("#f_course")
-       .innerHTML += `<option value="${code}">${name}</option>`;
+    (nameToCodes[name] = nameToCodes[name]||[]).push(code);
   });
-  [...new Set(allUsers.map(u=>u.company).filter(Boolean))].forEach(co=>{
-    bar.querySelector("#f_company")
-       .innerHTML += `<option value="${co}">${co}</option>`;
+  Object.keys(nameToCodes).sort().forEach(name => {
+    courseSelect.innerHTML += `<option value="${name}">${name}</option>`;
   });
 
+  // empresas
+  const companies = [...new Set(allUsers.map(u=>u.company).filter(Boolean))].sort();
+  const companySelect = bar.querySelector("#f_company");
+  companies.forEach(co => {
+    companySelect.innerHTML += `<option value="${co}">${co}</option>`;
+  });
+
+  // listeners
   bar.querySelector("#f_search")
-     .addEventListener("input", e=>{
+     .addEventListener("input", e => {
        searchName = e.target.value.toLowerCase();
        loadAllUsers();
      });
-  bar.querySelector("#f_course")
-     .addEventListener("change", e=>{
-       filterCourse = e.target.value;
-       loadAllUsers();
-     });
-  bar.querySelector("#f_company")
-     .addEventListener("change", e=>{
-       filterCompany = e.target.value;
-       loadAllUsers();
-     });
+  courseSelect.addEventListener("change", e => {
+    filterCourse = e.target.value;
+    loadAllUsers();
+  });
+  companySelect.addEventListener("change", e => {
+    filterCompany = e.target.value;
+    loadAllUsers();
+  });
   bar.querySelector("#f_sort")
-     .addEventListener("change", e=>{
+     .addEventListener("change", e => {
        sortBy = e.target.value;
        loadAllUsers();
      });
@@ -140,26 +152,32 @@ function loadAllUsers() {
   const container = document.getElementById("usersList");
   container.innerHTML = "";
 
-  let filtered = allUsers.filter(u=>{
+  let filtered = allUsers.filter(u => {
     if (searchName && !u.name.toLowerCase().includes(searchName)) return false;
-    if (filterCompany!=="all" && u.company!==filterCompany)        return false;
-    if (filterCourse!=="all" && !u.assignedEvaluations.includes(filterCourse)) return false;
+    if (filterCompany!=="all" && u.company!==filterCompany) return false;
+    if (filterCourse!=="all") {
+      // buscar por nombre agrupado
+      if (!u.assignedEvaluations.some(ev => (allEvaluations[ev].name||ev) === filterCourse))
+        return false;
+    }
     return true;
   });
 
-  filtered.forEach(u=>{
+  // calcular última fecha válida
+  filtered.forEach(u => {
     const times = allResponses
       .filter(r=>r.userId===u.id && typeof r.result?.score==="number")
       .map(r=>r.timestamp.getTime());
     u._lastTime = times.length ? Math.max(...times) : 0;
   });
 
-  filtered.sort((a,b)=>{
+  // ordenar
+  filtered.sort((a,b) => {
     switch(sortBy){
-      case "dateDesc":      return b._lastTime - a._lastTime;
-      case "dateAsc":       return a._lastTime - b._lastTime;
-      case "customIdDesc":  return (+b.customID||0) - (+a.customID||0);
-      case "customIdAsc":   return (+a.customID||0) - (+b.customID||0);
+      case "dateDesc":     return b._lastTime - a._lastTime;
+      case "dateAsc":      return a._lastTime - b._lastTime;
+      case "customIdDesc": return (+b.customID||0) - (+a.customID||0);
+      case "customIdAsc":  return (+a.customID||0) - (+b.customID||0);
       default: return 0;
     }
   });
@@ -169,7 +187,7 @@ function loadAllUsers() {
     return;
   }
 
-  filtered.forEach(u=>{
+  filtered.forEach(u => {
     const div = document.createElement("div");
     div.className = "user-item";
     div.innerHTML = `
@@ -179,41 +197,41 @@ function loadAllUsers() {
       Empresa: ${u.company}<br>
       <em>Evaluaciones asignadas:</em>
     `;
-    u.assignedEvaluations.forEach(ev=>{
-      const eData = allEvaluations[ev] || {};
+    u.assignedEvaluations.forEach(ev => {
+      const eData = allEvaluations[ev]||{};
       const eName = eData.name || ev;
       const evalDiv = document.createElement("div");
       evalDiv.className = "eval-item";
       evalDiv.innerHTML = `<strong>${eName}</strong><br>`;
 
+      // respuestas válidas
       const valids = allResponses
         .filter(r=>r.userId===u.id && r.evaluationId===ev && typeof r.result?.score==="number")
         .sort((a,b)=>a.timestamp - b.timestamp);
 
-      valids.forEach((r,i)=>{
+      valids.forEach((r,i) => {
         const btn = document.createElement("button");
         btn.textContent = `Respuestas Evaluación Intento ${i+1}`;
-        btn.onclick = ()=> downloadResponsePDFForAttempt(u.id,ev,i);
+        btn.onclick = () => downloadResponsePDFForAttempt(u.id,ev,i);
         evalDiv.appendChild(btn);
       });
 
       const btnR = document.createElement("button");
       btnR.textContent = "Reiniciar Intentos";
-      btnR.onclick = ()=> resetAttemptsForEvaluation(u.id,ev);
+      btnR.onclick = () => resetAttemptsForEvaluation(u.id,ev);
       evalDiv.appendChild(btnR);
 
       const btnS = document.createElement("button");
       btnS.textContent = "Encuesta de Satisfacción";
-      btnS.onclick = ()=> downloadSurveyPDF(u.id,ev);
+      btnS.onclick = () => downloadSurveyPDF(u.id,ev);
       evalDiv.appendChild(btnS);
 
       const passed = valids.find(r=>r.result.grade==="Aprobado");
       if (passed) {
-        const score   = passed.result.score;
-        const dateStr = passed.timestamp.toLocaleDateString();
         const btnC = document.createElement("button");
         btnC.textContent = "Certificado de Aprobación";
-        btnC.onclick = ()=> generateCertificateForUser(u.id,ev,score,dateStr);
+        btnC.onclick = () =>
+          generateCertificateForUser(u.id,ev,passed.result.score, passed.timestamp.toLocaleDateString());
         evalDiv.appendChild(btnC);
       }
 
@@ -224,17 +242,14 @@ function loadAllUsers() {
 }
 
 // ───────────────────────────────────────────────────
-// 7) PDF de un solo intento (numeración + limpieza de '!'' prefijos)
+// 7) PDF de un solo intento (wrap + limpieza de "!'" )
 async function downloadResponsePDFForAttempt(uid,ev,idx) {
   const valids = allResponses
     .filter(r=>r.userId===uid && r.evaluationId===ev && typeof r.result?.score==="number")
     .sort((a,b)=>a.timestamp - b.timestamp);
-  if (!valids[idx]) {
-    alert("Intento no encontrado."); return;
-  }
+  if (!valids[idx]) { alert("Intento no encontrado."); return; }
   await createSingleAttemptPDF(uid,ev,idx+1,valids[idx]);
 }
-
 async function createSingleAttemptPDF(uid,ev,intNum,r) {
   const [uSnap,eSnap] = await Promise.all([
     db.collection("users").doc(uid).get(),
@@ -249,21 +264,29 @@ async function createSingleAttemptPDF(uid,ev,intNum,r) {
   pdf.text(`Nombre: ${userName}`,10,y);        y+=10;
   pdf.text(`Curso: ${eSnap.data().name}`,10,y); y+=10;
   pdf.text(`Intento: ${intNum}`,10,y);         y+=12;
-  pdf.setFontSize(12);
   pdf.text(`Puntaje: ${r.result.score}`,10,y); y+=7;
   pdf.text(`Estado: ${r.result.grade}`,10,y);  y+=12;
 
-  Object.entries(r.answers||{})
-    .sort((a,b)=>+a[0].match(/\d+/)[0]-+b[0].match(/\d+/)[0])
-    .forEach(([k,rawAns], idx) => {
-      const num = idx + 1;
-      let txt = qs[idx]?.text || "";
-      txt = txt.replace(/^\d+\.\s*/, '').trim();
-      const cleanAns = String(rawAns).replace(/^[!'\u00B4\s]+/, '').trim();
+  const maxWidth   = 180;
+  const lineHeight = 7;
+  const bottomY    = 280;
 
-      pdf.text(`${num}. ${txt}`,10,y); y+=7;
-      pdf.text(`→ ${cleanAns}`,12,y);  y+=8;
-      if (y>280){pdf.addPage();y=10;}
+  Object.entries(r.answers||{})
+    .sort((a,b)=>+a[0].match(/\d+/)[0] - +b[0].match(/\d+/)[0])
+    .forEach(([k,ans])=>{
+      const i  = +k.match(/\d+/)[0];
+      const q  = qs[i]?.text || `Pregunta ${i+1}`;
+      const cl = String(ans).replace(/^[!'’\s]+/, "");
+      pdf.splitTextToSize(`${i+1}. ${q}`, maxWidth)
+         .forEach(line => {
+           pdf.text(line,10,y); y+=lineHeight;
+           if (y>bottomY){ pdf.addPage(); y=10; }
+         });
+      pdf.splitTextToSize(`→ ${cl}`, maxWidth)
+         .forEach(line => {
+           pdf.text(line,12,y); y+=lineHeight;
+           if (y>bottomY){ pdf.addPage(); y=10; }
+         });
     });
 
   pdf.save(`Respuestas_${userName}_${ev}_intento${intNum}.pdf`);
@@ -284,14 +307,12 @@ async function resetAttemptsForEvaluation(uid,ev) {
 }
 
 // ───────────────────────────────────────────────────
-// 9) PDF de encuesta (texto + limpieza de '!'' prefijos)
+// 9) PDF de encuesta (idem wrap + limpieza)
 async function downloadSurveyPDF(uid,ev) {
   const docs = allSurveys
     .filter(s=>s.userId===uid && s.evaluationId===ev)
     .sort((a,b)=>a.timestamp.toDate() - b.timestamp.toDate());
-  if (!docs.length) {
-    alert("Sin encuestas."); return;
-  }
+  if (!docs.length) { alert("Sin encuestas."); return; }
   const s        = docs[0];
   const userName = (await db.collection("users").doc(uid).get()).data().name;
   const qs       = surveyQuestionsMap[ev] || surveyQuestionsMap["defaultSurvey"] || [];
@@ -299,28 +320,37 @@ async function downloadSurveyPDF(uid,ev) {
   const pdf = new jsPDF();
   let y = 10;
   pdf.setFontSize(14);
-  pdf.text(`Nombre: ${userName}`,10,y);                    y+=10;
+  pdf.text(`Nombre: ${userName}`,10,y); y+=10;
   pdf.text(`Encuesta: ${allEvaluations[ev]?.name||ev}`,10,y); y+=12;
   pdf.setFontSize(12);
 
-  Object.entries(s.surveyData||{})
-    .sort((a,b)=>+a[0].match(/\d+/)[0]-+b[0].match(/\d+/)[0])
-    .forEach(([k,rawAns], idx) => {
-      const num = idx + 1;
-      let question = qs[idx]?.text || "";
-      question = question.replace(/^\d+\.\s*/, '').trim();
-      const cleanAns = String(rawAns).replace(/^[!'\u00B4\s]+/, '').trim();
+  const maxWidth   = 180;
+  const lineHeight = 7;
+  const bottomY    = 280;
 
-      pdf.text(`${num}. ${question}`,10,y); y+=7;
-      pdf.text(`→ ${cleanAns}`,12,y);      y+=8;
-      if (y>280){pdf.addPage();y=10;}
+  Object.entries(s.surveyData||{})
+    .sort((a,b)=>+a[0].match(/\d+/)[0] - +b[0].match(/\d+/)[0])
+    .forEach(([k,ans])=>{
+      const i  = +k.match(/\d+/)[0];
+      const q  = qs[i]?.text || `Pregunta ${i+1}`;
+      const cl = String(ans).replace(/^[!'’\s]+/, "");
+      pdf.splitTextToSize(`${i+1}. ${q}`, maxWidth)
+         .forEach(line => {
+           pdf.text(line,10,y); y+=lineHeight;
+           if (y>bottomY){ pdf.addPage(); y=10; }
+         });
+      pdf.splitTextToSize(`→ ${cl}`, maxWidth)
+         .forEach(line => {
+           pdf.text(line,12,y); y+=lineHeight;
+           if (y>bottomY){ pdf.addPage(); y=10; }
+         });
     });
 
   pdf.save(`Encuesta_${userName}_${ev}.pdf`);
 }
 
 // ───────────────────────────────────────────────────
-// 10) Generar certificado (sin cambios salvo nombre de archivo)
+// 10) Generar certificado (igual al original)
 async function generateCertificateForUser(uid, evaluationID, score, approvalDate) {
   try {
     const userSnap = await db.collection("users").doc(uid).get();
@@ -335,9 +365,9 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     const certificateTemplate = evalData.certificateTemplate;
     const evaluationIDNumber  = evalData.ID;
 
-    const [d,m,y]    = approvalDate.split('-');
-    const year       = new Date(`${y}-${m}-${d}`).getFullYear();
-    const certificateID = `${evaluationIDNumber}${customID}${year}`;
+    const [d,m,y]  = approvalDate.split('-');
+    const year     = new Date(`${y}-${m}-${d}`).getFullYear();
+    const certID   = `${evaluationIDNumber}${customID}${year}`;
 
     const tplBytes = await fetch(certificateTemplate).then(r=>r.arrayBuffer());
     const pdfDoc   = await PDFLib.PDFDocument.load(tplBytes);
@@ -347,55 +377,49 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     const perpBytes   = await fetch("fonts/Perpetua.ttf").then(r=>r.arrayBuffer());
     const perpItBytes = await fetch("fonts/PerpetuaItalic.ttf").then(r=>r.arrayBuffer());
 
-    const monotypeFont       = await pdfDoc.embedFont(monoBytes);
-    const perpetuaFont       = await pdfDoc.embedFont(perpBytes);
-    const perpetuaItalicFont = await pdfDoc.embedFont(perpItBytes);
+    const monoFont = await pdfDoc.embedFont(monoBytes);
+    const perpFont = await pdfDoc.embedFont(perpBytes);
+    const perpIt   = await pdfDoc.embedFont(perpItBytes);
 
-    const page  = pdfDoc.getPages()[0];
+    const page = pdfDoc.getPages()[0];
     const { width, height } = page.getSize();
 
     const centerText = (txt, yPos, font, size) => {
-      const wTxt = font.widthOfTextAtSize(txt, size);
-      page.drawText(txt, { x:(width-wTxt)/2, y:yPos, font, size, color:PDFLib.rgb(0,0,0) });
+      const wtxt = font.widthOfTextAtSize(txt, size);
+      page.drawText(txt, { x:(width-wtxt)/2, y:yPos, font, size, color:PDFLib.rgb(0,0,0) });
     };
 
     const wrapText = (txt, font, size, maxW) => {
       const words = txt.split(' ');
-      const lines = [];
-      let line = '';
+      const lines = []; let line = '';
       for (const w of words) {
-        const test = line ? line + ' ' + w : w;
-        if (font.widthOfTextAtSize(test, size) <= maxW) {
-          line = test;
-        } else {
-          lines.push(line);
-          line = w;
-        }
+        const test = line? line+' '+w : w;
+        if (font.widthOfTextAtSize(test, size) <= maxW) line = test;
+        else { lines.push(line); line = w; }
       }
       if (line) lines.push(line);
       return lines;
     };
 
-    centerText(userNameDB,           height-295, monotypeFont,       35);
-    centerText(`RUT: ${rut}`,        height-340, perpetuaItalicFont, 19);
-    centerText(`Empresa: ${company}`,height-360, perpetuaItalicFont, 19);
+    centerText(userNameDB,      height-295, monoFont, 35);
+    centerText(`RUT: ${rut}`,   height-340, perpIt,   19);
+    centerText(`Empresa: ${company}`, height-360, perpIt, 19);
 
-    const maxW2 = width-100;
-    const lines = wrapText(evaluationName, monotypeFont, 34, maxW2);
-    let y0 = height-448;
-    for (const l of lines) {
-      centerText(l, y0, monotypeFont, 34);
+    const maxW = width - 100;
+    let y0 = height - 448;
+    for (const l of wrapText(evaluationName, monoFont,34, maxW)) {
+      centerText(l, y0, monoFont, 34);
       y0 -= 40;
     }
 
     page.drawText(`Fecha de Aprobación: ${approvalDate}`, {
-      x:147, y:height-548, size:12, font:perpetuaFont, color:PDFLib.rgb(0,0,0)
+      x:147, y:height-548, size:12, font:perpFont, color:PDFLib.rgb(0,0,0)
     });
     page.drawText(`Duración del Curso: ${evaluationTime}`, {
-      x:157, y:height-562, size:12, font:perpetuaFont, color:PDFLib.rgb(0,0,0)
+      x:157, y:height-562, size:12, font:perpFont, color:PDFLib.rgb(0,0,0)
     });
-    page.drawText(`ID: ${certificateID}`, {
-      x:184, y:height-576, size:12, font:perpetuaFont, color:PDFLib.rgb(0,0,0)
+    page.drawText(`ID: ${certID}`, {
+      x:184, y:height-576, size:12, font:perpFont, color:PDFLib.rgb(0,0,0)
     });
 
     const pdfBytes = await pdfDoc.save();
@@ -404,8 +428,7 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     link.href      = URL.createObjectURL(blob);
     link.download  = `Certificado ${evaluationName} - ${userNameDB}.pdf`;
     link.click();
-
-  } catch (error) {
+  } catch(error) {
     console.error("Error generando certificado:", error);
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
