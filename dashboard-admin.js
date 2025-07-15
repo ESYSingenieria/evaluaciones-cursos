@@ -259,9 +259,8 @@ async function createSingleAttemptPDF(uid,ev,intNum,r) {
       const num = idx + 1;
       let txt = qs[idx]?.text || "";
       txt = txt.replace(/^\d+\.\s*/, '').trim();
-      const cleanAns = String(ans)
-        .replace(/^[!'\u00B4\u2018\u2019\s]+/, '')
-        .trim();
+      const cleanAns = String(rawAns).replace(/^[!'\u00B4\s]+/, '').trim();
+
       pdf.text(`${num}. ${txt}`,10,y); y+=7;
       pdf.text(`→ ${cleanAns}`,12,y);  y+=8;
       if (y>280){pdf.addPage();y=10;}
@@ -310,9 +309,8 @@ async function downloadSurveyPDF(uid,ev) {
       const num = idx + 1;
       let question = qs[idx]?.text || "";
       question = question.replace(/^\d+\.\s*/, '').trim();
-      const cleanAns = String(ans)
-        .replace(/^[!'\u00B4\u2018\u2019\s]+/, '')
-        .trim();
+      const cleanAns = String(rawAns).replace(/^[!'\u00B4\s]+/, '').trim();
+
       pdf.text(`${num}. ${question}`,10,y); y+=7;
       pdf.text(`→ ${cleanAns}`,12,y);      y+=8;
       if (y>280){pdf.addPage();y=10;}
