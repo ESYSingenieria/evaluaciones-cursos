@@ -277,7 +277,7 @@ async function createSingleAttemptPDF(uid,ev,intNum,r) {
   pdf.text(`Estado: ${r.result.grade}`,10,y);  y+=12;
 
   pdf.setFont("helvetica"); pdf.setFontSize(12);
-  const maxWidth = pdf.internal.pageSize.getWidth() - 20;
+  const maxWidth = pdf.internal.pageSize.getWidth() - 60;
   Object.entries(r.answers||{})
     .sort((a,b)=>+a[0].match(/\d+/)[0]-+b[0].match(/\d+/)[0])
     .forEach(([k,ans])=>{
@@ -336,7 +336,7 @@ async function downloadSurveyPDF(uid,ev) {
   pdf.text(`Encuesta: ${allEvaluations[ev]?.name||ev}`,10,y); y+=12;
   pdf.setFont("helvetica"); pdf.setFontSize(12);
 
-  const maxWidth = pdf.internal.pageSize.getWidth() - 20;
+  const maxWidth = pdf.internal.pageSize.getWidth() - 60;
   Object.entries(s.surveyData||{})
     .sort((a,b)=>+a[0].match(/\d+/)[0]-+b[0].match(/\d+/)[0])
     .forEach(([k,ans])=>{
