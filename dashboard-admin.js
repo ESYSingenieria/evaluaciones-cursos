@@ -17,9 +17,6 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db   = firebase.firestore();
 const { jsPDF } = window.jspdf;        // Para respuestas y encuestas
-// Asegúrate de incluir en tu HTML:
-// <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
-// <script src="https://unpkg.com/fontkit"></script>
 
 // ───────────────────────────────────────────────────
 // 2) Caché y estados de filtros/orden
@@ -177,13 +174,11 @@ function loadAllUsers() {
     }
   });
 
-  // si no hay
   if (!filtered.length) {
     container.textContent = "No se encontraron usuarios.";
     return;
   }
 
-  // render
   filtered.forEach(u=>{
     const div = document.createElement("div");
     div.className = "user-item";
@@ -244,7 +239,7 @@ function loadAllUsers() {
 }
 
 // ───────────────────────────────────────────────────
-// 7) PDF de un solo intento (limpiando "!'" en respuestas)
+// 7) PDF de un solo intento (limpiando "!'" en respuestas y sin duplicar número)
 async function downloadResponsePDFForAttempt(uid,ev,idx) {
   const valids = allResponses
     .filter(r=>r.userId===uid && r.evaluationId===ev && typeof r.result?.score==="number")
@@ -278,8 +273,8 @@ async function createSingleAttemptPDF(uid,ev,intNum,r) {
     .forEach(([k,ans])=>{
       const i        = +k.match(/\d+/)[0];
       const question = qs[i]?.text || `Pregunta ${i+1}`;
-      const cleanAns = String(ans).replace(/^!'+\s*/, '');
-      pdf.text(`${i+1}. ${question}`,10,y); y+=7;
+      const cleanAns = String(ans).replace(/^!['’]\s*/, '');
+      pdf.text(question,10,y); y+=7;
       pdf.text(`→ ${cleanAns}`,12,y);      y+=8;
       if (y>280){pdf.addPage();y=10;}
     });
@@ -302,7 +297,7 @@ async function resetAttemptsForEvaluation(uid,ev) {
 }
 
 // ───────────────────────────────────────────────────
-// 9) PDF de encuesta (con pregunta real y limpiando "!'" en respuestas)
+// 9) PDF de encuesta (con texto de surveyQuestions y limpiando "!'" en respuestas)
 async function downloadSurveyPDF(uid,ev) {
   const docs = allSurveys
     .filter(s=>s.userId===uid && s.evaluationId===ev)
@@ -320,8 +315,8 @@ async function downloadSurveyPDF(uid,ev) {
   const pdf = new jsPDF();
   let y = 10;
   pdf.setFontSize(14);
-  pdf.text(`Nombre: ${userName}`,10,y);                    y+=10;
-  pdf.text(`Encuesta: ${allEvaluations[ev]?.name||ev}`,10,y); y+=12;
+  pdf.text(`Nombre: ${userName}`,10,y);                     y+=10;
+  pdf.text(`Encuesta: ${allEvaluations[ev]?.name || ev}`,10,y); y+=12;
   pdf.setFontSize(12);
 
   Object.entries(s.surveyData||{})
@@ -329,8 +324,8 @@ async function downloadSurveyPDF(uid,ev) {
     .forEach(([k,ans])=>{
       const i        = +k.match(/\d+/)[0];
       const question = qs[i]?.text || `Pregunta ${i+1}`;
-      const cleanAns = String(ans).replace(/^!'+\s*/, '');
-      pdf.text(`${i+1}. ${question}`,10,y); y+=7;
+      const cleanAns = String(ans).replace(/^!['’]\s*/, '');
+      pdf.text(question,10,y); y+=7;
       pdf.text(`→ ${cleanAns}`,12,y);      y+=8;
       if (y>280){pdf.addPage();y=10;}
     });
@@ -339,16 +334,13 @@ async function downloadSurveyPDF(uid,ev) {
 }
 
 // ───────────────────────────────────────────────────
-// 10) Generar certificado (igual a tu versión original,
-//     solo cambiamos el nombre del archivo al descargar)
+// 10) Generar certificado (sin cambios salvo nombre de descarga)
 async function generateCertificateForUser(uid, evaluationID, score, approvalDate) {
   try {
-    // 1) Leer datos del usuario
     const userSnap = await db.collection("users").doc(uid).get();
     if (!userSnap.exists) throw new Error("Usuario no encontrado");
     const { name: userNameDB, rut, company, customID } = userSnap.data();
 
-    // 2) Leer datos de la evaluación
     const evalSnap = await db.collection("evaluations").doc(evaluationID).get();
     if (!evalSnap.exists) throw new Error("Evaluación no encontrada");
     const evalData             = evalSnap.data();
@@ -357,17 +349,14 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     const certificateTemplate  = evalData.certificateTemplate;
     const evaluationIDNumber   = evalData.ID;
 
-    // 3) Calcular año e ID
     const [d,m,y]    = approvalDate.split('-');
     const year       = new Date(`${y}-${m}-${d}`).getFullYear();
     const certificateID = `${evaluationIDNumber}${customID}${year}`;
 
-    // 4) Cargar plantilla
     const tplBytes = await fetch(certificateTemplate).then(r=>r.arrayBuffer());
     const pdfDoc   = await PDFLib.PDFDocument.load(tplBytes);
     pdfDoc.registerFontkit(fontkit);
 
-    // 5) Cargar fuentes
     const monoBytes   = await fetch("fonts/MonotypeCorsiva.ttf").then(r=>r.arrayBuffer());
     const perpBytes   = await fetch("fonts/Perpetua.ttf").then(r=>r.arrayBuffer());
     const perpItBytes = await fetch("fonts/PerpetuaItalic.ttf").then(r=>r.arrayBuffer());
@@ -376,17 +365,14 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     const perpetuaFont       = await pdfDoc.embedFont(perpBytes);
     const perpetuaItalicFont = await pdfDoc.embedFont(perpItBytes);
 
-    // 6) Preparar página
     const page  = pdfDoc.getPages()[0];
     const { width, height } = page.getSize();
 
-    // 7) Centrar texto
     const centerText = (txt, yPos, font, size) => {
       const wTxt = font.widthOfTextAtSize(txt, size);
       page.drawText(txt, { x:(width-wTxt)/2, y:yPos, font, size, color:PDFLib.rgb(0,0,0) });
     };
 
-    // 8) Wrap de líneas
     const wrapText = (txt, font, size, maxW) => {
       const words = txt.split(' ');
       const lines = [];
@@ -404,7 +390,6 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
       return lines;
     };
 
-    // 9) Pintar campos
     centerText(userNameDB,           height-295, monotypeFont,       35);
     centerText(`RUT: ${rut}`,        height-340, perpetuaItalicFont, 19);
     centerText(`Empresa: ${company}`,height-360, perpetuaItalicFont, 19);
@@ -427,7 +412,6 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
       x:184, y:height-576, size:12, font:perpetuaFont, color:PDFLib.rgb(0,0,0)
     });
 
-    // 10) Descargar
     const pdfBytes = await pdfDoc.save();
     const blob     = new Blob([pdfBytes], { type:"application/pdf" });
     const link     = document.createElement("a");
