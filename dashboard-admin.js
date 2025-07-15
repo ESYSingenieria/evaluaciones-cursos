@@ -16,64 +16,60 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db   = firebase.firestore();
-const { jsPDF } = window.jspdf;
+const { jsPDF } = window.jspdf;        // Para respuestas y encuestas
+// Asegúrate de incluir también en tu HTML:
+// <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+// <script src="https://unpkg.com/fontkit"></script>
 
 // ───────────────────────────────────────────────────
-// 2) Variables globales: caché + filtros/orden
-let allUsers        = [];
-let allEvaluations  = {};   // { evalCode: data }
-let allResponses    = [];   // [ { userId, evaluationId, timestamp, result, answers } ]
-let allSurveys      = [];   // [ { id, ... } ]
-let surveyQuestionsMap = {}; // { evalCode: [ questions ] }
+// 2) Caché y estados de filtros/orden
+let allUsers           = [];
+let allEvaluations     = {};
+let allResponses       = [];
+let allSurveys         = [];
+let surveyQuestionsMap = {};
 
 let searchName    = "";
 let filterCourse  = "all";
 let filterCompany = "all";
-let sortBy        = "dateDesc"; // dateDesc | dateAsc | customIdDesc | customIdAsc
+let sortBy        = "dateDesc";
 
 // ───────────────────────────────────────────────────
-// 3) Chequeo de auth/rol y carga inicial
+// 3) Auth & carga inicial
 auth.onAuthStateChanged(async user => {
   if (!user) {
     location.href = "index.html";
     return;
   }
-  const perfil = await db.collection("users").doc(user.uid).get();
-  const role   = perfil.data()?.role;
+  const perfilSnap = await db.collection("users").doc(user.uid).get();
+  const role       = perfilSnap.data()?.role;
   if (role === "admin" && !location.pathname.includes("dashboard-admin.html")) {
-    location.href = "dashboard-admin.html";
-    return;
+    location.href = "dashboard-admin.html"; return;
   }
   if (role !== "admin" && location.pathname.includes("dashboard-admin.html")) {
-    location.href = "dashboard.html";
-    return;
+    location.href = "dashboard.html"; return;
   }
   if (location.pathname.includes("dashboard-admin.html")) {
     await initializeData();
-    await setupFiltersUI();
+    setupFiltersUI();
     loadAllUsers();
   }
 });
 
 // ───────────────────────────────────────────────────
-// 4) Precarga de toda la data en memoria
+// 4) Precarga de datos
 async function initializeData() {
-  const container = document.getElementById("usersList");
-  if (container) container.textContent = "Cargando datos…";
+  // usuarios
+  const usSnap = await db.collection("users").where("role","==","user").get();
+  allUsers = usSnap.docs.map(d=>({ id:d.id, ...d.data() }));
 
-  // Usuarios (role = user)
-  const usSnap = await db.collection("users")
-                         .where("role","==","user")
-                         .get();
-  allUsers = usSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-  // Evaluations
+  // evaluations
   const evSnap = await db.collection("evaluations").get();
-  evSnap.docs.forEach(d => allEvaluations[d.id] = d.data());
+  evSnap.docs.forEach(d=> allEvaluations[d.id] = d.data());
 
-  // Responses
+  // responses
   const rSnap = await db.collection("responses").get();
-  allResponses = rSnap.docs.map(d => {
+  allResponses = rSnap.docs.map(d=>{
     const data = d.data();
     return {
       userId:       data.userId,
@@ -84,25 +80,24 @@ async function initializeData() {
     };
   });
 
-  // Surveys + surveyQuestions
+  // surveys + surveyQuestions
   const sSnap  = await db.collection("surveys").get();
-  allSurveys = sSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  allSurveys   = sSnap.docs.map(d=>({ id:d.id, ...d.data() }));
   const sqSnap = await db.collection("surveyQuestions").get();
-  sqSnap.docs.forEach(d => {
+  sqSnap.docs.forEach(d=>{
     surveyQuestionsMap[d.id] = d.data().questions || [];
   });
 }
 
 // ───────────────────────────────────────────────────
-// 5) Construcción UI de filtros + selects
-async function setupFiltersUI() {
+// 5) UI de filtros
+function setupFiltersUI() {
   if (document.getElementById("filtersBar")) return;
   const bar = document.createElement("div");
   bar.id = "filtersBar";
   bar.style = "margin:16px 0; display:flex;gap:8px;flex-wrap:wrap;";
-
   bar.innerHTML = `
-    <input id="f_search"    placeholder="Buscar por nombre" />
+    <input id="f_search" placeholder="Buscar por nombre" />
     <select id="f_course"><option value="all">Todos los cursos</option></select>
     <select id="f_company"><option value="all">Todas las empresas</option></select>
     <select id="f_sort">
@@ -112,8 +107,7 @@ async function setupFiltersUI() {
       <option value="customIdAsc">CustomID (menor primero)</option>
     </select>
   `;
-  const h1 = document.querySelector("h1") || document.body;
-  h1.insertAdjacentElement("afterend", bar);
+  document.querySelector("h1").insertAdjacentElement("afterend", bar);
 
   // poblar cursos
   Object.entries(allEvaluations).forEach(([code,data])=>{
@@ -122,52 +116,54 @@ async function setupFiltersUI() {
        .innerHTML += `<option value="${code}">${name}</option>`;
   });
   // poblar empresas
-  const companies = new Set(allUsers.map(u=>u.company).filter(Boolean));
-  companies.forEach(co => {
-    bar.querySelector("#f_company")
-       .innerHTML += `<option value="${co}">${co}</option>`;
-  });
+  [...new Set(allUsers.map(u=>u.company).filter(Boolean))]
+    .forEach(co=>{
+      bar.querySelector("#f_company")
+         .innerHTML += `<option value="${co}">${co}</option>`;
+    });
 
   // listeners
-  bar.querySelector("#f_search").addEventListener("input", e=>{
-    searchName = e.target.value.toLowerCase();
-    loadAllUsers();
-  });
-  bar.querySelector("#f_course").addEventListener("change", e=>{
-    filterCourse = e.target.value;
-    loadAllUsers();
-  });
-  bar.querySelector("#f_company").addEventListener("change", e=>{
-    filterCompany = e.target.value;
-    loadAllUsers();
-  });
-  bar.querySelector("#f_sort").addEventListener("change", e=>{
-    sortBy = e.target.value;
-    loadAllUsers();
-  });
+  bar.querySelector("#f_search")
+     .addEventListener("input", e=>{
+       searchName = e.target.value.toLowerCase();
+       loadAllUsers();
+     });
+  bar.querySelector("#f_course")
+     .addEventListener("change", e=>{
+       filterCourse = e.target.value;
+       loadAllUsers();
+     });
+  bar.querySelector("#f_company")
+     .addEventListener("change", e=>{
+       filterCompany = e.target.value;
+       loadAllUsers();
+     });
+  bar.querySelector("#f_sort")
+     .addEventListener("change", e=>{
+       sortBy = e.target.value;
+       loadAllUsers();
+     });
 }
 
 // ───────────────────────────────────────────────────
-// 6) Filtrado, orden y render en memoria
-async function loadAllUsers() {
+// 6) Render de usuarios con filtros + orden
+function loadAllUsers() {
   const container = document.getElementById("usersList");
   container.innerHTML = "";
 
-  // filtrar
-  let filtered = allUsers.filter(u => {
+  let filtered = allUsers.filter(u=>{
     if (searchName && !u.name.toLowerCase().includes(searchName)) return false;
     if (filterCompany!=="all" && u.company!==filterCompany)        return false;
     if (filterCourse!=="all" && !u.assignedEvaluations.includes(filterCourse)) return false;
     return true;
   });
 
-  // calcular última fecha por usuario
-  filtered.forEach(u => {
-    const userResps = allResponses
-      .filter(r=>r.userId===u.id && r.result && typeof r.result.score==="number");
-    u._lastTime = userResps.length
-      ? Math.max(...userResps.map(r=>r.timestamp.getTime()))
-      : 0;
+  // calcular última fecha de intento válido
+  filtered.forEach(u=>{
+    const times = allResponses
+      .filter(r=>r.userId===u.id && typeof r.result?.score==="number")
+      .map(r=>r.timestamp.getTime());
+    u._lastTime = times.length ? Math.max(...times) : 0;
   });
 
   // ordenar
@@ -181,8 +177,14 @@ async function loadAllUsers() {
     }
   });
 
+  // si no hay
+  if (!filtered.length) {
+    container.textContent = "No se encontraron usuarios.";
+    return;
+  }
+
   // render
-  filtered.forEach(u => {
+  filtered.forEach(u=>{
     const div = document.createElement("div");
     div.className = "user-item";
     div.innerHTML = `
@@ -192,37 +194,36 @@ async function loadAllUsers() {
       Empresa: ${u.company}<br>
       <em>Evaluaciones asignadas:</em>
     `;
-
-    (u.assignedEvaluations||[]).forEach(ev => {
-      const eData = allEvaluations[ev]||{};
+    u.assignedEvaluations.forEach(ev=>{
+      const eData = allEvaluations[ev] || {};
       const eName = eData.name || ev;
       const evalDiv = document.createElement("div");
       evalDiv.className = "eval-item";
       evalDiv.innerHTML = `<strong>${eName}</strong><br>`;
 
-      // sólo respuestas válidas
+      // respuestas válidas
       const valids = allResponses
-        .filter(r=>r.userId===u.id && r.evaluationId===ev && r.result && typeof r.result.score==="number")
+        .filter(r=>r.userId===u.id && r.evaluationId===ev && typeof r.result?.score==="number")
         .sort((a,b)=>a.timestamp - b.timestamp);
 
-      // botones intentos
+      // botones de intentos
       valids.forEach((r,i)=>{
         const btn = document.createElement("button");
         btn.textContent = `Respuestas Evaluación Intento ${i+1}`;
-        btn.onclick = ()=>downloadResponsePDFForAttempt(u.id,ev,i);
+        btn.onclick = ()=> downloadResponsePDFForAttempt(u.id,ev,i);
         evalDiv.appendChild(btn);
       });
 
       // reiniciar
       const btnR = document.createElement("button");
       btnR.textContent = "Reiniciar Intentos";
-      btnR.onclick = ()=>resetAttemptsForEvaluation(u.id,ev);
+      btnR.onclick = ()=> resetAttemptsForEvaluation(u.id,ev);
       evalDiv.appendChild(btnR);
 
       // encuesta
       const btnS = document.createElement("button");
       btnS.textContent = "Encuesta de Satisfacción";
-      btnS.onclick = ()=>downloadSurveyPDF(u.id,ev);
+      btnS.onclick = ()=> downloadSurveyPDF(u.id,ev);
       evalDiv.appendChild(btnS);
 
       // certificado
@@ -232,41 +233,35 @@ async function loadAllUsers() {
         const dateStr = passed.timestamp.toLocaleDateString();
         const btnC = document.createElement("button");
         btnC.textContent = "Certificado de Aprobación";
-        btnC.onclick = ()=>generateCertificateForUser(u.id,ev,score,dateStr);
+        btnC.onclick = ()=> generateCertificateForUser(u.id,ev,score,dateStr);
         evalDiv.appendChild(btnC);
       }
 
       div.appendChild(evalDiv);
     });
-
     container.appendChild(div);
   });
-
-  if (!filtered.length) {
-    container.textContent = "No se encontraron usuarios.";
-  }
 }
 
 // ───────────────────────────────────────────────────
-// 7) PDF de un solo intento
+// 7) PDF de un solo intento (limpiando "!'" en respuestas)
 async function downloadResponsePDFForAttempt(uid,ev,idx) {
   const valids = allResponses
-    .filter(r=>r.userId===uid && r.evaluationId===ev && r.result && typeof r.result.score==="number")
+    .filter(r=>r.userId===uid && r.evaluationId===ev && typeof r.result?.score==="number")
     .sort((a,b)=>a.timestamp - b.timestamp);
   if (!valids[idx]) {
-    alert("Intento no encontrado.");
-    return;
+    alert("Intento no encontrado."); return;
   }
   await createSingleAttemptPDF(uid,ev,idx+1,valids[idx]);
 }
 
-async function createSingleAttemptPDF(uid,ev,intNum, r) {
+async function createSingleAttemptPDF(uid,ev,intNum,r) {
   const [uSnap,eSnap] = await Promise.all([
     db.collection("users").doc(uid).get(),
     db.collection("evaluations").doc(ev).get()
   ]);
   const userName = uSnap.data().name;
-  const qs       = eSnap.data().questions||[];
+  const qs       = eSnap.data().questions || [];
 
   const pdf = new jsPDF();
   let y = 10;
@@ -279,14 +274,13 @@ async function createSingleAttemptPDF(uid,ev,intNum, r) {
   pdf.text(`Estado: ${r.result.grade}`,10,y);  y+=12;
 
   Object.entries(r.answers||{})
-    .sort((a,b)=>
-      +a[0].match(/\d+/)[0] - +b[0].match(/\d+/)[0]
-    )
+    .sort((a,b)=>+a[0].match(/\d+/)[0]-+b[0].match(/\d+/)[0])
     .forEach(([k,ans])=>{
-      const i   = +k.match(/\d+/)[0];
-      const txt = qs[i]?.text||`Pregunta ${i+1}`;
-      pdf.text(`${i+1}. ${txt}`,10,y); y+=7;
-      pdf.text(`→ ${ans}`,12,y);      y+=8;
+      const i        = +k.match(/\d+/)[0];
+      const question = qs[i]?.text || `Pregunta ${i+1}`;
+      const cleanAns = String(ans).replace(/^!'+\s*/, '');
+      pdf.text(`${i+1}. ${question}`,10,y); y+=7;
+      pdf.text(`→ ${cleanAns}`,12,y);      y+=8;
       if (y>280){pdf.addPage();y=10;}
     });
 
@@ -308,33 +302,36 @@ async function resetAttemptsForEvaluation(uid,ev) {
 }
 
 // ───────────────────────────────────────────────────
-// 9) PDF de encuesta
+// 9) PDF de encuesta (con texto de surveyQuestions y limpiando "!'" en respuestas)
 async function downloadSurveyPDF(uid,ev) {
   const docs = allSurveys
     .filter(s=>s.userId===uid && s.evaluationId===ev)
     .sort((a,b)=>a.timestamp.toDate() - b.timestamp.toDate());
   if (!docs.length) {
-    alert("Sin encuestas.");
-    return;
+    alert("Sin encuestas."); return;
   }
-  const s     = docs[0];
+  const s        = docs[0];
   const userName = (await db.collection("users").doc(uid).get()).data().name;
-  const qs       = surveyQuestionsMap[ev]||[];
+  const qs = surveyQuestionsMap[ev]
+          || surveyQuestionsMap["defaultSurvey"]
+          || Object.values(surveyQuestionsMap)[0]
+          || [];
 
   const pdf = new jsPDF();
   let y = 10;
   pdf.setFontSize(14);
-  pdf.text(`Nombre: ${userName}`,10,y); y+=10;
-  pdf.text(`Encuesta: ${ev}`,10,y);   y+=12;
+  pdf.text(`Nombre: ${userName}`,10,y);                    y+=10;
+  pdf.text(`Encuesta: ${allEvaluations[ev]?.name||ev}`,10,y); y+=12;
   pdf.setFontSize(12);
 
   Object.entries(s.surveyData||{})
-    .sort((a,b)=>+a[0].match(/\d+/)[0] - +b[0].match(/\d+/)[0])
+    .sort((a,b)=>+a[0].match(/\d+/)[0]-+b[0].match(/\d+/)[0])
     .forEach(([k,ans])=>{
-      const i   = +k.match(/\d+/)[0];
-      const txt = qs[i]?.text||`Pregunta ${i+1}`;
-      pdf.text(`${i+1}. ${txt}`,10,y); y+=7;
-      pdf.text(`→ ${ans}`,12,y);      y+=8;
+      const i        = +k.match(/\d+/)[0];
+      const question = qs[i]?.text || `Pregunta ${i+1}`;
+      const cleanAns = String(ans).replace(/^!'+\s*/, '');
+      pdf.text(`${i+1}. ${question}`,10,y); y+=7;
+      pdf.text(`→ ${cleanAns}`,12,y);      y+=8;
       if (y>280){pdf.addPage();y=10;}
     });
 
@@ -342,64 +339,60 @@ async function downloadSurveyPDF(uid,ev) {
 }
 
 // ───────────────────────────────────────────────────
-// 10) Generar certificado (idéntica a la original, solo rename descarga)
+// 10) Generar certificado (igual a tu versión original,
+// solo cambiamos el nombre del archivo al descargar)
 async function generateCertificateForUser(uid, evaluationID, score, approvalDate) {
   try {
-    // 1) Usuario
+    // 1) Leer datos del usuario
     const userSnap = await db.collection("users").doc(uid).get();
     if (!userSnap.exists) throw new Error("Usuario no encontrado");
     const { name: userNameDB, rut, company, customID } = userSnap.data();
 
-    // 2) Evaluación
+    // 2) Leer datos de la evaluación
     const evalSnap = await db.collection("evaluations").doc(evaluationID).get();
     if (!evalSnap.exists) throw new Error("Evaluación no encontrada");
-    const evalData            = evalSnap.data();
-    const evaluationName      = evalData.name;
-    const evaluationTime      = evalData.timeEvaluation;
-    const certificateTemplate = evalData.certificateTemplate;
-    const evaluationIDNumber  = evalData.ID;
+    const evalData             = evalSnap.data();
+    const evaluationName       = evalData.name;
+    const evaluationTime       = evalData.timeEvaluation;
+    const certificateTemplate  = evalData.certificateTemplate;
+    const evaluationIDNumber   = evalData.ID;
 
-    // 3) Año + ID
-    const [d,m,y] = approvalDate.split("-");
-    const year      = new Date(`${y}-${m}-${d}`).getFullYear();
+    // 3) Calcular año e ID
+    const [d,m,y]    = approvalDate.split('-');
+    const year       = new Date(`${y}-${m}-${d}`).getFullYear();
     const certificateID = `${evaluationIDNumber}${customID}${year}`;
 
-    // 4) Plantilla + PDFLib
+    // 4) Cargar plantilla
     const tplBytes = await fetch(certificateTemplate).then(r=>r.arrayBuffer());
     const pdfDoc   = await PDFLib.PDFDocument.load(tplBytes);
     pdfDoc.registerFontkit(fontkit);
 
-    // 5) Fuentes
+    // 5) Cargar fuentes
     const monoBytes   = await fetch("fonts/MonotypeCorsiva.ttf").then(r=>r.arrayBuffer());
     const perpBytes   = await fetch("fonts/Perpetua.ttf").then(r=>r.arrayBuffer());
     const perpItBytes = await fetch("fonts/PerpetuaItalic.ttf").then(r=>r.arrayBuffer());
+
     const monotypeFont       = await pdfDoc.embedFont(monoBytes);
     const perpetuaFont       = await pdfDoc.embedFont(perpBytes);
     const perpetuaItalicFont = await pdfDoc.embedFont(perpItBytes);
 
-    // 6) Página
+    // 6) Preparar página
     const page  = pdfDoc.getPages()[0];
     const { width, height } = page.getSize();
 
-    // 7) Helper centrar
+    // 7) Centrar texto
     const centerText = (txt, yPos, font, size) => {
       const wTxt = font.widthOfTextAtSize(txt, size);
-      page.drawText(txt, {
-        x: (width - wTxt) / 2,
-        y: yPos,
-        font,
-        size,
-        color: PDFLib.rgb(0,0,0)
-      });
+      page.drawText(txt, { x:(width-wTxt)/2, y:yPos, font, size, color:PDFLib.rgb(0,0,0) });
     };
 
-    // 8) Wrap
+    // 8) Wrap de líneas
     const wrapText = (txt, font, size, maxW) => {
-      const words = txt.split(" ");
+      const words = txt.split(' ');
       const lines = [];
-      let line = "";
+      let line = '';
       for (const w of words) {
-        const test = line ? line + " " + w : w;
+        const test = line ? line + ' ' + w : w;
         if (font.widthOfTextAtSize(test, size) <= maxW) {
           line = test;
         } else {
@@ -411,32 +404,32 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
       return lines;
     };
 
-    // 9) Pintar
-    centerText(userNameDB,            height - 295, monotypeFont,       35);
-    centerText(`RUT: ${rut}`,         height - 340, perpetuaItalicFont, 19);
-    centerText(`Empresa: ${company}`, height - 360, perpetuaItalicFont, 19);
+    // 9) Pintar campos
+    centerText(userNameDB,           height-295, monotypeFont,       35);
+    centerText(`RUT: ${rut}`,        height-340, perpetuaItalicFont, 19);
+    centerText(`Empresa: ${company}`,height-360, perpetuaItalicFont, 19);
 
-    const maxW2 = width - 100;
-    const linesArr = wrapText(evaluationName, monotypeFont, 34, maxW2);
-    let y0 = height - 448;
-    for (const l of linesArr) {
+    const maxW2 = width-100;
+    const lines = wrapText(evaluationName, monotypeFont, 34, maxW2);
+    let y0 = height-448;
+    for (const l of lines) {
       centerText(l, y0, monotypeFont, 34);
       y0 -= 40;
     }
 
     page.drawText(`Fecha de Aprobación: ${approvalDate}`, {
-      x: 147, y: height - 548, size: 12, font: perpetuaFont, color: PDFLib.rgb(0,0,0)
+      x:147, y:height-548, size:12, font:perpetuaFont, color:PDFLib.rgb(0,0,0)
     });
     page.drawText(`Duración del Curso: ${evaluationTime}`, {
-      x: 157, y: height - 562, size: 12, font: perpetuaFont, color: PDFLib.rgb(0,0,0)
+      x:157, y:height-562, size:12, font:perpetuaFont, color:PDFLib.rgb(0,0,0)
     });
     page.drawText(`ID: ${certificateID}`, {
-      x: 184, y: height - 576, size: 12, font: perpetuaFont, color: PDFLib.rgb(0,0,0)
+      x:184, y:height-576, size:12, font:perpetuaFont, color:PDFLib.rgb(0,0,0)
     });
 
-    // 10) Descargar con filename ajustado
+    // 10) Descargar
     const pdfBytes = await pdfDoc.save();
-    const blob     = new Blob([pdfBytes], { type: "application/pdf" });
+    const blob     = new Blob([pdfBytes], { type:"application/pdf" });
     const link     = document.createElement("a");
     link.href      = URL.createObjectURL(blob);
     link.download  = `Certificado ${evaluationName} - ${userNameDB}.pdf`;
