@@ -277,7 +277,7 @@ async function createSingleAttemptPDF(uid,ev,intNum,r) {
   pdf.text(`Estado: ${r.result.grade}`,10,y);  y+=12;
 
   pdf.setFont("helvetica"); pdf.setFontSize(12);
-  const maxWidth = pdf.internal.pageSize.getWidth() - 60;
+  const maxWidth = pdf.internal.pageSize.getWidth() - 40;
   Object.entries(r.answers||{})
     .sort((a,b)=>+a[0].match(/\d+/)[0]-+b[0].match(/\d+/)[0])
     .forEach(([k,ans])=>{
@@ -289,7 +289,7 @@ async function createSingleAttemptPDF(uid,ev,intNum,r) {
         pdf.text(line,10,y); y+=7;
         if (y>pdf.internal.pageSize.getHeight()-10){ pdf.addPage(); y=10; }
       });
-      const linesA = pdf.splitTextToSize(cleanAns, maxWidth-8);
+      const linesA = pdf.splitTextToSize(cleanAns, maxWidth-30);
       linesA.forEach(line=>{
         pdf.text(`→ ${line}`,12,y); y+=7;
         if (y>pdf.internal.pageSize.getHeight()-10){ pdf.addPage(); y=10; }
@@ -336,7 +336,7 @@ async function downloadSurveyPDF(uid,ev) {
   pdf.text(`Encuesta: ${allEvaluations[ev]?.name||ev}`,10,y); y+=12;
   pdf.setFont("helvetica"); pdf.setFontSize(12);
 
-  const maxWidth = pdf.internal.pageSize.getWidth() - 60;
+  const maxWidth = pdf.internal.pageSize.getWidth() - 40;
   Object.entries(s.surveyData||{})
     .sort((a,b)=>+a[0].match(/\d+/)[0]-+b[0].match(/\d+/)[0])
     .forEach(([k,ans])=>{
@@ -350,7 +350,7 @@ async function downloadSurveyPDF(uid,ev) {
         if (y>pdf.internal.pageSize.getHeight()-10){ pdf.addPage(); y=10; }
       });
       const cleanAns = String(ans).replace(/^[^A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ]+/, '');
-      const linesA = pdf.splitTextToSize(cleanAns, maxWidth-8);
+      const linesA = pdf.splitTextToSize(cleanAns, maxWidth-30);
       linesA.forEach(line=>{
         pdf.text(`→ ${line}`,12,y); y+=7;
         if (y>pdf.internal.pageSize.getHeight()-10){ pdf.addPage(); y=10; }
