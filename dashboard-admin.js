@@ -17,7 +17,7 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db   = firebase.firestore();
 const { jsPDF } = window.jspdf;        // Para respuestas y encuestas
-// Asegúrate de incluir también en tu HTML:
+// Asegúrate de incluir en tu HTML:
 // <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
 // <script src="https://unpkg.com/fontkit"></script>
 
@@ -302,7 +302,7 @@ async function resetAttemptsForEvaluation(uid,ev) {
 }
 
 // ───────────────────────────────────────────────────
-// 9) PDF de encuesta (con texto de surveyQuestions y limpiando "!'" en respuestas)
+// 9) PDF de encuesta (con pregunta real y limpiando "!'" en respuestas)
 async function downloadSurveyPDF(uid,ev) {
   const docs = allSurveys
     .filter(s=>s.userId===uid && s.evaluationId===ev)
@@ -340,7 +340,7 @@ async function downloadSurveyPDF(uid,ev) {
 
 // ───────────────────────────────────────────────────
 // 10) Generar certificado (igual a tu versión original,
-// solo cambiamos el nombre del archivo al descargar)
+//     solo cambiamos el nombre del archivo al descargar)
 async function generateCertificateForUser(uid, evaluationID, score, approvalDate) {
   try {
     // 1) Leer datos del usuario
