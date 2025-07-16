@@ -289,7 +289,7 @@ async function createSingleAttemptPDF(uid,ev,intNum,r) {
         pdf.text(line,10,y); y+=7;
         if (y>pdf.internal.pageSize.getHeight()-10){ pdf.addPage(); y=10; }
       });
-      const linesA = pdf.splitTextToSize(cleanAns, maxWidth-100);
+      const linesA = pdf.splitTextToSize(cleanAns, maxWidth-80);
       linesA.forEach(line=>{
         pdf.text(`→ ${line}`,12,y); y+=7;
         if (y>pdf.internal.pageSize.getHeight()-10){ pdf.addPage(); y=10; }
@@ -350,7 +350,7 @@ async function downloadSurveyPDF(uid,ev) {
         if (y>pdf.internal.pageSize.getHeight()-10){ pdf.addPage(); y=10; }
       });
       const cleanAns = String(ans).replace(/^[^A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ]+/, '');
-      const linesA = pdf.splitTextToSize(cleanAns, maxWidth-100);
+      const linesA = pdf.splitTextToSize(cleanAns, maxWidth-80);
       linesA.forEach(line=>{
         pdf.text(`→ ${line}`,12,y); y+=7;
         if (y>pdf.internal.pageSize.getHeight()-10){ pdf.addPage(); y=10; }
