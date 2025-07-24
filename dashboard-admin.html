@@ -144,6 +144,18 @@
       cursor: pointer;
     }
 
+    body.dark {
+      background: #121212;
+      color: #eee;
+    }
+    body.dark .user-item {
+      background: #1e1e1e;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+    body.dark header {
+      background: #222;
+    }
+
     @media (max-width: 768px) {
       header { padding: 8px 12px; }
       .dashboard-container { width: 100%; padding: 0 10px; }
@@ -171,6 +183,7 @@
     <a href="https://esys.cl/">
       <img src="logo.png" alt="Logo de la Empresa" class="logo" />
     </a>
+    <button id="themeToggle" style="margin-left:16px; font-size:18px;">🌙</button>
   </header>
 
   <h1>Panel de Administración - Plataforma de Cursos</h1>
