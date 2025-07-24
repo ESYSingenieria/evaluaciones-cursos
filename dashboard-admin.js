@@ -105,7 +105,7 @@ function setupFiltersUI() {
   if (document.getElementById("filtersBar")) return;
   const bar = document.createElement("div");
   bar.id = "filtersBar";
-  bar.style = "margin:16px 0; display:flex;gap:8px;flex-wrap:wrap;";
+  bar.style = "margin:16px 0; display:flex; justify-content:center; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 0; background:#f9f9f9; border-bottom:1px solid #e0e0e0;";
   bar.innerHTML = `
     <input id="f_search" placeholder="Buscar por nombre" />
     <select id="f_course"><option value="all">Todos los cursos</option></select>
