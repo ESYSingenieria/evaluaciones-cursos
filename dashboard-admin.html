@@ -1,13 +1,69 @@
+<!-- dashboard-admin.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <title>Panel de Administración</title>
+  <link rel="stylesheet" href="styles.css" />
+
   <style>
-    body { font-family: sans-serif; padding: 2rem; }
-    .user-item { border: 1px solid #ccc; padding: 1rem; margin-bottom: 1rem; }
-    .eval-item { margin-left: 1rem; margin-top: .5rem; }
-    button { margin-right: .5rem; margin-top: .25rem; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 20px;
+      background-color: #ffffff;
+    }
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 8px;
+      background-color: #fafafa;
+    }
+    .user-info p {
+      margin: 2px 0;
+      font-size: 14px;
+    }
+    .user-info button {
+      margin-top: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .logo {
+      max-width: 150px;
+      height: auto;
+    }
+
+    .dashboard-container {
+      width: 90%;
+      max-width: 1000px;
+      margin: 20px auto;
+    }
+
+    #logoutContainer {
+      width: 90%;
+      max-width: 1000px;
+      margin: 20px auto;
+      text-align: center;
+    }
+    #logoutButton {
+      padding: 10px 20px;
+      background-color: #ff4d4d;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 768px) {
+      header { padding: 8px 12px; }
+      .dashboard-container { width: 100%; padding: 0 10px; }
+      #logoutContainer { width: 100%; }
+      .user-info { max-width: 120px; overflow-x: auto; white-space: nowrap; }
+    }
   </style>
 
   <!-- Firebase SDKs -->
@@ -15,18 +71,36 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
 
-  <!-- PDF-Lib + Fontkit para generar certificados -->
+  <!-- pdf-lib, fontkit, jsPDF -->
   <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
   <script src="https://unpkg.com/@pdf-lib/fontkit/dist/fontkit.umd.js"></script>
-
-  <!-- jsPDF para respuestas y encuestas -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-  <!-- Tu lógica de administrador -->
-  <script src="dashboard-admin.js"></script>
+  <!-- Tu lógica de admin -->
+  <script src="dashboard-admin.js" defer></script>
 </head>
+
 <body>
+  <header>
+    <div id="user-info" class="user-info">
+      <p id="userNameDisplay"></p>
+      <p id="userRutDisplay"></p>
+      <button id="editProfileButton">Editar perfil</button>
+    </div>
+    <a href="https://esys.cl/">
+      <img src="logo.png" alt="Logo de la Empresa" class="logo" />
+    </a>
+  </header>
+
   <h1>🔒 Panel de Administración</h1>
-  <div id="usersList">Cargando usuarios…</div>
+  <div id="filtersBar">Cargando filtros…</div>
+
+  <div class="dashboard-container">
+    <div id="usersList">Cargando usuarios…</div>
+  </div>
+
+  <div id="logoutContainer">
+    <button id="logoutButton">Cerrar Sesión</button>
+  </div>
 </body>
 </html>
