@@ -54,9 +54,52 @@
     }
 
 
+    /* filtros centrados, con fondo claro y “aire” */
     #filtersBar {
-      width: 100%;
+      display: flex !important;
+      justify-content: center !important;
+      align-items: center !important;
+      gap: 12px !important;
+      flex-wrap: wrap !important;
+      width: 100% !important;
+      padding: 12px 0 !important;
+      background: #f9f9f9 !important;
+      border-bottom: 1px solid #e0e0e0 !important;
+      margin-bottom: 16px !important;
+    }
+
+    /* full-width para el listado */
+    #usersList {
+      width: 100vw;
+      margin-left: calc(50% - 50vw);
+      padding: 0 24px;
+      box-sizing: border-box;
+    }
+
+    /* tarjetas de usuario */
+    .user-item {
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      border-radius: 8px;
+      padding: 16px;
       margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* botones dentro de cada tarjeta */
+    .user-item button {
+      margin: 4px 8px 4px 0;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 4px;
+      background: #007bff;
+      color: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .user-item button:hover {
+      background: #0056b3;
     }
     
     #logoutButton {
