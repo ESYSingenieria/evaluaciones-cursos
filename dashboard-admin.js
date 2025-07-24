@@ -55,6 +55,18 @@ auth.onAuthStateChanged(async user => {
 });
 
 // ───────────────────────────────────────────────────
+// AGREGAR: listener para cierre de sesión
+document.addEventListener('DOMContentLoaded', () => {
+  const btnLogout = document.getElementById('logoutButton');
+  if (btnLogout) {
+    btnLogout.addEventListener('click', async () => {
+      await auth.signOut();
+      location.href = 'index.html';
+    });
+  }
+});
+
+// ───────────────────────────────────────────────────
 // 4) Precarga de datos
 async function initializeData() {
   // usuarios
