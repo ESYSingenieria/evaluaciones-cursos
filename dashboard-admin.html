@@ -38,9 +38,12 @@
     }
 
     .dashboard-container {
-      width: 90%;
-      max-width: 1000px;
-      margin: 20px auto;
+      /* full-bleed: todo el ancho de la ventana */
+      position: relative;
+      left: 50%;
+      width: 100vw;
+      margin-left: -50vw;
+      padding: 0; 
     }
 
     #logoutContainer {
@@ -78,13 +81,13 @@
 
     /* tarjetas de usuario */
     .user-item {
-      background: #fff;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-      border-radius: 8px;
+      width: 100%;
+      margin: 0 0 16px 0;
       padding: 16px;
-      margin-bottom: 16px;
-      display: flex;
-      flex-direction: column;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      box-sizing: border-box;
     }
 
     /* botones dentro de cada tarjeta */
