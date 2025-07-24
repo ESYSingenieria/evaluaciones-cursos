@@ -66,6 +66,19 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// Theme toggle
+const themeToggle = document.getElementById('themeToggle');
+themeToggle.addEventListener('click', () => {
+  const dark = document.body.classList.toggle('dark');
+  themeToggle.textContent = dark ? '☀️' : '🌙';
+  localStorage.setItem('darkMode', dark);
+});
+if (localStorage.getItem('darkMode') === 'true') {
+  document.body.classList.add('dark');
+  themeToggle.textContent = '☀️';
+}
+
+
 // ───────────────────────────────────────────────────
 // 4) Precarga de datos
 async function initializeData() {
