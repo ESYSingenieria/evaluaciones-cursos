@@ -9,7 +9,7 @@
   <style>
     header {
       display: flex;
-      justify-content: space-between;
+      justify-content: center;
       align-items: center;
       padding: 10px 20px;
       background-color: #ffffff;
@@ -33,7 +33,7 @@
       cursor: pointer;
     }
     .logo {
-      max-width: 150px;
+      max-width: 200px;
       height: auto;
     }
 
@@ -44,11 +44,18 @@
     }
 
     #logoutContainer {
-      width: 90%;
-      max-width: 1000px;
-      margin: 20px auto;
-      text-align: center;
+      position: fixed;            /* lo fija en pantalla */
+      bottom: 20px;               /* margen inferior */
+      right: 20px;                /* margen derecho */
+      margin: 0;
+      z-index: 999;
     }
+
+    #filtersBar {
+      width: 100%;
+      margin-bottom: 16px;
+    }
+    
     #logoutButton {
       padding: 10px 20px;
       background-color: #ff4d4d;
@@ -87,10 +94,10 @@
     </a>
   </header>
 
-  <h1>🔒 Panel de Administración</h1>
-  <div id="filtersBar">Cargando filtros…</div>
-
+  <h1>Panel de Administración</h1>
+     <!-- Ahora: filtros DENTRO del mismo container que la lista -->
   <div class="dashboard-container">
+    <div id="filtersBar">Cargando filtros…</div>
     <div id="usersList">Cargando usuarios…</div>
   </div>
 
