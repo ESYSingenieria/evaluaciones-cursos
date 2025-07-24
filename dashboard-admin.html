@@ -55,6 +55,7 @@
       z-index: 1000 !important;
     }
 
+
     /* filtros centrados, con fondo claro y “aire” */
     #filtersBar {
       display: flex !important;
@@ -153,22 +154,6 @@
   <h1>Panel de Administración</h1>
      <!-- Ahora: filtros DENTRO del mismo container que la lista -->
   <div class="dashboard-container">
-    <!-- dashboard-admin.html: dentro de <body>, en .dashboard-container justo antes de <div id="usersList"> -->
-    <div id="filtersBar">
-      <input type="text" id="f_search" placeholder="Buscar por nombre" />
-      <select id="f_course">
-        <option value="">Todos los cursos</option>
-        <!-- …opciones de cursos… -->
-      </select>
-      <select id="f_company">
-        <option value="">Todas las empresas</option>
-        <!-- …opciones de empresas… -->
-      </select>
-      <select id="f_order">
-        <option value="recent">Fecha (más recientes primero)</option>
-        <option value="oldest">Fecha (más antiguas primero)</option>
-      </select>
-    </div>
     <div id="usersList">Cargando usuarios…</div>
   </div>
 
