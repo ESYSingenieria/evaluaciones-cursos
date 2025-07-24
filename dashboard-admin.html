@@ -55,39 +55,41 @@
       z-index: 1000 !important;
     }
 
-    /* coloca esto al final de tu <style> o en styles.css cargado después */
     #filtersBar {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
-      background: #ffffff;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      padding: 12px 24px;
-      margin: 24px 0;
+        width: 90%;
+        max-width: 1000px;
+        margin: 20px auto;
+        padding: 16px 24px;
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: center;
     }
 
     #filtersBar input,
     #filtersBar select {
-      flex: 1 1 200px;
-      max-width: 320px;
-      padding: 8px 12px;
-      font-size: 14px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+        flex: 1 1 200px;
+        max-width: 300px;
+        padding: 8px 12px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background: #fafafa;
     }
 
     #filtersBar input::placeholder {
-      color: #999;
+        color: #999;
     }
 
     #filtersBar input:focus,
     #filtersBar select:focus {
-      outline: none;
-      border-color: #007bff;
-      box-shadow: 0 0 0 2px rgba(0,123,255,0.2);
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 2px rgba(0,123,255,0.2);
     }
 
     /* full-width para el listado */
