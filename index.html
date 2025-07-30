@@ -10,35 +10,43 @@
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>    
     <script src="app.js" defer></script>
     <style>
-        .password-container {
-            position: relative;
-            width: 100%;
-        }
-        .password-container input[type="password"],
-        .password-container input[type="text"] {
-            width: 100%;
-            padding-right: 35px; /* espacio para el ícono */
-            box-sizing: border-box;
-        }
-        .toggle-password {
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            border: none;
-            background: transparent;
-            padding: 0;
-            cursor: pointer;
-            outline: none;
-        }
-        #eyeIcon {
-            font-size: 16px;
-            color: #888;      /* gris */
-            text-decoration: none;
-        }
-        .toggle-password:hover #eyeIcon {
-            color: #555;
-        }
+      /* Mantén tus reglas originales aquí... */
+
+      /* Estilos para el contenedor de contraseña */
+      .password-container {
+          position: relative;
+          width: 100%;
+      }
+      .password-container input[type="password"],
+      .password-container input[type="text"] {
+          width: 100%;
+          padding-right: 40px;
+          box-sizing: border-box;
+      }
+
+      /* Anula cualquier estilo de botón azul */
+      .toggle-password {
+          position: absolute;
+          right: 10px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+          outline: none;
+          padding: 0;
+          cursor: pointer;
+      }
+
+      /* Ojo gris */
+      #eyeIcon {
+          font-size: 16px;
+          color: #888;
+          text-decoration: none;
+      }
+      .toggle-password:hover #eyeIcon {
+          color: #555;
+      }
     </style>
 </head>
 <body>
@@ -75,17 +83,17 @@
     </div>
 
     <script>
-        function togglePasswordVisibility() {
-            const pwd  = document.getElementById("password");
-            const icon = document.getElementById("eyeIcon");
-            if (pwd.type === "password") {
-                pwd.type = "text";
-                icon.style.textDecoration = "none";         // ojo abierto
-            } else {
-                pwd.type = "password";
-                icon.style.textDecoration = "line-through"; // ojo “cerrado”
-            }
-        }
+      function togglePasswordVisibility() {
+          const pwd  = document.getElementById("password");
+          const icon = document.getElementById("eyeIcon");
+          if (pwd.type === "password") {
+              pwd.type = "text";
+              icon.style.textDecoration = "none";         // ojo abierto
+          } else {
+              pwd.type = "password";
+              icon.style.textDecoration = "line-through"; // ojo “cerrado”
+          }
+      }
     </script>
 </body>
 </html>
