@@ -16,7 +16,7 @@
         .password-container input[type="password"],
         .password-container input[type="text"] {
             width: 100%;
-            padding-right: 40px; /* Espacio para el botón */
+            padding-right: 40px;
             box-sizing: border-box;
         }
         .toggle-password {
@@ -26,9 +26,13 @@
             transform: translateY(-50%);
             cursor: pointer;
             border: none;
-            background: none;
+            background: transparent;
             font-size: 16px;
             color: #007bff;
+            outline: none;
+        }
+        .toggle-password:hover {
+            color: #0056b3;
         }
     </style>
 </head>
