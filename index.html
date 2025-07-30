@@ -12,11 +12,12 @@
     <style>
         .password-container {
             position: relative;
+            width: 100%;
         }
         .password-container input[type="password"],
         .password-container input[type="text"] {
             width: 100%;
-            padding-right: 40px;
+            padding-right: 35px; /* espacio para el ícono */
             box-sizing: border-box;
         }
         .toggle-password {
@@ -24,26 +25,30 @@
             right: 10px;
             top: 50%;
             transform: translateY(-50%);
-            cursor: pointer;
             border: none;
             background: transparent;
-            font-size: 16px;
-            color: #007bff;
+            padding: 0;
+            cursor: pointer;
             outline: none;
         }
-        .toggle-password:hover {
-            color: #0056b3;
+        #eyeIcon {
+            font-size: 16px;
+            color: #888;      /* gris */
+            text-decoration: none;
+        }
+        .toggle-password:hover #eyeIcon {
+            color: #555;
         }
     </style>
 </head>
 <body>
-    <div id="globalLoading" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.8); z-index: 9999; text-align: center; padding-top: 20%;">
-        <p style="font-size: 20px; color: #007bff;">Cargando...</p>
-    </div>    
+    <div id="globalLoading" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255,255,255,0.8); z-index: 9999; text-align: center; padding-top: 20%;">
+        <p style="font-size:20px; color:#007bff;">Cargando...</p>
+    </div>
 
-    <header style="text-align: center; padding: 0px; background-color: #ffffff;">
+    <header style="text-align:center; padding:0; background:#fff;">
         <a href="https://esys.cl/">
-            <img src="logo.png" alt="Logo de la Empresa" style="max-width: 200px; height: auto;">
+            <img src="logo.png" alt="Logo de la Empresa" style="max-width:200px; height:auto;">
         </a>
     </header>
 
@@ -56,22 +61,30 @@
             <label for="password">Contraseña:</label>
             <div class="password-container">
                 <input type="password" id="password" required>
-                <button type="button" class="toggle-password" onclick="togglePasswordVisibility()">👁️</button>
+                <button type="button" class="toggle-password" onclick="togglePasswordVisibility()">
+                    <span id="eyeIcon">👁</span>
+                </button>
             </div>
 
             <button type="submit">Iniciar Sesión</button>
-        </form>      
+        </form>
         <p id="errorMessage"></p>
         <div class="password-reset">
             <button id="changePasswordButton">Cambiar Contraseña</button>
-        </div>  
+        </div>
     </div>
 
     <script>
         function togglePasswordVisibility() {
-            const passwordField = document.getElementById("password");
-            const type = passwordField.getAttribute("type") === "password" ? "text" : "password";
-            passwordField.setAttribute("type", type);
+            const pwd  = document.getElementById("password");
+            const icon = document.getElementById("eyeIcon");
+            if (pwd.type === "password") {
+                pwd.type = "text";
+                icon.style.textDecoration = "none";         // ojo abierto
+            } else {
+                pwd.type = "password";
+                icon.style.textDecoration = "line-through"; // ojo “cerrado”
+            }
         }
     </script>
 </body>
