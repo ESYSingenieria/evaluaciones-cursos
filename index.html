@@ -22,12 +22,20 @@
     /* borde negro y efecto 3D ligero */
     .login-container {
       position: relative;
-      top: 75px;    /* baja 100px desde su posición original */
+      top: 50px;    /* baja 100px desde su posición original */
       left: 360px;    /* mueve 50px a la derecha */
       /* sombra suave para dar profundidad */
       box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      /* para animar el efecto al pasar el ratón */
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
       /* opcional: si quieres preservar el “espacio 3D” */
       transform-style: preserve-3d;
+    }
+
+    /* al hacer hover levanta un poquito y aumenta la sombra */
+    .login-container:hover {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: 0 6px 15px rgba(0,0,0,0.4);
     }
 
     .password-container {
