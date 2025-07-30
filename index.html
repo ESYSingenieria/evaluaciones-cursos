@@ -4,56 +4,145 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Inicio de Sesión</title>
-  <link rel="stylesheet" href="styles.css"/>
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>    
-  <script src="app.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
   <style>
-    .password-container {
-      position: relative;
-      width: 100%;
+    /* FONDO CON IMAGEN img_login.jpg EN LA MISMA CARPETA */
+    body {
+      margin: 0; padding: 0;
+      font-family: sans-serif;
+      background: url('img_login.jpg') no-repeat center center fixed;
+      background-size: cover;
     }
-    .password-container input[type="password"],
-    .password-container input[type="text"] {
+
+    /* CARGANDO */
+    #globalLoading {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(255,255,255,0.8);
+      z-index: 9999;
+      text-align: center;
+      padding-top: 20vh;
+    }
+    #globalLoading p {
+      font-size: 20px; color: #007bff;
+    }
+
+    /* HEADER */
+    header {
+      text-align: center;
+      padding: 20px 0;
+      background: rgba(255,255,255,0.8);
+      backdrop-filter: blur(4px);
+    }
+    header img {
+      max-width: 200px;
+    }
+
+    /* CONTENEDOR LOGIN */
+    .login-container {
+      max-width: 400px;
+      margin: 40px auto;
+      padding: 20px;
+      background: rgba(255,255,255,0.85);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+    }
+    .login-container h1 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    /* FORMULARIO */
+    .login-form label {
+      display: block;
+      margin: 10px 0 5px;
+      color: #333;
+    }
+    .login-form input {
       width: 100%;
-      padding-right: 40px;
+      padding: 8px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
       box-sizing: border-box;
     }
 
-    /* Botón transparente sin fondo */
+    /* TOGGLE CONTRASEÑA */
+    .password-container {
+      position: relative;
+      margin-bottom: 20px;
+    }
+    .password-container input {
+      padding-right: 40px;
+    }
     .toggle-password {
       position: absolute;
-      right: 10px;
-      top: 50%;
+      right: 10px; top: 50%;
       transform: translateY(-50%);
       background: transparent !important;
       border: none !important;
       box-shadow: none !important;
+      cursor: pointer;
       outline: none;
       padding: 0;
-      cursor: pointer;
     }
-
-    /* Icono gris y tachado por defecto (ojo cerrado) */
     #eyeIcon {
-      font-size: 16px;
+      font-size: 18px;
       color: #888;
-      text-decoration: line-through;
+      text-decoration: line-through; /* ojo cerrado por defecto */
     }
     .toggle-password:hover #eyeIcon {
       color: #555;
     }
+
+    /* BOTONES */
+    .login-form button[type="submit"] {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      color: #fff;
+      background: #007bff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .login-form button[type="submit"]:hover {
+      background: #0056b3;
+    }
+    .password-reset {
+      text-align: center;
+      margin-top: 15px;
+    }
+    .password-reset button {
+      padding: 8px 12px;
+      background: #ff4d4f;
+      border: none;
+      color: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .password-reset button:hover {
+      background: #d4380d;
+    }
+    #errorMessage {
+      color: red;
+      margin-top: 10px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
-  <div id="globalLoading" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.8);z-index:9999;text-align:center;padding-top:20%;">
-    <p style="font-size:20px;color:#007bff;">Cargando...</p>
+  <div id="globalLoading">
+    <p>Cargando...</p>
   </div>
 
-  <header style="text-align:center;padding:0;background:#fff;">
+  <header>
     <a href="https://esys.cl/">
-      <img src="logo.png" alt="Logo de la Empresa" style="max-width:200px;height:auto;">
+      <img src="logo.png" alt="Logo ESYS">
     </a>
   </header>
 
@@ -80,17 +169,30 @@
   </div>
 
   <script>
+    // Inicialización de Firebase
+    const firebaseConfig = {
+      apiKey: "...",
+      authDomain: "...",
+      projectId: "...",
+      storageBucket: "...",
+      messagingSenderId: "...",
+      appId: "..."
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    // Toggle visibilidad contraseña
     function togglePasswordVisibility() {
       const pwd  = document.getElementById("password");
       const icon = document.getElementById("eyeIcon");
       if (pwd.type === "password") {
         pwd.type = "text";
-        icon.style.textDecoration = "none";      // ojo abierto
+        icon.style.textDecoration = "none";
       } else {
         pwd.type = "password";
-        icon.style.textDecoration = "line-through"; // ojo cerrado
+        icon.style.textDecoration = "line-through";
       }
     }
+    window.togglePasswordVisibility = togglePasswordVisibility;
   </script>
 </body>
 </html>
