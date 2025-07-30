@@ -72,6 +72,27 @@
     .toggle-password:hover #eyeIcon {
       color: #555;
     }
+
+    @media (max-width: 600px) {
+      /* Quita la imagen de fondo y usa un fondo liso */
+      body {
+        background: #fff !important;
+        background-image: none !important;
+      }
+
+      /* Restablece la posición y centra el contenedor */
+      .login-container {
+        position: static !important;
+        top: auto !important;
+        left: auto !important;
+        transform: none !important;
+        margin: 20px auto !important;
+        width: auto !important;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1) !important; /* opcional: sombra más suave */
+        border: 1px solid #ddd !important;                  /* opcional: borde neutro */
+      }
+    }
+
   </style>
 </head>
 <body>
