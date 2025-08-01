@@ -170,23 +170,26 @@
       .user-info { max-width: 120px; overflow-x: auto; white-space: nowrap; }
     }
     
+    .field-container {
+      margin-bottom: 12px;
+    }
+    .field-container strong {
+      display: block;
+      margin-bottom: 4px;
+    }
     .inline-input {
-      width: calc(100% - 12px);
+      width: 100%;
       padding: 6px;
-      margin: 4px 0 12px;
       border: 1px solid #007bff;
       border-radius: 4px;
       font-size: 14px;
+      box-sizing: border-box;
     }
-    .field {
-      margin-bottom: 8px;
-    }
-    .user-item .edit-user-btn {
-      margin-left: 8px;
-    }
+    .user-item .edit-user-btn,
     .user-item .save-user-btn,
     .user-item .cancel-user-btn {
-      margin-left: 4px;
+      margin-right: 8px;
+      margin-bottom: 12px;
     }
     
   </style>
