@@ -139,12 +139,56 @@ document.addEventListener('DOMContentLoaded', () => {
     formCreate.style.display = 'none';
   });
 
+    // Devuelve el próximo CustomID: número mayor + 1 y un guion
+  function generateNextCustomID() {
+    let max = 0;
+    allUsers.forEach(u => {
+      const cid = String(u.customID||'').replace(/[^0-9]/g, '');
+      const n = parseInt(cid, 10);
+      if (!isNaN(n) && n > max) max = n;
+    });
+    return (max + 1) + '-';
+  }
+
+  // Cuando abres el formulario, rellena el CustomID
+  btnCreate.addEventListener('click', () => {
+    document.getElementById('newCustomId').value = generateNextCustomID();
+    formCreate.style.display = 'block';
+  });
+
+    // Formateo automático de RUT: miles con puntos y guion + dígito verificador
+  const rutInput = document.getElementById('newRut');
+  rutInput.addEventListener('input', e => {
+    e.target.value = formatRut(e.target.value);
+  });
+
+  function formatRut(value) {
+    // eliminamos todo menos dígitos y K
+    let v = value.replace(/[^0-9kK]/g, '').toUpperCase();
+    const dv = v.slice(-1);
+    let nums = v.slice(0, -1);
+    if (!v) return '';
+    if (v.length === 1) {
+      // aún solo dígito verificador
+      return v;
+    }
+    // si no hay dv separado, suponemos último carácter como dv
+    if (!/[0-9K]/.test(dv)) {
+      nums = v;
+    }
+    // formatear miles: invertimos, agrupamos de a 3, volcamos
+    const rev = nums.split('').reverse().join('');
+    const groups = rev.match(/.{1,3}/g) || [];
+    const formattedNums = groups.join('.').split('').reverse().join('');
+    return formattedNums + (dv ? '-' + dv : '');
+  }
+  
   // 4) Crear usuario en Auth + Firestore
   btnSave.addEventListener('click', async () => {
     const email    = document.getElementById('newEmail').value.trim();
     const name     = document.getElementById('newName').value.trim();
     const rut      = document.getElementById('newRut').value.trim();
-    const customID = document.getElementById('newCustomId').value.trim();
+    const customID = document.getElementById('newCustomId').value;
     const company  = document.getElementById('newCompany').value.trim();
     const password = '123456';  // clave estándar
 
