@@ -190,7 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const rut      = document.getElementById('newRut').value.trim();
     const customID = document.getElementById('newCustomId').value;
     const company  = document.getElementById('newCompany').value.trim();
-    const password = '123456';  // clave estándar
+    const password = document.getElementById('newPassword').value.trim() || '123456';
 
     if (!email || !name) {
       return alert('Email y Nombre son obligatorios.');
