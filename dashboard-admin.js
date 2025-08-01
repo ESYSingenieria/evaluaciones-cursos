@@ -65,27 +65,53 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Edit user inline
+  // Delegación para editar/guardar/cancelar inline
   document.body.addEventListener('click', async e => {
-    if (!e.target.matches('.edit-user-btn')) return;
     const uid = e.target.dataset.uid;
-    const d = await db.collection('users').doc(uid).get();
-    const data = d.data();
-    const newName = prompt('Nombre:', data.name);
-    if (newName === null) return;
-    const newRut  = prompt('RUT:',        data.rut);
-    const newCid  = prompt('CustomID:',   data.customID);
-    const newCo   = prompt('Empresa:',    data.company);
-    await db.collection('users').doc(uid).update({
-      name:      newName,
-      rut:       newRut,
-      customID:  newCid,
-      company:   newCo
-    });
-    alert('Usuario actualizado');
-    loadAllUsers();
-  });
+    const row = e.target.closest('.user-item');
+    if (!row || !uid) return;
 
+    // 1) ✏️ Editar: habilita inputs y muestra botones Guardar/Cancelar
+    if (e.target.matches('.edit-user-btn')) {
+      row.querySelectorAll('.field-input').forEach(i => i.disabled = false);
+      row.querySelector('.edit-user-btn').style.display   = 'none';
+      row.querySelector('.save-user-btn').style.display   = '';
+      row.querySelector('.cancel-user-btn').style.display = '';
+    }
+
+    // 2) ✖️ Cancelar: recarga valores originales desde Firestore
+    if (e.target.matches('.cancel-user-btn')) {
+      const doc = await db.collection('users').doc(uid).get();
+      const data = doc.data();
+      row.querySelector('.user-name').value    = data.name;
+      row.querySelector('.user-rut').value     = data.rut;
+      row.querySelector('.user-cid').value     = data.customID;
+      row.querySelector('.user-company').value = data.company;
+      row.querySelectorAll('.field-input').forEach(i => i.disabled = true);
+      row.querySelector('.edit-user-btn').style.display   = '';
+      row.querySelector('.save-user-btn').style.display   = 'none';
+      row.querySelector('.cancel-user-btn').style.display = 'none';
+    }
+
+    // 3) ✔️ Guardar: sube cambios y vuelve a readonly
+    if (e.target.matches('.save-user-btn')) {
+      const newName = row.querySelector('.user-name').value.trim();
+      const newRut  = row.querySelector('.user-rut').value.trim();
+      const newCid  = row.querySelector('.user-cid').value.trim();
+      const newCo   = row.querySelector('.user-company').value.trim();
+      await db.collection('users').doc(uid).update({
+        name:     newName,
+        rut:      newRut,
+        customID: newCid,
+        company:  newCo
+      });
+      row.querySelectorAll('.field-input').forEach(i => i.disabled = true);
+      row.querySelector('.edit-user-btn').style.display   = '';
+      row.querySelector('.save-user-btn').style.display   = 'none';
+      row.querySelector('.cancel-user-btn').style.display = 'none';
+      alert('Usuario actualizado');
+    }
+  });
 });  // <-- aquí
 
 // Theme toggle
@@ -238,11 +264,26 @@ function loadAllUsers() {
     const div = document.createElement("div");
     div.className = "user-item";
     div.innerHTML = `
-      <strong>${u.name}</strong>
-      <button class="edit-user-btn" data-uid="${u.id}" style="float:right;">✏️</button><br>
-      RUT: ${u.rut}<br>
-      CustomID: ${u.customID}<br>
-      Empresa: ${u.company}<br>
+      <label>
+        Nombre:<br/>
+        <input type="text" class="field-input user-name" value="${u.name}" disabled data-uid="${u.id}" />
+      </label>
+      <label>
+        RUT:<br/>
+        <input type="text" class="field-input user-rut" value="${u.rut}" disabled />
+      </label>
+      <label>
+        CustomID:<br/>
+        <input type="text" class="field-input user-cid" value="${u.customID}" disabled />
+      </label>
+      <label>
+        Empresa:<br/>
+        <input type="text" class="field-input user-company" value="${u.company}" disabled />
+      </label>
+      <button class="edit-user-btn" data-uid="${u.id}">✏️</button>
+      <button class="save-user-btn" data-uid="${u.id}" style="display:none;">✔️</button>
+      <button class="cancel-user-btn" data-uid="${u.id}" style="display:none;">✖️</button>
+      <hr/>
       <em>Evaluaciones asignadas:</em>
     `;
     u.assignedEvaluations.forEach(ev=>{
