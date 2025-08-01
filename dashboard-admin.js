@@ -15,6 +15,10 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
+// App secundaria para crear usuarios sin afectar el auth principal
+const secondaryApp  = firebase.initializeApp(firebaseConfig, "Secondary");
+const secondaryAuth = secondaryApp.auth();
+
 const db   = firebase.firestore();
 const { jsPDF } = window.jspdf;
 // (Asegúrate de incluir en tu HTML PDF-Lib y fontkit si usas certificados)
@@ -198,7 +202,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       // 4.1) crea en Auth
-      const cred = await auth.createUserWithEmailAndPassword(email, password);
+      // usa el auth secundario: la sesión principal (admin) NO cambia
+      const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
 
       // 4.2) usa el uid para crear el doc en Firestore
       await db.collection('users').doc(cred.user.uid).set({
@@ -209,7 +214,10 @@ document.addEventListener('DOMContentLoaded', () => {
         role: 'user',
         assignedEvaluations: []
       });
-
+      
+      // 3) Limpiar la sesión secundaria
+      await secondaryAuth.signOut();
+      
       alert('Usuario creado correctamente.\nContraseña por defecto: 123456');
       formCreate.style.display = 'none';
       loadAllUsers();  // refresca la lista
