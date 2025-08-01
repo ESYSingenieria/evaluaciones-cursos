@@ -69,16 +69,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Delegación para editar/guardar/cancelar inline con asignación de evaluaciones
+ // Delegación para editar/guardar/cancelar inline
   document.body.addEventListener('click', async e => {
     const btn = e.target;
     const uid = btn.dataset.uid;
     if (!uid) return;
     const row = btn.closest('.user-item');
 
-    // — EDITAR: convertir campos a inputs y mostrar select de evaluaciones
+    // 1) ✏️ Editar: por cada field-container, oculta el span y añade un input
     if (btn.matches('.edit-user-btn')) {
-      // 1) Reemplazo de texto por inputs inline para nombre, rut, customID y empresa
       row.querySelectorAll('.field-container').forEach(fc => {
         const span = fc.querySelector('.field');
         const val  = span.textContent;
@@ -90,74 +89,154 @@ document.addEventListener('DOMContentLoaded', () => {
         inp.value = val;
         fc.appendChild(inp);
       });
-
-      // 2) Mostrar multi-select de evaluaciones
-      const selDiv = row.querySelector('.edit-evals-container');
-      const sel    = selDiv.querySelector('.edit-assigned-evals');
-      // carga opciones y marca las actuales
-      const current = allUsers.find(u=>u.id===uid).assignedEvaluations || [];
-      Array.from(sel.options).forEach(o => {
-        o.selected = current.includes(o.value);
-      });
-      selDiv.style.display = '';
-
-      // 3) Ajuste de botones
-      btn.style.display = 'none';
-      row.querySelector('.save-user-btn'  ).style.display = '';
+      btn.style.display                   = 'none';
+      row.querySelector('.save-user-btn').style.display   = '';
       row.querySelector('.cancel-user-btn').style.display = '';
     }
 
-    // — CANCELAR: descartar cambios y volver a texto
+    // 2) ✖️ Cancelar: elimina inputs, muestra spans originales
     if (btn.matches('.cancel-user-btn')) {
-      // recargar datos originales
-      const doc  = await db.collection('users').doc(uid).get();
-      const data = doc.data() || {};
-      ['name','rut','customID','company'].forEach(key => {
-        const fc = row.querySelector(`.field-container [data-field="${key}"]`).parentNode;
+      row.querySelectorAll('.field-container').forEach(async fc => {
+        const key = fc.querySelector('.field').dataset.field;
+        const data = (await db.collection('users').doc(uid).get()).data();
         fc.querySelector('.field').textContent = data[key] || '';
-        // quitar input si existe
+        fc.querySelector('.field').style.display = '';
         const inp = fc.querySelector('.inline-input');
         if (inp) inp.remove();
-        fc.querySelector('.field').style.display = '';
       });
-      // ocultar select de evaluaciones
-      row.querySelector('.edit-evals-container').style.display = 'none';
-      // restaurar botones
-      row.querySelector('.edit-user-btn'  ).style.display = '';
-      btn.style.display                             = 'none';
-      row.querySelector('.save-user-btn'  ).style.display = 'none';
+      row.querySelector('.edit-user-btn').style.display   = '';
+      btn.style.display                                   = 'none';
+      row.querySelector('.save-user-btn').style.display   = 'none';
     }
 
-    // — GUARDAR: tomar valores de inputs + select y actualizar Firestore
+    // 3) ✔️ Guardar: toma valores de inputs, actualiza Firestore y reconstruye spans
     if (btn.matches('.save-user-btn')) {
-      // 1) Recoger inputs inline
       const updates = {};
       row.querySelectorAll('.inline-input').forEach(inp => {
         updates[inp.name] = inp.value.trim();
       });
-      // 2) Recoger evaluaciones seleccionadas
-      const sel = row.querySelector('.edit-assigned-evals');
-      updates.assignedEvaluations = Array.from(sel.selectedOptions).map(o=>o.value);
-
-      // 3) Persistir cambios
       await db.collection('users').doc(uid).update(updates);
-
-      // 4) Volver a texto puro
-      ['name','rut','customID','company'].forEach(key => {
-        const fc = row.querySelector(`.field-container [data-field="${key}"]`).parentNode;
+      row.querySelectorAll('.field-container').forEach(fc => {
+        const key = fc.querySelector('.field').dataset.field;
         fc.querySelector('.field').textContent = updates[key];
+        fc.querySelector('.field').style.display = '';
         const inp = fc.querySelector('.inline-input');
         if (inp) inp.remove();
-        fc.querySelector('.field').style.display = '';
       });
-      row.querySelector('.edit-evals-container').style.display = 'none';
-
-      // 5) Restaurar botones y recargar lista
-      row.querySelector('.edit-user-btn'  ).style.display = '';
-      btn.style.display                             = 'none';
+      row.querySelector('.edit-user-btn').style.display   = '';
+      btn.style.display                                   = 'none';
       row.querySelector('.cancel-user-btn').style.display = 'none';
       alert('Usuario actualizado');
-      loadAllUsers();
+    }
+  });
+
+    // 3) Mostrar/ocultar el formulario
+  const btnCreate    = document.getElementById('createUserBtn');
+  const formCreate   = document.getElementById('createUserForm');
+  const btnCancel    = document.getElementById('cancelCreateUser');
+  const btnSave      = document.getElementById('saveCreateUser');
+
+  btnCreate.addEventListener('click', () => {
+    formCreate.style.display = 'block';
+  });
+  btnCancel.addEventListener('click', () => {
+    formCreate.style.display = 'none';
+  });
+
+    // Devuelve el próximo CustomID: número mayor + 1 y un guion
+  function generateNextCustomID() {
+    let max = 0;
+    allUsers.forEach(u => {
+      const cid = String(u.customID||'').replace(/[^0-9]/g, '');
+      const n = parseInt(cid, 10);
+      if (!isNaN(n) && n > max) max = n;
+    });
+    return (max + 1) + '-';
+  }
+
+  btnCreate.addEventListener('click', () => {
+    // 1) Generar el próximo CustomID y rellenar el input
+    document.getElementById('newCustomId').value = generateNextCustomID();
+
+    // 2) Poblar el multi-select con todas las evaluaciones
+    const sel = document.getElementById('newAssignedEvals');
+    sel.innerHTML = Object.entries(allEvaluations)
+      .map(([id, ev]) => <option value="${id}">${ev.name}</option>)
+      .join('');
+
+    // 3) Mostrar el formulario
+    formCreate.style.display = 'block';
+  });
+
+    // Formateo automático de RUT: miles con puntos y guion + dígito verificador
+  const rutInput = document.getElementById('newRut');
+  rutInput.addEventListener('input', e => {
+    e.target.value = formatRut(e.target.value);
+  });
+
+  function formatRut(value) {
+    // eliminamos todo menos dígitos y K
+    let v = value.replace(/[^0-9kK]/g, '').toUpperCase();
+    const dv = v.slice(-1);
+    let nums = v.slice(0, -1);
+    if (!v) return '';
+    if (v.length === 1) {
+      // aún solo dígito verificador
+      return v;
+    }
+    // si no hay dv separado, suponemos último carácter como dv
+    if (!/[0-9K]/.test(dv)) {
+      nums = v;
+    }
+    // formatear miles: invertimos, agrupamos de a 3, volcamos
+    const rev = nums.split('').reverse().join('');
+    const groups = rev.match(/.{1,3}/g) || [];
+    const formattedNums = groups.join('.').split('').reverse().join('');
+    return formattedNums + (dv ? '-' + dv : '');
+  }
+  
+  // 4) Crear usuario en Auth + Firestore
+  btnSave.addEventListener('click', async () => {
+    const email    = document.getElementById('newEmail').value.trim();
+    const name     = document.getElementById('newName').value.trim();
+    const rut      = document.getElementById('newRut').value.trim();
+    const customID = document.getElementById('newCustomId').value;
+    const company  = document.getElementById('newCompany').value.trim();
+    const password = document.getElementById('newPassword').value.trim() || '123456';
+
+    if (!email || !name || !rut || !company || !password) {
+      return alert('Se tienen que llenar todos los campos.');
+    }
+
+      // dentro de btnSave… antes de auth.createUser…
+    const assignedEvals = Array.from(
+      document.getElementById('newAssignedEvals').selectedOptions
+    ).map(o => o.value);
+
+    try {
+      // 4.1) crea en Auth
+      // usa el auth secundario: la sesión principal (admin) NO cambia
+      const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+
+      // 4.2) usa el uid para crear el doc en Firestore
+      await db.collection('users').doc(cred.user.uid).set({
+        name,
+        rut,
+        customID,
+        company,
+        role: 'user',
+        assignedEvaluations: assignedEvals
+      });
+      
+      // 3) Limpiar la sesión secundaria
+      await secondaryAuth.signOut();
+      
+      alert('Usuario creado correctamente.\nContraseña por defecto: 123456');
+      formCreate.style.display = 'none';
+      loadAllUsers();  // refresca la lista
+    } catch (err) {
+      console.error(err);
+      alert('Error creando usuario: ' + err.message);
     }
   });
   
