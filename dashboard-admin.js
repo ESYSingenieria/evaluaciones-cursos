@@ -69,79 +69,100 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // — Editar/Guardar/Cancelar inline con evaluaciones —
+  // — Editar/Guardar/Cancelar inline con asignación de evaluaciones —
   document.body.addEventListener('click', async e => {
     const btn = e.target;
+    // Solo actuamos sobre los botones de editar, guardar o cancelar
+    if (
+      !btn.matches('.edit-user-btn') &&
+      !btn.matches('.save-user-btn') &&
+      !btn.matches('.cancel-user-btn')
+    ) return;
+
     const uid = btn.dataset.uid;
     if (!uid) return;
     const row = btn.closest('.user-item');
+    if (!row) return;
 
-    // ✏️ Editar      
+    // ✏️ EDITAR: transformar spans en inputs y mostrar el select
     if (btn.matches('.edit-user-btn')) {
-      row.querySelectorAll('.field-container').forEach(fc => {
-        const span = fc.querySelector('.field');          
-        const val  = span.textContent;
+      // Ocultar el botón editar y mostrar guardar/cancelar
+      btn.style.display = 'none';
+      row.querySelector('.save-user-btn').style.display   = 'inline-block';
+      row.querySelector('.cancel-user-btn').style.display = 'inline-block';
+
+      // Convertir cada campo de texto en un input editable
+      row.querySelectorAll('.field-container .field').forEach(span => {
+        const key   = span.dataset.field;
+        const value = span.textContent;
         span.style.display = 'none';
-        const inp = document.createElement('input');
-        inp.type = 'text';
-        inp.className = 'inline-input';
-        inp.name = span.dataset.field;
-        inp.value = val;
-        fc.appendChild(inp);
+        const input = document.createElement('input');
+        input.type      = 'text';
+        input.className = 'inline-input';
+        input.name      = key;
+        input.value     = value;
+        span.insertAdjacentElement('afterend', input);
       });
-      // mostrar select de evaluaciones
+
+      // Mostrar y preseleccionar el multi-select de evaluaciones
       const selDiv = row.querySelector('.edit-evals-container');
       const sel    = selDiv.querySelector('.edit-assigned-evals');
-      const current = allUsers.find(u => u.id === uid).assignedEvaluations || [];
-      Array.from(sel.options).forEach(o => {
-        o.selected = current.includes(o.value);
+      const current = (allUsers.find(u => u.id === uid) || {}).assignedEvaluations || [];
+      Array.from(sel.options).forEach(opt => {
+        opt.selected = current.includes(opt.value);
       });
-      selDiv.style.display = '';
-
-      btn.style.display                           = 'none';
-      row.querySelector('.save-user-btn').style.display   = '';
-      row.querySelector('.cancel-user-btn').style.display = '';
+      selDiv.style.display = 'block';
     }
 
-    // ✖️ Cancelar
+    // ✖️ CANCELAR: eliminar inputs y volver a mostrar spans originales
     if (btn.matches('.cancel-user-btn')) {
-      const doc  = await db.collection('users').doc(uid).get();
-      const data = doc.data() || {};
+      // Revertir cada input a su span original
       row.querySelectorAll('.field-container').forEach(fc => {
-        const key = fc.querySelector('.field').dataset.field;
-        fc.querySelector('.field').textContent = data[key] || '';
-        fc.querySelector('.field').style.display = '';
-        const inp = fc.querySelector('.inline-input');
+        const span = fc.querySelector('.field');
+        const inp  = fc.querySelector('.inline-input');
         if (inp) inp.remove();
+        span.style.display = '';
       });
+      // Ocultar el select de evaluaciones
       row.querySelector('.edit-evals-container').style.display = 'none';
-      row.querySelector('.edit-user-btn').style.display   = '';
-      btn.style.display                                   = 'none';
+      // Restaurar botones
       row.querySelector('.save-user-btn').style.display   = 'none';
+      btn.style.display = 'none';
+      row.querySelector('.edit-user-btn').style.display = 'inline-block';
     }
 
-    // ✔️ Guardar
+    // ✔️ GUARDAR: leer inputs y select, actualizar Firestore y UI
     if (btn.matches('.save-user-btn')) {
+      // Recoger valores de los inputs
       const updates = {};
       row.querySelectorAll('.inline-input').forEach(inp => {
         updates[inp.name] = inp.value.trim();
       });
+      // Recoger evaluaciones seleccionadas
       const sel = row.querySelector('.edit-assigned-evals');
       updates.assignedEvaluations = Array.from(sel.selectedOptions).map(o => o.value);
 
+      // Persistir en Firestore
       await db.collection('users').doc(uid).update(updates);
+      // Actualizar también el array local allUsers
+      const user = allUsers.find(u => u.id === uid);
+      if (user) Object.assign(user, updates);
 
+      // Volver cada input a span con el nuevo valor
       row.querySelectorAll('.field-container').forEach(fc => {
-        const key = fc.querySelector('.field').dataset.field;
-        fc.querySelector('.field').textContent = updates[key];
-        fc.querySelector('.field').style.display = '';
+        const span = fc.querySelector('.field');
+        const key  = span.dataset.field;
+        span.textContent = updates[key] || '';
         const inp = fc.querySelector('.inline-input');
         if (inp) inp.remove();
+        span.style.display = '';
       });
-      row.querySelector('.edit-evals-container').style.display = 'none';
-      row.querySelector('.edit-user-btn').style.display   = '';
-      btn.style.display                                   = 'none';
-      row.querySelector('.cancel-user-btn').style.display = 'none';
+      // Ocultar select de evaluaciones y restaurar botones
+      row.querySelector('.edit-evals-container').style.display   = 'none';
+      btn.style.display                                          = 'none';
+      row.querySelector('.cancel-user-btn').style.display        = 'none';
+      row.querySelector('.edit-user-btn').style.display          = 'inline-block';
+
       alert('Usuario actualizado');
       loadAllUsers();
     }
