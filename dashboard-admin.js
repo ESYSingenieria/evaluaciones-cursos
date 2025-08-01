@@ -126,6 +126,55 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+    // 3) Mostrar/ocultar el formulario
+  const btnCreate    = document.getElementById('createUserBtn');
+  const formCreate   = document.getElementById('createUserForm');
+  const btnCancel    = document.getElementById('cancelCreateUser');
+  const btnSave      = document.getElementById('saveCreateUser');
+
+  btnCreate.addEventListener('click', () => {
+    formCreate.style.display = 'block';
+  });
+  btnCancel.addEventListener('click', () => {
+    formCreate.style.display = 'none';
+  });
+
+  // 4) Crear usuario en Auth + Firestore
+  btnSave.addEventListener('click', async () => {
+    const email    = document.getElementById('newEmail').value.trim();
+    const name     = document.getElementById('newName').value.trim();
+    const rut      = document.getElementById('newRut').value.trim();
+    const customID = document.getElementById('newCustomId').value.trim();
+    const company  = document.getElementById('newCompany').value.trim();
+    const password = '123456';  // clave estándar
+
+    if (!email || !name) {
+      return alert('Email y Nombre son obligatorios.');
+    }
+
+    try {
+      // 4.1) crea en Auth
+      const cred = await auth.createUserWithEmailAndPassword(email, password);
+
+      // 4.2) usa el uid para crear el doc en Firestore
+      await db.collection('users').doc(cred.user.uid).set({
+        name,
+        rut,
+        customID,
+        company,
+        role: 'user',
+        assignedEvaluations: []
+      });
+
+      alert('Usuario creado correctamente.\nContraseña por defecto: 123456');
+      formCreate.style.display = 'none';
+      loadAllUsers();  // refresca la lista
+    } catch (err) {
+      console.error(err);
+      alert('Error creando usuario: ' + err.message);
+    }
+  });
+  
 });  // <-- aquí
 
 // Theme toggle
