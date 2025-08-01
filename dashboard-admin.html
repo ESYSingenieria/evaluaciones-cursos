@@ -170,26 +170,34 @@
       .user-info { max-width: 120px; overflow-x: auto; white-space: nowrap; }
     }
     
-    .field-container {
-      margin-bottom: 12px;
+    .user-item {
+        position: relative;
+        padding-top: 40px; /* deja espacio para el botón */
     }
-    .field-container strong {
-      display: block;
-      margin-bottom: 4px;
+
+    .user-item .edit-user-btn {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background: #007bff;
+        color: #fff;
+        border: none;
+        padding: 8px;
+        border-radius: 4px;
+        cursor: pointer;
     }
-    .inline-input {
-      width: 100%;
-      padding: 6px;
-      border: 1px solid #007bff;
-      border-radius: 4px;
-      font-size: 14px;
-      box-sizing: border-box;
-    }
-    .user-item .edit-user-btn,
+
+    /* Si quieres que los botones de guardar/cancelar también vayan junto al editar: */
     .user-item .save-user-btn,
     .user-item .cancel-user-btn {
-      margin-right: 8px;
-      margin-bottom: 12px;
+        position: absolute;
+        top: 16px;
+    }
+    .user-item .save-user-btn {
+        right: 56px; /* ajusta la separación respecto al ✏️ */
+    }
+    .user-item .cancel-user-btn {
+        right: 96px;
     }
     
   </style>
