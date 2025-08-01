@@ -65,66 +65,67 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Delegación para editar/guardar/cancelar inline SOLO cuando haces click
+  // Delegación para editar/guardar/cancelar inline
   document.body.addEventListener('click', async e => {
     const btn = e.target;
     const uid = btn.dataset.uid;
     if (!uid) return;
     const row = btn.closest('.user-item');
-  
-    // 1) Click ✏️: transforma cada .field en un input
+
+    // 1) ✏️ Editar: por cada field-container, oculta el span y añade un input
     if (btn.matches('.edit-user-btn')) {
-      row.querySelectorAll('.field').forEach(div => {
-        const key = div.dataset.field;
-        const text = div.textContent.replace(/^[^:]+:\s*/, '');
+      row.querySelectorAll('.field-container').forEach(fc => {
+        const span = fc.querySelector('.field');
+        const val  = span.textContent;
+        span.style.display = 'none';
         const inp = document.createElement('input');
         inp.type = 'text';
         inp.className = 'inline-input';
-        inp.name = key;
-        inp.value = text;
-        div.innerHTML = '';       // vaciamos
-        div.appendChild(inp);     // ponemos input
+        inp.name = span.dataset.field;
+        inp.value = val;
+        fc.appendChild(inp);
       });
-      row.querySelector('.edit-user-btn').style.display   = 'none';
+      btn.style.display                   = 'none';
       row.querySelector('.save-user-btn').style.display   = '';
       row.querySelector('.cancel-user-btn').style.display = '';
     }
 
-    // 2) Click ✖️ Cancelar: recarga texto desde Firestore
+    // 2) ✖️ Cancelar: elimina inputs, muestra spans originales
     if (btn.matches('.cancel-user-btn')) {
-      const doc = await db.collection('users').doc(uid).get();
-      const data = doc.data();
-      ['name','rut','customID','company'].forEach(key => {
-        const div = row.querySelector(`.field[data-field="${key}"]`);
-        let label = key === 'customID' ? 'CustomID' : key.charAt(0).toUpperCase() + key.slice(1);
-        if (key === 'rut') label = 'RUT';
-        div.textContent = `${label}: ${data[key] || ''}`;
+      row.querySelectorAll('.field-container').forEach(async fc => {
+        const key = fc.querySelector('.field').dataset.field;
+        const data = (await db.collection('users').doc(uid).get()).data();
+        fc.querySelector('.field').textContent = data[key] || '';
+        fc.querySelector('.field').style.display = '';
+        const inp = fc.querySelector('.inline-input');
+        if (inp) inp.remove();
       });
       row.querySelector('.edit-user-btn').style.display   = '';
+      btn.style.display                                   = 'none';
       row.querySelector('.save-user-btn').style.display   = 'none';
-      row.querySelector('.cancel-user-btn').style.display = 'none';
     }
 
-    // 3) Click ✔️ Guardar: toma valores y actualiza Firestore
+    // 3) ✔️ Guardar: toma valores de inputs, actualiza Firestore y reconstruye spans
     if (btn.matches('.save-user-btn')) {
       const updates = {};
       row.querySelectorAll('.inline-input').forEach(inp => {
         updates[inp.name] = inp.value.trim();
       });
       await db.collection('users').doc(uid).update(updates);
-      // vuelve a mostrar texto usando los valores nuevos
-      ['name','rut','customID','company'].forEach(key => {
-        const div = row.querySelector(`.field[data-field="${key}"]`);
-        let label = key === 'customID' ? 'CustomID' : key.charAt(0).toUpperCase() + key.slice(1);
-        if (key === 'rut') label = 'RUT';
-        div.textContent = `${label}: ${updates[key]}`;
+      row.querySelectorAll('.field-container').forEach(fc => {
+        const key = fc.querySelector('.field').dataset.field;
+        fc.querySelector('.field').textContent = updates[key];
+        fc.querySelector('.field').style.display = '';
+        const inp = fc.querySelector('.inline-input');
+        if (inp) inp.remove();
       });
       row.querySelector('.edit-user-btn').style.display   = '';
-      row.querySelector('.save-user-btn').style.display   = 'none';
+      btn.style.display                                   = 'none';
       row.querySelector('.cancel-user-btn').style.display = 'none';
       alert('Usuario actualizado');
     }
   });
+
 });  // <-- aquí
 
 // Theme toggle
@@ -277,10 +278,22 @@ function loadAllUsers() {
     const div = document.createElement("div");
     div.className = "user-item";
     div.innerHTML = `
-      <div class="field" data-field="name"><strong>${u.name}</strong></div>
-      <div class="field" data-field="rut">RUT: ${u.rut}</div>
-      <div class="field" data-field="customID">CustomID: ${u.customID}</div>
-      <div class="field" data-field="company">Empresa: ${u.company}</div>
+      <div class="field-container">
+        <strong>Nombre:</strong>
+        <span class="field" data-field="name">${u.name}</span>
+      </div>
+      <div class="field-container">
+        <strong>RUT:</strong>
+        <span class="field" data-field="rut">${u.rut}</span>
+      </div>
+      <div class="field-container">
+        <strong>CustomID:</strong>
+        <span class="field" data-field="customID">${u.customID}</span>
+      </div>
+      <div class="field-container">
+        <strong>Empresa:</strong>
+        <span class="field" data-field="company">${u.company}</span>
+      </div>
       <button class="edit-user-btn" data-uid="${u.id}">✏️</button>
       <button class="save-user-btn" data-uid="${u.id}" style="display:none;">✔️</button>
       <button class="cancel-user-btn" data-uid="${u.id}" style="display:none;">✖️</button>
