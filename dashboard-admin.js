@@ -64,7 +64,29 @@ document.addEventListener('DOMContentLoaded', () => {
       location.href = 'index.html';
     });
   }
-});
+
+  // Edit user inline
+  document.body.addEventListener('click', async e => {
+    if (!e.target.matches('.edit-user-btn')) return;
+    const uid = e.target.dataset.uid;
+    const d = await db.collection('users').doc(uid).get();
+    const data = d.data();
+    const newName = prompt('Nombre:', data.name);
+    if (newName === null) return;
+    const newRut  = prompt('RUT:',        data.rut);
+    const newCid  = prompt('CustomID:',   data.customID);
+    const newCo   = prompt('Empresa:',    data.company);
+    await db.collection('users').doc(uid).update({
+      name:      newName,
+      rut:       newRut,
+      customID:  newCid,
+      company:   newCo
+    });
+    alert('Usuario actualizado');
+    loadAllUsers();
+  });
+
+});  // <-- aquí
 
 // Theme toggle
 const themeToggle = document.getElementById('themeToggle');
@@ -216,7 +238,8 @@ function loadAllUsers() {
     const div = document.createElement("div");
     div.className = "user-item";
     div.innerHTML = `
-      <strong>${u.name}</strong><br>
+      <strong>${u.name}</strong>
+      <button class="edit-user-btn" data-uid="${u.id}" style="float:right;">✏️</button><br>
       RUT: ${u.rut}<br>
       CustomID: ${u.customID}<br>
       Empresa: ${u.company}<br>
