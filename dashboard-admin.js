@@ -202,6 +202,24 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('input[name="newAssignedEvals"]:checked')
     ).map(cb => cb.value);
 
+    // ── AQUÍ GENERAMOS customID ─────────────────────────
+    // Leemos el mayor customID actual (asumiendo que es un número secuencial)
+    const usersRef = db.collection('users').where('role','==','user');
+    const lastSnap = await usersRef
+      .orderBy('customID', 'desc')    // orden descendente por customID
+      .limit(1)
+      .get();
+
+    let newCustomID = 1;
+    if (!lastSnap.empty) {
+      const lastVal = parseInt(lastSnap.docs[0].data().customID, 10) || 0;
+      newCustomID   = lastVal + 1;
+    }
+    const customIDStr = String(newCustomID).padStart(3, '0'); 
+    // opcional: lo formateas con ceros a la izquierda
+
+  // ── FIN customID ─────────────────────────────────────
+    
     try {
       // 1) Crear usuario en App secundaria
       const { user } = await secondaryAuth
@@ -693,5 +711,6 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
 
 
