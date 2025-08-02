@@ -175,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
     .map(([id, ev]) => `
       <label class="eval-option">
       <input type="checkbox" name="newAssignedEvals" value="${id}">
-        <span>${ev.name}</span>
+        <span>${id}</span>
       </label>
     `).join('');
     form.style.display = 'block';
@@ -341,22 +341,19 @@ function setupFiltersUI() {
      });
 }
 
-// ───────────────────────────────────────────────────
-// 6) Render de usuarios con filtros + orden
 function loadAllUsers() {
   const container = document.getElementById("usersList");
   container.innerHTML = "";
 
   // 1) Filtrar
-  let filtered = allUsers.filter(u => {
+  const filtered = allUsers.filter(u => {
     if (searchName && !u.name.toLowerCase().includes(searchName)) return false;
     if (filterCompany !== "all" && u.company !== filterCompany) return false;
-    if (filterCourse  !== "all" && !u.assignedEvaluations.includes(filterCourse))
-      return false;
+    if (filterCourse  !== "all" && !u.assignedEvaluations.includes(filterCourse)) return false;
     return true;
   });
 
-  // 2) Calcular última fecha de intento válido
+  // 2) Calcular última fecha válida
   filtered.forEach(u => {
     const times = allResponses
       .filter(r => r.userId === u.id && typeof r.result?.score === "number")
@@ -369,8 +366,8 @@ function loadAllUsers() {
     switch (sortBy) {
       case "dateDesc":     return b._lastTime - a._lastTime;
       case "dateAsc":      return a._lastTime - b._lastTime;
-      case "customIdDesc": return (+b.customID || 0) - (+a.customID || 0);
-      case "customIdAsc":  return (+a.customID || 0) - (+b.customID || 0);
+      case "customIdDesc": return (+b.customID||0) - (+a.customID||0);
+      case "customIdAsc":  return (+a.customID||0) - (+b.customID||0);
       default:             return 0;
     }
   });
@@ -381,84 +378,88 @@ function loadAllUsers() {
     return;
   }
 
-  // 5) Render de cada usuario
+  // 5) Renderizar cada usuario
   filtered.forEach(u => {
-    const div = document.createElement("div");
-    div.className = "user-item";
+    // Fila contenedora
+    const row = document.createElement("div");
+    row.className = "user-item";
+    row.dataset.uid = u.id;
 
-    // Preparar HTML de los checkboxes para edición
+    // ==== HTML estático (modo “view”) ====
+    const staticHtml = `
+      <div class="field-container"><strong>Nombre:</strong> <span class="field">${u.name}</span></div>
+      <div class="field-container"><strong>RUT:</strong>    <span class="field">${u.rut}</span></div>
+      <div class="field-container"><strong>CustomID:</strong><span class="field">${u.customID}</span></div>
+      <div class="field-container"><strong>Empresa:</strong> <span class="field">${u.company}</span></div>
+
+      <div class="buttons" style="margin:8px 0;">
+        <button class="edit-user-btn">✏️</button>
+        <button class="save-user-btn" style="display:none;">✔️</button>
+        <button class="cancel-user-btn" style="display:none;">✖️</button>
+      </div>
+    `;
+
+    // ==== HTML edición (modo “edit”), parte oculta inicialmente ====
+    // 5.1) Inputs para campos
+    const inputsHtml = `
+      <div class="field-container"><input type="text" name="name"     value="${u.name}"     class="edit-field" /></div>
+      <div class="field-container"><input type="text" name="rut"      value="${u.rut}"      class="edit-field" /></div>
+      <div class="field-container"><input type="text" name="customID" value="${u.customID}" class="edit-field" /></div>
+      <div class="field-container"><input type="text" name="company"  value="${u.company}"  class="edit-field" /></div>
+    `;
+
+    // 5.2) Checkboxes solo con el ID de documento
     const checkedSet = new Set(u.assignedEvaluations || []);
     const checkboxesHtml = Object.entries(allEvaluations)
-      .map(([id, ev]) => `
-        <label class="eval-option">
-          <input
-            type="checkbox"
-            name="assignedEvals"
-            value="${id}"
-            ${checkedSet.has(id) ? "checked" : ""}>
-          <span>${ev.name}</span>
+      .map(([id]) => `
+        <label class="eval-option" style="display:flex;align-items:center;margin:4px 0;cursor:pointer;">
+          <input type="checkbox"
+                 name="assignedEvals"
+                 value="${id}"
+                 ${checkedSet.has(id) ? "checked" : ""}
+                 style="margin-right:8px;">
+          <span>${id}</span>
         </label>
       `).join("");
 
-    // HTML base de la fila
-    div.innerHTML = `
-      <div class="field-container">
-        <strong>Nombre:</strong>
-        <span class="field">${u.name}</span>
-      </div>
-      <div class="field-container">
-        <strong>RUT:</strong>
-        <span class="field">${u.rut}</span>
-      </div>
-      <div class="field-container">
-        <strong>CustomID:</strong>
-        <span class="field">${u.customID}</span>
-      </div>
-      <div class="field-container">
-        <strong>Empresa:</strong>
-        <span class="field">${u.company}</span>
-      </div>
-
-      <div class="buttons">
-        <button class="edit-user-btn"   data-uid="${u.id}">✏️</button>
-        <button class="save-user-btn"   data-uid="${u.id}" style="display:none;">✔️</button>
-        <button class="cancel-user-btn" data-uid="${u.id}" style="display:none;">✖️</button>
-      </div>
-
-      <!-- Contenedor de checkboxes oculto hasta pulsar ✏️ -->
-      <div class="edit-evals-container" style="display:none; margin:12px 0;">
-        <div class="evals-container" data-uid="${u.id}">
+    const editHtml = `
+      <div class="edit-container" style="display:none; padding-top:12px; border-top:1px solid #eee;">
+        ${inputsHtml}
+        <div class="evals-container" style="max-height:150px; overflow-y:auto; border:1px solid #ddd; padding:4px; border-radius:4px;">
           ${checkboxesHtml}
         </div>
       </div>
-
-      <!-- Aquí va el resumen de evaluaciones + botones -->
-      <div class="eval-summary"></div>
     `;
 
-    // Poblar el resumen debajo
-    const summaryContainer = div.querySelector(".eval-summary");
+    // 5.3) Placeholder para el resumen de evaluaciones (modo “view”)
+    const summaryHtml = `<div class="eval-summary" style="margin-top:12px;"></div>`;
+
+    // Juntamos todo e inyectamos
+    row.innerHTML = staticHtml + editHtml + summaryHtml;
+    container.appendChild(row);
+
+    // ==== Llenar el resumen de evaluación (botones) ====
+    const summaryContainer = row.querySelector(".eval-summary");
     u.assignedEvaluations.forEach(ev => {
       const eData = allEvaluations[ev] || {};
       const eName = eData.name || ev;
       const evalDiv = document.createElement("div");
       evalDiv.className = "eval-item";
+      evalDiv.style.marginBottom = "8px";
       evalDiv.innerHTML = `<strong>${eName}</strong><br>`;
 
-      // 1) Botones de intentos válidos
+      // 1) Botones de intento
       const valids = allResponses
-        .filter(r => r.userId === u.id &&
-                     r.evaluationId === ev &&
-                     typeof r.result?.score === "number")
-        .sort((a, b) => a.timestamp - b.timestamp);
-      valids.forEach((r, i) => {
+        .filter(r => r.userId===u.id && r.evaluationId===ev && typeof r.result?.score==="number")
+        .sort((a,b)=>a.timestamp - b.timestamp);
+      valids.forEach((r,i) => {
         const btn = document.createElement("button");
-        btn.textContent = `Respuestas Evaluación Intento ${i+1}`;
+        btn.textContent = `Respuestas Intento ${i+1}`;
         btn.onclick = () => downloadResponsePDFForAttempt(u.id, ev, i);
         evalDiv.appendChild(btn);
       });
 
-      // 2) Reiniciar intentos
+      // 2) Reiniciar
       const btnR = document.createElement("button");
       btnR.textContent = "Reiniciar Intentos";
       btnR.onclick = () => resetAttemptsForEvaluation(u.id, ev);
@@ -471,7 +472,7 @@ function loadAllUsers() {
       evalDiv.appendChild(btnS);
 
       // 4) Certificado si aprobó
-      const passed = valids.find(r => r.result.grade === "Aprobado");
+      const passed = valids.find(r => r.result.grade==="Aprobado");
       if (passed) {
         const score   = passed.result.score;
         const dateStr = new Date(passed.timestamp).toLocaleDateString();
@@ -483,8 +484,6 @@ function loadAllUsers() {
 
       summaryContainer.appendChild(evalDiv);
     });
-
-    container.appendChild(div);
   });
 }
 
@@ -696,5 +695,6 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
 
 
