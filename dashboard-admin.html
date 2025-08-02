@@ -1,3 +1,4 @@
+<!-- dashboard-admin.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -13,16 +14,37 @@
       padding: 10px 20px;
       background-color: #ffffff;
     }
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 8px;
+      background-color: #fafafa;
+    }
+    .user-info p {
+      margin: 2px 0;
+      font-size: 14px;
+    }
+    .user-info button {
+      margin-top: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
     .logo {
       max-width: 200px;
       height: auto;
     }
+
     .dashboard-container {
+      /* full-bleed: todo el ancho de la ventana */
       width: 100%;
       margin: 0;
       padding: 0 16px;
       box-sizing: border-box;
     }
+
     #logoutContainer {
       position: fixed !important;
       bottom: 20px !important;
@@ -33,40 +55,43 @@
       z-index: 1000 !important;
     }
 
-    /* ===== filtros ===== */
+
     #filtersBar {
-      width: 100%;
-      background: #ffffff;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      padding: 16px;
-      margin: 16px 0;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      justify-content: flex-start;
-      align-items: center;
-    }
-    #filtersBar input,
-    #filtersBar select {
-      padding: 8px 12px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      background: #f9f9f9;
-      font-size: 14px;
-    }
-    #filtersBar input::placeholder {
-      color: #888;
-    }
-    #filtersBar input:focus,
-    #filtersBar select:focus {
-      outline: none;
-      border-color: #007bff;
-      box-shadow: 0 0 0 2px rgba(0,123,255,0.2);
+        width: 100%;
+        background: #ffffff;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        padding: 16px;
+        margin: 16px 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: flex-start;
+        align-items: center;
     }
 
-    /* lista usuarios */
+    #filtersBar input,
+    #filtersBar select {
+        padding: 8px 12px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background: #f9f9f9;
+        font-size: 14px;
+    }
+
+    #filtersBar input::placeholder {
+        color: #888;
+    }
+
+    #filtersBar input:focus,
+    #filtersBar select:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 2px rgba(0,123,255,0.2);
+    }
+
+    /* full-width para el listado */
     #usersList {
       width: 100%;
       margin: 0;
@@ -74,37 +99,28 @@
       box-sizing: border-box;
     }
 
+    /* Sub-contenedor de cada evaluación: separado y con fondo */
+    .eval-item {
+       background: #f9f9f9;
+       border: 1px solid #e0e0e0;
+       border-radius: 6px;
+       padding: 12px 16px;
+       margin: 12px 0;
+    }
+
+    /* tarjetas de usuario */
     .user-item {
-      position: relative;
       width: 100%;
       margin: 0 0 16px 0;
-      padding: 40px 16px 16px; /* espacio top para botones */
+      padding: 16px;
       background: #fff;
       border-radius: 8px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.05);
       box-sizing: border-box;
     }
-    .user-item .edit-user-btn {
-      position: absolute;
-      top: 16px;
-      right: 16px;
-      background: #007bff;
-      color: #fff;
-      border: none;
-      padding: 8px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .user-item .save-user-btn,
-    .user-item .cancel-user-btn {
-      position: absolute;
-      top: 16px;
-      display: none;
-    }
-    .user-item .save-user-btn { right: 56px; }
-    .user-item .cancel-user-btn { right: 96px; }
 
-    .user-item button:not(.edit-user-btn):not(.save-user-btn):not(.cancel-user-btn) {
+    /* botones dentro de cada tarjeta */
+    .user-item button {
       margin: 4px 8px 4px 0;
       padding: 8px 12px;
       border: none;
@@ -118,15 +134,7 @@
     .user-item button:hover {
       background: #0056b3;
     }
-
-    .eval-item {
-      background: #f9f9f9;
-      border: 1px solid #e0e0e0;
-      border-radius: 6px;
-      padding: 12px 16px;
-      margin: 12px 0;
-    }
-
+    
     #logoutButton {
       padding: 10px 20px;
       background-color: #ff4d4d;
@@ -147,73 +155,105 @@
     body.dark header {
       background: #222;
     }
+
     #themeToggle {
-      position: absolute;
-      top: 50%;
-      right: 20px;
-      transform: translateY(-50%);
+        position: absolute;
+        top: 50%;
+        right: 20px;           /* separación desde el borde derecho */
+        transform: translateY(-50%);  /* para centrarlo verticalmente */
     }
 
     @media (max-width: 768px) {
       header { padding: 8px 12px; }
       .dashboard-container { width: 100%; padding: 0 10px; }
       #logoutContainer { width: 100%; }
+      .user-info { max-width: 120px; overflow-x: auto; white-space: nowrap; }
     }
+    
+    .user-item {
+        position: relative;
+        padding-top: 40px; /* deja espacio para el botón */
+    }
+
+    .user-item .edit-user-btn {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background: #007bff;
+        color: #fff;
+        border: none;
+        padding: 8px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    /* Si quieres que los botones de guardar/cancelar también vayan junto al editar: */
+    .user-item .save-user-btn,
+    .user-item .cancel-user-btn {
+        position: absolute;
+        top: 16px;
+    }
+    .user-item .save-user-btn {
+        right: 56px; /* ajusta la separación respecto al ✏️ */
+    }
+    .user-item .cancel-user-btn {
+        right: 96px;
+    }
+    
   </style>
 
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+
   <!-- pdf-lib, fontkit, jsPDF -->
   <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
   <script src="https://unpkg.com/@pdf-lib/fontkit/dist/fontkit.umd.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+  <!-- Tu lógica de admin -->
   <script src="dashboard-admin.js" defer></script>
 </head>
+
 <body>
   <header>
     <a href="https://esys.cl/">
       <img src="logo.png" alt="Logo de la Empresa" class="logo" />
     </a>
-    <button id="themeToggle">🌙</button>
   </header>
 
   <h1>Panel de Administración - Plataforma de Cursos</h1>
+     <!-- Ahora: filtros DENTRO del mismo container que la lista -->
   <div class="dashboard-container">
-    <div id="filtersBar">Cargando filtros…</div>
     <div id="usersList">Cargando usuarios…</div>
   </div>
 
+    <!-- Botón “+ Usuario” flotante -->
   <button id="createUserBtn"
           style="position:fixed; bottom:80px; right:20px;
                  background:#28a745; color:#fff; border:none;
                  padding:12px 16px; border-radius:50%; font-size:20px;
-                 cursor:pointer; z-index:1000;">+</button>
+                 cursor:pointer; z-index:1000;">
+    +
+  </button>
 
-  <div id="createUserForm" style="display:none;
-       position:fixed; top:20%; left:50%; transform:translateX(-50%);
-       background:#fff; padding:24px; border:1px solid #ccc;
-       border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.2);
-       z-index:1001; width:320px;">
+  <!-- Formulario oculto para crear usuario -->
+  <div id="createUserForm"
+       style="display:none; position:fixed; top:20%; left:50%;
+              transform:translateX(-50%); background:#fff;
+              padding:24px; border:1px solid #ccc; border-radius:8px;
+              box-shadow:0 2px 8px rgba(0,0,0,0.2); z-index:1001; width:320px;">
     <h3>Crear nuevo usuario</h3>
-    <input id="newEmail"    type="email" placeholder="Email"      style="width:100%;margin:8px 0;padding:8px;" />
-    <input id="newPassword" type="text"  placeholder="Contraseña" value="123456" style="width:100%;margin:8px 0;padding:8px;" />
-    <input id="newName"     type="text"  placeholder="Nombre"     style="width:100%;margin:8px 0;padding:8px;" />
-    <input id="newRut"      type="text"  placeholder="RUT"        style="width:100%;margin:8px 0;padding:8px;" />
-    <input id="newCustomId" type="text"  placeholder="CustomID"   style="width:100%;margin:8px 0;padding:8px;" disabled />
-    <input id="newCompany"  type="text"  placeholder="Empresa"    style="width:100%;margin:8px 0;padding:8px;" />
-    <label style="margin:8px 0 0; display:block;">
-      Evaluaciones:<br>
-      <select id="newAssignedEvals" multiple
-              style="width:100%;height:120px;margin-top:4px;padding:4px;">
-        <!-- se llena desde JS -->
-      </select>
-    </label>
+    <input id="newEmail"    type="email"    placeholder="Email"      style="width:100%;margin:8px 0;padding:8px;" />
+    <input id="newPassword"  type="text"  placeholder="Contraseña" value="123456" style="width:100%;margin:8px 0;padding:8px;" />
+    <input id="newName"     type="text"     placeholder="Nombre"     style="width:100%;margin:8px 0;padding:8px;" />
+    <input id="newRut"      type="text"     placeholder="RUT"        style="width:100%;margin:8px 0;padding:8px;" />
+    <input id="newCustomId" type="text"     placeholder="CustomID"   style="width:100%;margin:8px 0;padding:8px;" disabled />
+    <input id="newCompany"  type="text"     placeholder="Empresa"    style="width:100%;margin:8px 0;padding:8px;" />
     <div style="text-align:right;margin-top:12px;">
-      <button id="cancelCreateUser">Cancelar</button>
-      <button id="saveCreateUser" style="background:#28a745;color:#fff;">Crear</button>
+      <button id="cancelCreateUser" style="margin-right:8px;">Cancelar</button>
+      <button id="saveCreateUser"   style="background:#28a745;color:#fff;">Crear</button>
     </div>
   </div>
 
