@@ -1,9 +1,3 @@
-// dashboard-admin.js
-
-// ───────────────────────────────────────────────────
-// 🔒 Panel de Administración
-// ───────────────────────────────────────────────────
-
 // 1) Inicializar Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
@@ -14,41 +8,32 @@ const firebaseConfig = {
   appId: "1:950684050808:web:33d2ef70f2343642f4548d"
 };
 firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-// App secundaria para crear usuarios sin afectar el auth principal
 const secondaryApp  = firebase.initializeApp(firebaseConfig, "Secondary");
+const auth          = firebase.auth();
 const secondaryAuth = secondaryApp.auth();
+const db            = firebase.firestore();
+const { jsPDF }     = window.jspdf;
 
-const db   = firebase.firestore();
-const { jsPDF } = window.jspdf;
-// (Asegúrate de incluir en tu HTML PDF-Lib y fontkit si usas certificados)
-
-// ───────────────────────────────────────────────────
-// 2) Caché y estados de filtros/orden
+// 2) Estados globales
 let allUsers           = [];
 let allEvaluations     = {};
 let allResponses       = [];
 let allSurveys         = [];
 let surveyQuestionsMap = {};
-
 let searchName    = "";
 let filterCourse  = "all";
 let filterCompany = "all";
 let sortBy        = "dateDesc";
 
-// ───────────────────────────────────────────────────
-// 3) Auth & carga inicial
+// 3) Autenticación y carga inicial
 auth.onAuthStateChanged(async user => {
-  if (!user) {
-    location.href = "index.html";
-    return;
-  }
+  if (!user) { location.href = "index.html"; return; }
   const perfilSnap = await db.collection("users").doc(user.uid).get();
-  const role       = perfilSnap.data()?.role;
-  if (role === "admin" && !location.pathname.includes("dashboard-admin.html")) {
+  const role = perfilSnap.data()?.role;
+  if (role==="admin" && !location.pathname.includes("dashboard-admin.html")) {
     location.href = "dashboard-admin.html"; return;
   }
-  if (role !== "admin" && location.pathname.includes("dashboard-admin.html")) {
+  if (role!=="admin" && location.pathname.includes("dashboard-admin.html")) {
     location.href = "dashboard.html"; return;
   }
   if (location.pathname.includes("dashboard-admin.html")) {
@@ -58,123 +43,173 @@ auth.onAuthStateChanged(async user => {
   }
 });
 
-// ───────────────────────────────────────────────────
-// AGREGAR: listener para cierre de sesión
+// 4) DOMContentLoaded: listeners e interactividad
 document.addEventListener('DOMContentLoaded', () => {
+  // — Logout —
   const btnLogout = document.getElementById('logoutButton');
-  if (btnLogout) {
-    btnLogout.addEventListener('click', async () => {
-      await auth.signOut();
-      location.href = 'index.html';
+  if (btnLogout) btnLogout.addEventListener('click', async () => {
+    await auth.signOut();
+    location.href = 'index.html';
+  });
+
+  // — Theme toggle —
+  const themeToggle = document.getElementById('themeToggle');
+  if (themeToggle) {
+    themeToggle.addEventListener('click', () => {
+      const dark = document.body.classList.toggle('dark');
+      themeToggle.textContent = dark ? '☀️' : '🌙';
+      localStorage.setItem('darkMode', dark);
     });
+    if (localStorage.getItem('darkMode') === 'true') {
+      document.body.classList.add('dark');
+      themeToggle.textContent = '☀️';
+    }
   }
 
-  // Delegación para editar/guardar/cancelar inline con asignación de evaluaciones
+  // — Generador de CustomID —
+  function generateNextCustomID() {
+    let max = 0;
+    allUsers.forEach(u => {
+      const n = parseInt((u.customID||"").replace(/[^0-9]/g,""),10);
+      if (!isNaN(n) && n>max) max=n;
+    });
+    return (max+1) + '-';
+  }
+
+  // — Formateo automático de RUT —
+  function formatRut(value){
+    let v = value.replace(/[^0-9kK]/g,'').toUpperCase();
+    const dv = v.slice(-1), nums = v.slice(0,-1);
+    if (!v) return '';
+    const number = v.length>1 && /[0-9K]/.test(dv) ? nums : v;
+    const rev   = number.split('').reverse().join('');
+    const parts = rev.match(/.{1,3}/g)||[];
+    return parts.join('.').split('').reverse().join('') + (dv?'-'+dv:'');
+  }
+  const rutInput = document.getElementById('newRut');
+  if (rutInput) rutInput.addEventListener('input', e => {
+    e.target.value = formatRut(e.target.value);
+  });
+
+  // — Crear usuario: mostrar/ocultar modal y lógica —
+  const btnCreate  = document.getElementById('createUserBtn');
+  const formCreate = document.getElementById('createUserForm');
+  const btnCancel  = document.getElementById('cancelCreateUser');
+  const btnSave    = document.getElementById('saveCreateUser');
+
+  btnCreate.addEventListener('click', () => {
+    document.getElementById('newCustomId').value = generateNextCustomID();
+    const sel = document.getElementById('newAssignedEvals');
+    sel.innerHTML = Object.entries(allEvaluations)
+      .map(([id,ev])=>`<option value="${id}">${ev.name}</option>`)
+      .join('');
+    formCreate.style.display = 'block';
+  });
+  btnCancel.addEventListener('click', () => formCreate.style.display='none');
+
+  btnSave.addEventListener('click', async () => {
+    const email    = document.getElementById('newEmail').value.trim();
+    const password = document.getElementById('newPassword').value.trim()||'123456';
+    const name     = document.getElementById('newName').value.trim();
+    const rut      = document.getElementById('newRut').value.trim();
+    const customID = document.getElementById('newCustomId').value;
+    const company  = document.getElementById('newCompany').value.trim();
+    const assignedEvals = Array.from(
+      document.getElementById('newAssignedEvals').selectedOptions
+    ).map(o=>o.value);
+
+    if (!email||!name||!rut||!company) {
+      return alert('Completa todos los campos obligatorios.');
+    }
+    try {
+      const cred = await secondaryAuth.createUserWithEmailAndPassword(email,password);
+      await db.collection('users').doc(cred.user.uid).set({
+        name,rut,customID,company,role:'user',
+        assignedEvaluations:assignedEvals
+      });
+      await secondaryAuth.signOut();
+      alert('Usuario creado.\nContraseña: '+password);
+      formCreate.style.display='none';
+      loadAllUsers();
+    } catch(err){
+      console.error(err);
+      alert('Error: '+err.message);
+    }
+  });
+
+  // — Bulk assign —
+  // (aquí iría tu código de selección múltiple y batch update)
+
+  // — Editar/Guardar/Cancelar inline con evaluaciones —
   document.body.addEventListener('click', async e => {
     const btn = e.target;
+    if (!btn.matches('.edit-user-btn') && !btn.matches('.save-user-btn') && !btn.matches('.cancel-user-btn')) return;
     const uid = btn.dataset.uid;
     if (!uid) return;
     const row = btn.closest('.user-item');
 
-    // — EDITAR: convertir campos a inputs y mostrar select de evaluaciones
+    // EDITAR
     if (btn.matches('.edit-user-btn')) {
-      // 1) Reemplazo de texto por inputs inline para nombre, rut, customID y empresa
-      row.querySelectorAll('.field-container').forEach(fc => {
-        const span = fc.querySelector('.field');
-        const val  = span.textContent;
-        span.style.display = 'none';
+      btn.style.display = 'none';
+      row.querySelector('.save-user-btn').style.display   = 'inline-block';
+      row.querySelector('.cancel-user-btn').style.display = 'inline-block';
+      row.querySelectorAll('.field-container .field').forEach(span=>{
+        const key = span.dataset.field, val = span.textContent;
+        span.style.display='none';
         const inp = document.createElement('input');
-        inp.type = 'text';
-        inp.className = 'inline-input';
-        inp.name = span.dataset.field;
-        inp.value = val;
-        fc.appendChild(inp);
+        inp.type='text'; inp.className='inline-input';
+        inp.name=key; inp.value=val;
+        span.insertAdjacentElement('afterend',inp);
       });
-
-      // 2) Mostrar multi-select de evaluaciones
       const selDiv = row.querySelector('.edit-evals-container');
       const sel    = selDiv.querySelector('.edit-assigned-evals');
-      // carga opciones y marca las actuales
-      const current = allUsers.find(u=>u.id===uid).assignedEvaluations || [];
-      Array.from(sel.options).forEach(o => {
-        o.selected = current.includes(o.value);
-      });
-      selDiv.style.display = '';
-
-      // 3) Ajuste de botones
-      btn.style.display = 'none';
-      row.querySelector('.save-user-btn'  ).style.display = '';
-      row.querySelector('.cancel-user-btn').style.display = '';
+      const current= (allUsers.find(u=>u.id===uid)||{}).assignedEvaluations||[];
+      Array.from(sel.options).forEach(o=>o.selected=current.includes(o.value));
+      selDiv.style.display='block';
     }
 
-    // — CANCELAR: descartar cambios y volver a texto
+    // CANCELAR
     if (btn.matches('.cancel-user-btn')) {
-      // recargar datos originales
-      const doc  = await db.collection('users').doc(uid).get();
-      const data = doc.data() || {};
-      ['name','rut','customID','company'].forEach(key => {
-        const fc = row.querySelector(`.field-container [data-field="${key}"]`).parentNode;
-        fc.querySelector('.field').textContent = data[key] || '';
-        // quitar input si existe
-        const inp = fc.querySelector('.inline-input');
+      row.querySelectorAll('.field-container').forEach(fc=>{
+        const span = fc.querySelector('.field');
+        const inp  = fc.querySelector('.inline-input');
         if (inp) inp.remove();
-        fc.querySelector('.field').style.display = '';
+        span.style.display='';
       });
-      // ocultar select de evaluaciones
-      row.querySelector('.edit-evals-container').style.display = 'none';
-      // restaurar botones
-      row.querySelector('.edit-user-btn'  ).style.display = '';
-      btn.style.display                             = 'none';
-      row.querySelector('.save-user-btn'  ).style.display = 'none';
+      row.querySelector('.edit-evals-container').style.display='none';
+      row.querySelector('.save-user-btn').style.display='none';
+      btn.style.display='none';
+      row.querySelector('.edit-user-btn').style.display='inline-block';
     }
 
-    // — GUARDAR: tomar valores de inputs + select y actualizar Firestore
+    // GUARDAR
     if (btn.matches('.save-user-btn')) {
-      // 1) Recoger inputs inline
       const updates = {};
-      row.querySelectorAll('.inline-input').forEach(inp => {
-        updates[inp.name] = inp.value.trim();
-      });
-      // 2) Recoger evaluaciones seleccionadas
+      row.querySelectorAll('.inline-input').forEach(inp=>updates[inp.name]=inp.value.trim());
       const sel = row.querySelector('.edit-assigned-evals');
       updates.assignedEvaluations = Array.from(sel.selectedOptions).map(o=>o.value);
 
-      // 3) Persistir cambios
       await db.collection('users').doc(uid).update(updates);
+      const user = allUsers.find(u=>u.id===uid);
+      if (user) Object.assign(user,updates);
 
-      // 4) Volver a texto puro
-      ['name','rut','customID','company'].forEach(key => {
-        const fc = row.querySelector(`.field-container [data-field="${key}"]`).parentNode;
-        fc.querySelector('.field').textContent = updates[key];
-        const inp = fc.querySelector('.inline-input');
+      row.querySelectorAll('.field-container').forEach(fc=>{
+        const span = fc.querySelector('.field');
+        const inp  = fc.querySelector('.inline-input');
         if (inp) inp.remove();
-        fc.querySelector('.field').style.display = '';
+        span.textContent = updates[span.dataset.field];
+        span.style.display='';
       });
-      row.querySelector('.edit-evals-container').style.display = 'none';
-
-      // 5) Restaurar botones y recargar lista
-      row.querySelector('.edit-user-btn'  ).style.display = '';
-      btn.style.display                             = 'none';
-      row.querySelector('.cancel-user-btn').style.display = 'none';
+      row.querySelector('.edit-evals-container').style.display='none';
+      row.querySelector('.save-user-btn').style.display='none';
+      btn.style.display='none';
+      row.querySelector('.edit-user-btn').style.display='inline-block';
       alert('Usuario actualizado');
       loadAllUsers();
     }
   });
-  
-});  // <-- aquí
 
-// Theme toggle
-const themeToggle = document.getElementById('themeToggle');
-themeToggle.addEventListener('click', () => {
-  const dark = document.body.classList.toggle('dark');
-  themeToggle.textContent = dark ? '☀️' : '🌙';
-  localStorage.setItem('darkMode', dark);
-});
-if (localStorage.getItem('darkMode') === 'true') {
-  document.body.classList.add('dark');
-  themeToggle.textContent = '☀️';
-}
-
+}); // end DOMContentLoaded
 
 // ───────────────────────────────────────────────────
 // 4) Precarga de datos
@@ -598,3 +633,4 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
