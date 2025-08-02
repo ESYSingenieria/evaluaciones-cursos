@@ -172,16 +172,31 @@ document.addEventListener('DOMContentLoaded', () => {
   const saveBtn   = document.getElementById('saveCreateUser');
   const selEvals  = document.getElementById('newAssignedEvals');
 
-  createBtn.addEventListener('click', () => {
-  // PARA CREACIÓN
-  const newContainer = document.getElementById('newEvalsContainer');
-  newContainer.innerHTML = Object.entries(allEvaluations)
-    .map(([id, ev]) => `
-      <label class="eval-option">
-      <input type="checkbox" name="newAssignedEvals" value="${id}">
-        <span>${id}</span>
-      </label>
-    `).join('');
+  createBtn.addEventListener('click', async () => {
+    // ── 1) Calcular siguiente customID a partir de la caché allUsers ──
+    // Parseamos todos los customID numéricos, sacamos el mayor y le sumamos 1
+    const maxId = allUsers.reduce((max, u) => {
+      const n = parseInt(u.customID, 10);
+      return (!isNaN(n) && n > max) ? n : max;
+    }, 0);
+    const nextId = maxId + 1;
+    const customIDStr = String(nextId).padStart(3, '0');  // ej. "001", "002", …
+
+    // ── 2) Insertarlo en el input y habilitar la casilla ──
+    const inputCID = document.getElementById('newCustomId');
+    inputCID.value = customIDStr;
+
+    // ── 3) Poblar checkboxes de evaluaciones (solo IDs) ──
+    const newContainer = document.getElementById('newEvalsContainer');
+    newContainer.innerHTML = Object.keys(allEvaluations)
+      .map(id => `
+        <label class="eval-option">
+          <input type="checkbox" name="newAssignedEvals" value="${id}">
+          <span>${id}</span>
+        </label>
+      `).join('');
+
+    // ── 4) Mostrar el modal ──
     form.style.display = 'block';
   });
 
@@ -198,27 +213,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const rut      = document.getElementById('newRut').value.trim();
     const company  = document.getElementById('newCompany').value.trim();
     // Crear usuario:
+    const customID = document.getElementById('newCustomId').value;
     const evs = Array.from(
       document.querySelectorAll('input[name="newAssignedEvals"]:checked')
     ).map(cb => cb.value);
-
-    // ── AQUÍ GENERAMOS customID ─────────────────────────
-    // Leemos el mayor customID actual (asumiendo que es un número secuencial)
-    const usersRef = db.collection('users').where('role','==','user');
-    const lastSnap = await usersRef
-      .orderBy('customID', 'desc')    // orden descendente por customID
-      .limit(1)
-      .get();
-
-    let newCustomID = 1;
-    if (!lastSnap.empty) {
-      const lastVal = parseInt(lastSnap.docs[0].data().customID, 10) || 0;
-      newCustomID   = lastVal + 1;
-    }
-    const customIDStr = String(newCustomID).padStart(3, '0'); 
-    // opcional: lo formateas con ceros a la izquierda
-
-  // ── FIN customID ─────────────────────────────────────
     
     try {
       // 1) Crear usuario en App secundaria
@@ -711,6 +709,7 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
 
 
 
