@@ -169,10 +169,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const selEvals  = document.getElementById('newAssignedEvals');
 
   createBtn.addEventListener('click', () => {
-    // poblar evaluaciones
-    selEvals.innerHTML = Object.entries(allEvaluations)
-      .map(([id,ev]) => `<option value="${id}">${id}</option>`)
-      .join('');
+  // PARA CREACIÓN
+  const newContainer = document.getElementById('newEvalsContainer');
+  newContainer.innerHTML = Object.entries(allEvaluations)
+    .map(([id, ev]) => `
+      <label class="eval-option">
+      <input type="checkbox" name="newAssignedEvals" value="${id}">
+        <span>${ev.name}</span>
+      </label>
+    `).join('');
     form.style.display = 'block';
   });
 
@@ -188,7 +193,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const name     = document.getElementById('newName').value.trim();
     const rut      = document.getElementById('newRut').value.trim();
     const company  = document.getElementById('newCompany').value.trim();
-    const evs      = Array.from(selEvals.selectedOptions).map(o => o.value);
+    // Crear usuario:
+    const evs = Array.from(
+      document.querySelectorAll('input[name="newAssignedEvals"]:checked')
+    ).map(cb => cb.value);
+
+    // Editar usuario (dentro de tu delegado, usando el contenedor asociado):
+    const row    = btn.closest('.user-row');
+    const evsEd  = Array.from(
+      row.querySelectorAll('input[name="assignedEvals"]:checked')
+    ).map(cb => cb.value);
 
     try {
       // 1) Crear usuario en App secundaria
@@ -333,115 +347,143 @@ function loadAllUsers() {
   const container = document.getElementById("usersList");
   container.innerHTML = "";
 
-  let filtered = allUsers.filter(u=>{
+  // 1) Filtrar
+  let filtered = allUsers.filter(u => {
     if (searchName && !u.name.toLowerCase().includes(searchName)) return false;
-    if (filterCompany!=="all" && u.company!==filterCompany)        return false;
-    if (filterCourse!=="all" && !u.assignedEvaluations.includes(filterCourse)) return false;
+    if (filterCompany !== "all" && u.company !== filterCompany) return false;
+    if (filterCourse  !== "all" && !u.assignedEvaluations.includes(filterCourse))
+      return false;
     return true;
   });
 
-  // calcular última fecha de intento válido
-  filtered.forEach(u=>{
+  // 2) Calcular última fecha de intento válido
+  filtered.forEach(u => {
     const times = allResponses
-      .filter(r=>r.userId===u.id && typeof r.result?.score==="number")
-      .map(r=>r.timestamp.getTime());
+      .filter(r => r.userId === u.id && typeof r.result?.score === "number")
+      .map(r => r.timestamp.getTime());
     u._lastTime = times.length ? Math.max(...times) : 0;
   });
 
-  // ordenar
-  filtered.sort((a,b)=>{
-    switch(sortBy){
-      case "dateDesc":      return b._lastTime - a._lastTime;
-      case "dateAsc":       return a._lastTime - b._lastTime;
-      case "customIdDesc":  return (+b.customID||0) - (+a.customID||0);
-      case "customIdAsc":   return (+a.customID||0) - (+b.customID||0);
-      default: return 0;
+  // 3) Ordenar
+  filtered.sort((a, b) => {
+    switch (sortBy) {
+      case "dateDesc":     return b._lastTime - a._lastTime;
+      case "dateAsc":      return a._lastTime - b._lastTime;
+      case "customIdDesc": return (+b.customID || 0) - (+a.customID || 0);
+      case "customIdAsc":  return (+a.customID || 0) - (+b.customID || 0);
+      default:             return 0;
     }
   });
 
-  // sin resultados
+  // 4) Sin resultados
   if (!filtered.length) {
     container.textContent = "No se encontraron usuarios.";
     return;
   }
 
-  // render
-  filtered.forEach(u=>{
+  // 5) Render de cada usuario
+  filtered.forEach(u => {
     const div = document.createElement("div");
     div.className = "user-item";
+
+    // Preparar HTML de los checkboxes para edición
+    const checkedSet = new Set(u.assignedEvaluations || []);
+    const checkboxesHtml = Object.entries(allEvaluations)
+      .map(([id, ev]) => `
+        <label class="eval-option">
+          <input
+            type="checkbox"
+            name="assignedEvals"
+            value="${id}"
+            ${checkedSet.has(id) ? "checked" : ""}>
+          <span>${ev.name}</span>
+        </label>
+      `).join("");
+
+    // HTML base de la fila
     div.innerHTML = `
       <div class="field-container">
         <strong>Nombre:</strong>
-        <span class="field" data-field="name">${u.name}</span>
+        <span class="field">${u.name}</span>
       </div>
       <div class="field-container">
         <strong>RUT:</strong>
-        <span class="field" data-field="rut">${u.rut}</span>
+        <span class="field">${u.rut}</span>
       </div>
       <div class="field-container">
         <strong>CustomID:</strong>
-        <span class="field" data-field="customID">${u.customID}</span>
+        <span class="field">${u.customID}</span>
       </div>
       <div class="field-container">
         <strong>Empresa:</strong>
-        <span class="field" data-field="company">${u.company}</span>
+        <span class="field">${u.company}</span>
       </div>
-      <button class="edit-user-btn"   data-uid="${u.id}">✏️</button>
-      <button class="save-user-btn"   data-uid="${u.id}" style="display:none;">✔️</button>
-      <button class="cancel-user-btn" data-uid="${u.id}" style="display:none;">✖️</button>
+
+      <div class="buttons">
+        <button class="edit-user-btn"   data-uid="${u.id}">✏️</button>
+        <button class="save-user-btn"   data-uid="${u.id}" style="display:none;">✔️</button>
+        <button class="cancel-user-btn" data-uid="${u.id}" style="display:none;">✖️</button>
+      </div>
+
+      <!-- Contenedor de checkboxes oculto hasta pulsar ✏️ -->
       <div class="edit-evals-container" style="display:none; margin:12px 0;">
-        <select class="edit-assigned-evals" multiple style="width:100%;height:100px;padding:4px;">
-          ${Object.entries(allEvaluations)
-             .map(([id,ev])=>`<option value="${id}">${id}</option>`)
-             .join('')}
-        </select>
+        <div class="evals-container" data-uid="${u.id}">
+          ${checkboxesHtml}
+        </div>
       </div>
+
+      <!-- Aquí va el resumen de evaluaciones + botones -->
+      <div class="eval-summary"></div>
     `;
-    u.assignedEvaluations.forEach(ev=>{
+
+    // Poblar el resumen debajo
+    const summaryContainer = div.querySelector(".eval-summary");
+    u.assignedEvaluations.forEach(ev => {
       const eData = allEvaluations[ev] || {};
       const eName = eData.name || ev;
       const evalDiv = document.createElement("div");
       evalDiv.className = "eval-item";
       evalDiv.innerHTML = `<strong>${eName}</strong><br>`;
 
-      // respuestas válidas
+      // 1) Botones de intentos válidos
       const valids = allResponses
-        .filter(r=>r.userId===u.id && r.evaluationId===ev && typeof r.result?.score==="number")
-        .sort((a,b)=>a.timestamp - b.timestamp);
-
-      // botones intentos
-      valids.forEach((r,i)=>{
+        .filter(r => r.userId === u.id &&
+                     r.evaluationId === ev &&
+                     typeof r.result?.score === "number")
+        .sort((a, b) => a.timestamp - b.timestamp);
+      valids.forEach((r, i) => {
         const btn = document.createElement("button");
         btn.textContent = `Respuestas Evaluación Intento ${i+1}`;
-        btn.onclick = ()=> downloadResponsePDFForAttempt(u.id,ev,i);
+        btn.onclick = () => downloadResponsePDFForAttempt(u.id, ev, i);
         evalDiv.appendChild(btn);
       });
 
-      // reiniciar
+      // 2) Reiniciar intentos
       const btnR = document.createElement("button");
       btnR.textContent = "Reiniciar Intentos";
-      btnR.onclick = ()=> resetAttemptsForEvaluation(u.id,ev);
+      btnR.onclick = () => resetAttemptsForEvaluation(u.id, ev);
       evalDiv.appendChild(btnR);
 
-      // encuesta
+      // 3) Encuesta
       const btnS = document.createElement("button");
       btnS.textContent = "Encuesta de Satisfacción";
-      btnS.onclick = ()=> downloadSurveyPDF(u.id,ev);
+      btnS.onclick = () => downloadSurveyPDF(u.id, ev);
       evalDiv.appendChild(btnS);
 
-      // certificado
-      const passed = valids.find(r=>r.result.grade==="Aprobado");
+      // 4) Certificado si aprobó
+      const passed = valids.find(r => r.result.grade === "Aprobado");
       if (passed) {
         const score   = passed.result.score;
-        const dateStr = passed.timestamp.toLocaleDateString();
+        const dateStr = new Date(passed.timestamp).toLocaleDateString();
         const btnC = document.createElement("button");
         btnC.textContent = "Certificado de Aprobación";
-        btnC.onclick = ()=> generateCertificateForUser(u.id,ev,score,dateStr);
+        btnC.onclick = () => generateCertificateForUser(u.id, ev, score, dateStr);
         evalDiv.appendChild(btnC);
       }
 
-      div.appendChild(evalDiv);
+      summaryContainer.appendChild(evalDiv);
     });
+
     container.appendChild(div);
   });
 }
@@ -654,4 +696,5 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
 
