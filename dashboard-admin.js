@@ -76,80 +76,78 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!uid) return;
     const row = btn.closest('.user-item');
 
-    // — EDITAR: convertir campos a inputs y mostrar select de evaluaciones
+    // — EDITAR:
     if (btn.matches('.edit-user-btn')) {
-      // 1) Reemplazo de texto por inputs inline para nombre, rut, customID y empresa
+      // 1) Mostrar contenedor de edición
+      const editCont = row.querySelector('.edit-container');
+      editCont.style.display = 'block';
+
+      // 2) Ocultar vista estática (los field-container que NO están dentro de edit-container)
       row.querySelectorAll('.field-container').forEach(fc => {
-        const span = fc.querySelector('.field');
-        const val  = span.textContent;
-        span.style.display = 'none';
-        const inp = document.createElement('input');
-        inp.type = 'text';
-        inp.className = 'inline-input';
-        inp.name = span.dataset.field;
-        inp.value = val;
-        fc.appendChild(inp);
+        if (!fc.closest('.edit-container')) {
+          fc.style.display = 'none';
+        }
       });
 
-      // 2) Mostrar multi-select de evaluaciones
-      const selDiv = row.querySelector('.edit-evals-container');
-      const sel    = selDiv.querySelector('.edit-assigned-evals');
-      // carga opciones y marca las actuales
-      const current = allUsers.find(u=>u.id===uid).assignedEvaluations || [];
-      Array.from(sel.options).forEach(o => {
-        o.selected = current.includes(o.value);
-      });
-      selDiv.style.display = '';
+      // 3) Ajustar botones
+      btn.style.display                         = 'none';
+      row.querySelector('.save-user-btn').style.display   = 'inline-block';
+      row.querySelector('.cancel-user-btn').style.display = 'inline-block';
 
-      // 3) Ajuste de botones
-      btn.style.display = 'none';
-      row.querySelector('.save-user-btn'  ).style.display = '';
-      row.querySelector('.cancel-user-btn').style.display = '';
+      // 4) Marcar checkboxes según lo que tenga el usuario
+      const current = allUsers.find(u => u.id === uid).assignedEvaluations || [];
+      editCont.querySelectorAll('input[name="assignedEvals"]').forEach(cb => {
+        cb.checked = current.includes(cb.value);
+      });
+
+      return;
     }
 
-    // — CANCELAR: descartar cambios y volver a texto
+    // — CANCELAR:
     if (btn.matches('.cancel-user-btn')) {
-      // recargar datos originales
-      const doc  = await db.collection('users').doc(uid).get();
-      const data = doc.data() || {};
-      ['name','rut','customID','company'].forEach(key => {
-        const fc = row.querySelector(`.field-container [data-field="${key}"]`).parentNode;
-        fc.querySelector('.field').textContent = data[key] || '';
-        // quitar input si existe
-        const inp = fc.querySelector('.inline-input');
-        if (inp) inp.remove();
-        fc.querySelector('.field').style.display = '';
+      // 1) Ocultar edición
+      const editCont = row.querySelector('.edit-container');
+      editCont.style.display = 'none';
+
+      // 2) Mostrar vista estática
+      row.querySelectorAll('.field-container').forEach(fc => {
+        if (!fc.closest('.edit-container')) {
+          fc.style.display = '';
+        }
       });
-      // ocultar select de evaluaciones
-      row.querySelector('.edit-evals-container').style.display = 'none';
-      // restaurar botones
-      row.querySelector('.edit-user-btn'  ).style.display = '';
-      btn.style.display                             = 'none';
-      row.querySelector('.save-user-btn'  ).style.display = 'none';
+
+      // 3) Restaurar botones
+      row.querySelector('.edit-user-btn').style.display   = 'inline-block';
+      row.querySelector('.save-user-btn').style.display   = 'none';
+      btn.style.display                                   = 'none';
+
+      return;
     }
 
-    // — GUARDAR: tomar valores de inputs + select y actualizar Firestore
+    // — GUARDAR:
     if (btn.matches('.save-user-btn')) {
-      // 1) Recoger inputs inline
+      const editCont = row.querySelector('.edit-container');
       const updates = {};
-      row.querySelectorAll('.inline-input').forEach(inp => {
+
+      // 1) Leer inputs de texto (.edit-field)
+      editCont.querySelectorAll('input.edit-field').forEach(inp => {
         updates[inp.name] = inp.value.trim();
       });
-      // 2) Recoger evaluaciones seleccionadas
-      const sel = row.querySelector('.edit-assigned-evals');
-      updates.assignedEvaluations = Array.from(sel.selectedOptions).map(o=>o.value);
 
-      // 3) Persistir cambios
+      // 2) Leer checkboxes marcados
+      updates.assignedEvaluations = Array.from(
+        editCont.querySelectorAll('input[name="assignedEvals"]:checked')
+      ).map(cb => cb.value);
+
+      // 3) Persistir
       await db.collection('users').doc(uid).update(updates);
 
-      // 4) Volver a texto puro
-      ['name','rut','customID','company'].forEach(key => {
-        const fc = row.querySelector(`.field-container [data-field="${key}"]`).parentNode;
-        fc.querySelector('.field').textContent = updates[key];
-        const inp = fc.querySelector('.inline-input');
-        if (inp) inp.remove();
-        fc.querySelector('.field').style.display = '';
-      });
+      // 4) Volver a cargar la lista completa
+      alert('Usuario actualizado');
+      loadAllUsers();
+      return;
+    }
+
       row.querySelector('.edit-evals-container').style.display = 'none';
 
       // 5) Restaurar botones y recargar lista
@@ -158,7 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
       row.querySelector('.cancel-user-btn').style.display = 'none';
       alert('Usuario actualizado');
       loadAllUsers();
-    }
+    
   });
   
   // 1) Mostrar formulario y poblar select de evaluaciones
@@ -695,68 +693,3 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
-
-document.addEventListener("DOMContentLoaded", () => {
-  const usersList = document.getElementById("usersList");
-
-  // Delegación de eventos para todos los botones de usuario
-  usersList.addEventListener("click", async e => {
-    const btn = e.target.closest("button");
-    if (!btn) return;
-
-    const row = btn.closest(".user-item");
-    if (!row) return;
-    const uid = row.dataset.uid;
-    const editContainer = row.querySelector(".edit-container");
-    const editBtn  = row.querySelector(".edit-user-btn");
-    const saveBtn  = row.querySelector(".save-user-btn");
-    const cancelBtn= row.querySelector(".cancel-user-btn");
-
-    // 1) ✏️ Editar
-    if (btn.classList.contains("edit-user-btn")) {
-      editContainer.style.display    = "block";
-      editBtn.style.display          = "none";
-      saveBtn.style.display          = "inline-block";
-      cancelBtn.style.display        = "inline-block";
-      return;
-    }
-
-    // 2) ✖️ Cancelar
-    if (btn.classList.contains("cancel-user-btn")) {
-      editContainer.style.display    = "none";
-      editBtn.style.display          = "inline-block";
-      saveBtn.style.display          = "none";
-      cancelBtn.style.display        = "none";
-      return;
-    }
-
-    // 3) ✔️ Guardar
-    if (btn.classList.contains("save-user-btn")) {
-      // leer valores de inputs
-      const name    = row.querySelector('input[name="name"]').value.trim();
-      const rut     = row.querySelector('input[name="rut"]').value.trim();
-      const customID= row.querySelector('input[name="customID"]').value.trim();
-      const company = row.querySelector('input[name="company"]').value.trim();
-      const evsEd   = Array.from(
-        row.querySelectorAll('input[name="assignedEvals"]:checked')
-      ).map(cb => cb.value);
-
-      try {
-        // actualiza Firestore
-        await db.collection("users").doc(uid).update({
-          name,
-          rut,
-          customID,
-          company,
-          assignedEvaluations: evsEd
-        });
-
-        // recarga la lista y sale del modo edición
-        await loadAllUsers();
-      } catch (err) {
-        console.error(err);
-        alert("Error al guardar usuario: " + err.message);
-      }
-    }
-  });
-});
