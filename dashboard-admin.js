@@ -1,9 +1,3 @@
-// dashboard-admin.js
-
-// ───────────────────────────────────────────────────
-// 🔒 Panel de Administración
-// ───────────────────────────────────────────────────
-
 // 1) Inicializar Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
@@ -14,199 +8,199 @@ const firebaseConfig = {
   appId: "1:950684050808:web:33d2ef70f2343642f4548d"
 };
 firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-// App secundaria para crear usuarios sin afectar el auth principal
+const auth          = firebase.auth();
 const secondaryApp  = firebase.initializeApp(firebaseConfig, "Secondary");
 const secondaryAuth = secondaryApp.auth();
+const db            = firebase.firestore();
+const { jsPDF }     = window.jspdf;
 
-const db   = firebase.firestore();
-const { jsPDF } = window.jspdf;
-// (Asegúrate de incluir en tu HTML PDF-Lib y fontkit si usas certificados)
-
-// ───────────────────────────────────────────────────
-// 2) Caché y estados de filtros/orden
+// 2) Caché de datos y filtros
 let allUsers           = [];
 let allEvaluations     = {};
 let allResponses       = [];
 let allSurveys         = [];
 let surveyQuestionsMap = {};
+let searchName    = "", filterCourse = "all", filterCompany = "all", sortBy = "dateDesc";
 
-let searchName    = "";
-let filterCourse  = "all";
-let filterCompany = "all";
-let sortBy        = "dateDesc";
-
-// ───────────────────────────────────────────────────
 // 3) Auth & carga inicial
 auth.onAuthStateChanged(async user => {
-  if (!user) {
-    location.href = "index.html";
-    return;
-  }
+  if (!user) return location.href = "index.html";
   const perfilSnap = await db.collection("users").doc(user.uid).get();
   const role       = perfilSnap.data()?.role;
-  if (role === "admin" && !location.pathname.includes("dashboard-admin.html")) {
-    location.href = "dashboard-admin.html"; return;
-  }
-  if (role !== "admin" && location.pathname.includes("dashboard-admin.html")) {
-    location.href = "dashboard.html"; return;
-  }
-  if (location.pathname.includes("dashboard-admin.html")) {
+  if (role!=="admin" && location.pathname.includes("dashboard-admin.html"))
+    return location.href="dashboard.html";
+  if (role==="admin" && location.pathname.includes("dashboard-admin.html")) {
     await initializeData();
     setupFiltersUI();
     loadAllUsers();
   }
 });
 
-// ───────────────────────────────────────────────────
-// AGREGAR: listener para cierre de sesión
+// 4) DOMContentLoaded: listeners de UI
 document.addEventListener('DOMContentLoaded', () => {
-  const btnLogout = document.getElementById('logoutButton');
-  if (btnLogout) {
-    btnLogout.addEventListener('click', async () => {
-      await auth.signOut();
-      location.href = 'index.html';
-    });
+  // logout
+  document.getElementById('logoutButton')
+    .addEventListener('click', async ()=>{ await auth.signOut(); location.href='index.html'; });
+
+  // modo oscuro
+  const themeToggle = document.getElementById('themeToggle');
+  themeToggle.addEventListener('click', ()=>{
+    const dark = document.body.classList.toggle('dark');
+    themeToggle.textContent = dark ? '☀️' : '🌙';
+    localStorage.setItem('darkMode', dark);
+  });
+  if (localStorage.getItem('darkMode')==='true') {
+    document.body.classList.add('dark');
+    themeToggle.textContent='☀️';
   }
 
-  // Delegación para editar/guardar/cancelar inline con asignación de evaluaciones
-  document.body.addEventListener('click', async e => {
+  // — crear usuario —
+  const btnCreate  = document.getElementById('createUserBtn');
+  const formCreate = document.getElementById('createUserForm');
+  const btnCancel  = document.getElementById('cancelCreateUser');
+  const btnSave    = document.getElementById('saveCreateUser');
+
+  btnCreate.addEventListener('click', ()=>{
+    // customID automático
+    const maxCid = allUsers.reduce((m,u)=>{
+      const n = parseInt((u.customID||"").replace(/[^0-9]/g,''),10);
+      return !isNaN(n)&&n>m?n:m;
+    },0);
+    document.getElementById('newCustomId').value = (maxCid+1) + '-';
+
+    // poblar evaluaciones
+    document.getElementById('newAssignedEvals').innerHTML =
+      Object.entries(allEvaluations)
+        .map(([id,ev])=>`<option value="${id}">${ev.name}</option>`)
+        .join('');
+
+    formCreate.style.display = 'block';
+  });
+  btnCancel.addEventListener('click', ()=> formCreate.style.display='none');
+
+  btnSave.addEventListener('click', async ()=>{
+    const email    = document.getElementById('newEmail').value.trim();
+    const password = document.getElementById('newPassword').value.trim() || '123456';
+    const name     = document.getElementById('newName').value.trim();
+    const rut      = document.getElementById('newRut').value.trim();
+    const customID = document.getElementById('newCustomId').value;
+    const company  = document.getElementById('newCompany').value.trim();
+    const assigned = Array.from(
+      document.getElementById('newAssignedEvals').selectedOptions
+    ).map(o=>o.value);
+    if (!email||!password||!name||!rut||!company) {
+      return alert('Debes completar todos los campos.');
+    }
+    try {
+      const cred = await secondaryAuth
+        .createUserWithEmailAndPassword(email,password);
+      await db.collection('users').doc(cred.user.uid).set({
+        name, rut, customID, company,
+        role:'user', assignedEvaluations: assigned
+      });
+      await secondaryAuth.signOut();
+      alert('Usuario creado!\nContraseña: '+password);
+      formCreate.style.display='none';
+      loadAllUsers();
+    } catch(err) {
+      console.error(err);
+      alert('Error al crear usuario: '+err.message);
+    }
+  });
+
+  // — editar inline con asignación de evaluaciones —
+  document.body.addEventListener('click', async e=>{
     const btn = e.target;
     const uid = btn.dataset.uid;
     if (!uid) return;
     const row = btn.closest('.user-item');
 
-    // — EDITAR: convertir campos a inputs y mostrar select de evaluaciones
+    // EDITAR
     if (btn.matches('.edit-user-btn')) {
-      // 1) Reemplazo de texto por inputs inline para nombre, rut, customID y empresa
-      row.querySelectorAll('.field-container').forEach(fc => {
+      row.querySelectorAll('.field-container').forEach(fc=>{
         const span = fc.querySelector('.field');
         const val  = span.textContent;
         span.style.display = 'none';
         const inp = document.createElement('input');
         inp.type = 'text';
-        inp.className = 'inline-input';
         inp.name = span.dataset.field;
         inp.value = val;
+        inp.className = 'inline-input';
         fc.appendChild(inp);
       });
-
-      // 2) Mostrar multi-select de evaluaciones
       const selDiv = row.querySelector('.edit-evals-container');
       const sel    = selDiv.querySelector('.edit-assigned-evals');
-      // carga opciones y marca las actuales
-      const current = allUsers.find(u=>u.id===uid).assignedEvaluations || [];
-      Array.from(sel.options).forEach(o => {
-        o.selected = current.includes(o.value);
-      });
-      selDiv.style.display = '';
-
-      // 3) Ajuste de botones
-      btn.style.display = 'none';
-      row.querySelector('.save-user-btn'  ).style.display = '';
-      row.querySelector('.cancel-user-btn').style.display = '';
+      const current = allUsers.find(u=>u.id===uid).assignedEvaluations||[];
+      Array.from(sel.options).forEach(o=> o.selected = current.includes(o.value));
+      selDiv.style.display='';
+      btn.style.display='';
+      row.querySelector('.save-user-btn'  ).style.display='';
+      row.querySelector('.cancel-user-btn').style.display='';
     }
 
-    // — CANCELAR: descartar cambios y volver a texto
+    // CANCELAR
     if (btn.matches('.cancel-user-btn')) {
-      // recargar datos originales
-      const doc  = await db.collection('users').doc(uid).get();
-      const data = doc.data() || {};
-      ['name','rut','customID','company'].forEach(key => {
+      const data = (await db.collection('users').doc(uid).get()).data()||{};
+      ['name','rut','customID','company'].forEach(key=>{
         const fc = row.querySelector(`.field-container [data-field="${key}"]`).parentNode;
-        fc.querySelector('.field').textContent = data[key] || '';
-        // quitar input si existe
+        fc.querySelector('.field').textContent = data[key]||'';
+        fc.querySelector('.field').style.display='';
         const inp = fc.querySelector('.inline-input');
         if (inp) inp.remove();
-        fc.querySelector('.field').style.display = '';
       });
-      // ocultar select de evaluaciones
-      row.querySelector('.edit-evals-container').style.display = 'none';
-      // restaurar botones
-      row.querySelector('.edit-user-btn'  ).style.display = '';
-      btn.style.display                             = 'none';
-      row.querySelector('.save-user-btn'  ).style.display = 'none';
+      row.querySelector('.edit-evals-container').style.display='none';
+      row.querySelector('.edit-user-btn'  ).style.display='';
+      btn.style.display='none';
+      row.querySelector('.save-user-btn').style.display='none';
     }
 
-    // — GUARDAR: tomar valores de inputs + select y actualizar Firestore
+    // GUARDAR
     if (btn.matches('.save-user-btn')) {
-      // 1) Recoger inputs inline
       const updates = {};
-      row.querySelectorAll('.inline-input').forEach(inp => {
+      row.querySelectorAll('.inline-input').forEach(inp=>{
         updates[inp.name] = inp.value.trim();
       });
-      // 2) Recoger evaluaciones seleccionadas
       const sel = row.querySelector('.edit-assigned-evals');
       updates.assignedEvaluations = Array.from(sel.selectedOptions).map(o=>o.value);
-
-      // 3) Persistir cambios
       await db.collection('users').doc(uid).update(updates);
-
-      // 4) Volver a texto puro
-      ['name','rut','customID','company'].forEach(key => {
+      ['name','rut','customID','company'].forEach(key=>{
         const fc = row.querySelector(`.field-container [data-field="${key}"]`).parentNode;
         fc.querySelector('.field').textContent = updates[key];
         const inp = fc.querySelector('.inline-input');
         if (inp) inp.remove();
-        fc.querySelector('.field').style.display = '';
+        fc.querySelector('.field').style.display='';
       });
-      row.querySelector('.edit-evals-container').style.display = 'none';
-
-      // 5) Restaurar botones y recargar lista
-      row.querySelector('.edit-user-btn'  ).style.display = '';
-      btn.style.display                             = 'none';
-      row.querySelector('.cancel-user-btn').style.display = 'none';
+      row.querySelector('.edit-evals-container').style.display='none';
+      row.querySelector('.edit-user-btn'  ).style.display='';
+      btn.style.display='none';
+      row.querySelector('.cancel-user-btn').style.display='none';
       alert('Usuario actualizado');
       loadAllUsers();
     }
   });
-  
-});  // <-- aquí
-
-// Theme toggle
-const themeToggle = document.getElementById('themeToggle');
-themeToggle.addEventListener('click', () => {
-  const dark = document.body.classList.toggle('dark');
-  themeToggle.textContent = dark ? '☀️' : '🌙';
-  localStorage.setItem('darkMode', dark);
 });
-if (localStorage.getItem('darkMode') === 'true') {
-  document.body.classList.add('dark');
-  themeToggle.textContent = '☀️';
-}
 
-
-// ───────────────────────────────────────────────────
-// 4) Precarga de datos
-async function initializeData() {
-  // usuarios
+// 5) Precarga…
+async function initializeData(){
   const usSnap = await db.collection("users").where("role","==","user").get();
-  allUsers = usSnap.docs.map(d=>({ id:d.id, ...d.data() }));
-
-  // evaluations
+  allUsers = usSnap.docs.map(d=>({id:d.id, ...d.data()}));
   const evSnap = await db.collection("evaluations").get();
-  evSnap.docs.forEach(d=> allEvaluations[d.id] = d.data());
-
-  // responses
+  evSnap.docs.forEach(d=>allEvaluations[d.id]=d.data());
   const rSnap = await db.collection("responses").get();
   allResponses = rSnap.docs.map(d=>{
-    const data = d.data();
+    const data=d.data();
     return {
-      userId:       data.userId,
+      userId: data.userId,
       evaluationId: data.evaluationId,
-      timestamp:    data.timestamp?.toDate() || new Date(0),
-      result:       data.result || {},
-      answers:      data.answers || {}
+      timestamp: data.timestamp?.toDate()||new Date(0),
+      result: data.result||{},
+      answers: data.answers||{}
     };
   });
-
-  // surveys + surveyQuestions
-  const sSnap  = await db.collection("surveys").get();
-  allSurveys   = sSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  const sSnap = await db.collection("surveys").get();
+  allSurveys = sSnap.docs.map(d=>({id:d.id,...d.data()}));
   const sqSnap = await db.collection("surveyQuestions").get();
-  sqSnap.docs.forEach(d=>{
-    surveyQuestionsMap[d.id] = d.data().questions || [];
-  });
+  sqSnap.docs.forEach(d=>surveyQuestionsMap[d.id]=d.data().questions||[]);
 }
 
 // ───────────────────────────────────────────────────
