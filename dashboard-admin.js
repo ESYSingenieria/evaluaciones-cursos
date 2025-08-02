@@ -171,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
   createBtn.addEventListener('click', () => {
     // poblar evaluaciones
     selEvals.innerHTML = Object.entries(allEvaluations)
-      .map(([id,ev]) => `<option value="${id}">${ev.name}</option>`)
+      .map(([id,ev]) => `<option value="${id}">${id}</option>`)
       .join('');
     form.style.display = 'block';
   });
@@ -386,14 +386,13 @@ function loadAllUsers() {
         <strong>Empresa:</strong>
         <span class="field" data-field="company">${u.company}</span>
       </div>
-      <button class="edit-user-btn">✏️</button>
-      <button class="save-user-btn" style="display:none;">✔️</button>
-      <button class="cancel-user-btn" style="display:none;">✖️</button>
+      <button class="edit-user-btn"   data-uid="${u.id}">✏️</button>
+      <button class="save-user-btn"   data-uid="${u.id}" style="display:none;">✔️</button>
+      <button class="cancel-user-btn" data-uid="${u.id}" style="display:none;">✖️</button>
       <div class="edit-evals-container" style="display:none; margin:12px 0;">
-        <select class="edit-assigned-evals" multiple
-                style="width:100%;height:100px;padding:4px;">
+        <select class="edit-assigned-evals" multiple style="width:100%;height:100px;padding:4px;">
           ${Object.entries(allEvaluations)
-             .map(([id,ev])=>`<option value="${id}">${ev.name}</option>`)
+             .map(([id,ev])=>`<option value="${id}">${id}</option>`)
              .join('')}
         </select>
       </div>
@@ -655,3 +654,4 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
