@@ -170,6 +170,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ['newEmail','newPassword','newName','newRut','newCompany'].forEach(id=>{
       document.getElementById(id).value = '';
     });
+    // ponemos la contraseña por defecto
+    document.getElementById('newPassword').value = '123456';
     // (Opcional) Deseleccionar cualquier checkbox previo
     document.getElementById('newEvalsContainer').innerHTML = '';
 
@@ -178,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return (!isNaN(n) && n > max) ? n : max;
     }, 0);
     const nextId = maxId + 1;
-    const customIDStr = String(nextId).padStart(3, '0');  // ej. "001", "002", …
+    const customIDStr = String(nextId).padStart(3, '0') + '-';  // ej. "001-", "002-"
 
     // ── 2) Insertarlo en el input y habilitar la casilla ──
     const inputCID = document.getElementById('newCustomId');
@@ -707,6 +709,7 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
 
 
 
