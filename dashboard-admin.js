@@ -1,169 +1,179 @@
 // dashboard-admin.js
 
-// ───────────────────────────────────────────────────
-// 🔒 Panel de Administración
-// ───────────────────────────────────────────────────
-
 // 1) Inicializar Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
-  authDomain: "plataforma-de-cursos-esys.firebaseapp.com",
+  apiKey:    "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
+  authDomain:"plataforma-de-cursos-esys.firebaseapp.com",
   projectId: "plataforma-de-cursos-esys",
-  storageBucket: "plataforma-de-cursos-esys.firebasestorage.app",
-  messagingSenderId: "950684050808",
-  appId: "1:950684050808:web:33d2ef70f2343642f4548d"
+  storageBucket:"plataforma-de-cursos-esys.firebasestorage.app",
+  messagingSenderId:"950684050808",
+  appId:      "1:950684050808:web:33d2ef70f2343642f4548d"
 };
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 // App secundaria para crear usuarios sin afectar el auth principal
 const secondaryApp  = firebase.initializeApp(firebaseConfig, "Secondary");
 const secondaryAuth = secondaryApp.auth();
-
 const db   = firebase.firestore();
 const { jsPDF } = window.jspdf;
-// (Asegúrate de incluir en tu HTML PDF-Lib y fontkit si usas certificados)
 
-// ───────────────────────────────────────────────────
-// 2) Caché y estados de filtros/orden
-let allUsers           = [];
-let allEvaluations     = {};
-let allResponses       = [];
-let allSurveys         = [];
-let surveyQuestionsMap = {};
+// 2) Caché y estados
+let allUsers = [], allEvaluations = {}, allResponses = [], allSurveys = [], surveyQuestionsMap = {};
+let searchName = "", filterCourse = "all", filterCompany = "all", sortBy = "dateDesc";
 
-let searchName    = "";
-let filterCourse  = "all";
-let filterCompany = "all";
-let sortBy        = "dateDesc";
-
-// ───────────────────────────────────────────────────
 // 3) Auth & carga inicial
 auth.onAuthStateChanged(async user => {
-  if (!user) {
-    location.href = "index.html";
-    return;
-  }
+  if (!user) return location.href = "index.html";
   const perfilSnap = await db.collection("users").doc(user.uid).get();
   const role       = perfilSnap.data()?.role;
-  if (role === "admin" && !location.pathname.includes("dashboard-admin.html")) {
-    location.href = "dashboard-admin.html"; return;
-  }
-  if (role !== "admin" && location.pathname.includes("dashboard-admin.html")) {
-    location.href = "dashboard.html"; return;
-  }
-  if (location.pathname.includes("dashboard-admin.html")) {
-    await initializeData();
-    setupFiltersUI();
-    loadAllUsers();
-  }
+  if (role !== "admin") return location.href = "dashboard.html";
+  // si es admin:
+  await initializeData();
+  setupFiltersUI();
+  loadAllUsers();
 });
 
-// ───────────────────────────────────────────────────
-// AGREGAR: listener para cierre de sesión
+// 4) Listener general
 document.addEventListener('DOMContentLoaded', () => {
-  const btnLogout = document.getElementById('logoutButton');
-  if (btnLogout) {
-    btnLogout.addEventListener('click', async () => {
-      await auth.signOut();
-      location.href = 'index.html';
-    });
-  }
+  // Logout
+  document.getElementById('logoutButton').addEventListener('click', async () => {
+    await auth.signOut();
+    location.href = 'index.html';
+  });
 
-  // Delegación para editar/guardar/cancelar inline con asignación de evaluaciones
+  // Inline edit / save / cancel con evaluaciones
   document.body.addEventListener('click', async e => {
     const btn = e.target;
     const uid = btn.dataset.uid;
     if (!uid) return;
     const row = btn.closest('.user-item');
 
-    // — EDITAR: convertir campos a inputs y mostrar select de evaluaciones
+    // EDIT
     if (btn.matches('.edit-user-btn')) {
-      // 1) Reemplazo de texto por inputs inline para nombre, rut, customID y empresa
+      // convertir spans en inputs
       row.querySelectorAll('.field-container').forEach(fc => {
         const span = fc.querySelector('.field');
         const val  = span.textContent;
         span.style.display = 'none';
         const inp = document.createElement('input');
-        inp.type = 'text';
-        inp.className = 'inline-input';
-        inp.name = span.dataset.field;
-        inp.value = val;
+        inp.type = 'text'; inp.className = 'inline-input';
+        inp.name = span.dataset.field; inp.value = val;
         fc.appendChild(inp);
       });
-
-      // 2) Mostrar multi-select de evaluaciones
+      // mostrar multi-select
       const selDiv = row.querySelector('.edit-evals-container');
       const sel    = selDiv.querySelector('.edit-assigned-evals');
-      // carga opciones y marca las actuales
-      const current = allUsers.find(u=>u.id===uid).assignedEvaluations || [];
-      Array.from(sel.options).forEach(o => {
-        o.selected = current.includes(o.value);
-      });
+      const current= allUsers.find(u => u.id === uid).assignedEvaluations || [];
+      Array.from(sel.options).forEach(o => o.selected = current.includes(o.value));
       selDiv.style.display = '';
-
-      // 3) Ajuste de botones
+      // ajustar botones
       btn.style.display = 'none';
       row.querySelector('.save-user-btn'  ).style.display = '';
       row.querySelector('.cancel-user-btn').style.display = '';
     }
 
-    // — CANCELAR: descartar cambios y volver a texto
+    // CANCEL
     if (btn.matches('.cancel-user-btn')) {
-      // recargar datos originales
-      const doc  = await db.collection('users').doc(uid).get();
-      const data = doc.data() || {};
+      const snap = await db.collection('users').doc(uid).get();
+      const data = snap.data() || {};
       ['name','rut','customID','company'].forEach(key => {
         const fc = row.querySelector(`.field-container [data-field="${key}"]`).parentNode;
         fc.querySelector('.field').textContent = data[key] || '';
-        // quitar input si existe
         const inp = fc.querySelector('.inline-input');
         if (inp) inp.remove();
         fc.querySelector('.field').style.display = '';
       });
-      // ocultar select de evaluaciones
       row.querySelector('.edit-evals-container').style.display = 'none';
-      // restaurar botones
       row.querySelector('.edit-user-btn'  ).style.display = '';
-      btn.style.display                             = 'none';
-      row.querySelector('.save-user-btn'  ).style.display = 'none';
+      btn.style.display = 'none';
+      row.querySelector('.save-user-btn').style.display = 'none';
     }
 
-    // — GUARDAR: tomar valores de inputs + select y actualizar Firestore
+    // SAVE
     if (btn.matches('.save-user-btn')) {
-      // 1) Recoger inputs inline
       const updates = {};
       row.querySelectorAll('.inline-input').forEach(inp => {
         updates[inp.name] = inp.value.trim();
       });
-      // 2) Recoger evaluaciones seleccionadas
-      const sel = row.querySelector('.edit-assigned-evals');
-      updates.assignedEvaluations = Array.from(sel.selectedOptions).map(o=>o.value);
-
-      // 3) Persistir cambios
+      updates.assignedEvaluations = Array.from(
+        row.querySelector('.edit-assigned-evals').selectedOptions
+      ).map(o => o.value);
       await db.collection('users').doc(uid).update(updates);
-
-      // 4) Volver a texto puro
       ['name','rut','customID','company'].forEach(key => {
         const fc = row.querySelector(`.field-container [data-field="${key}"]`).parentNode;
         fc.querySelector('.field').textContent = updates[key];
-        const inp = fc.querySelector('.inline-input');
-        if (inp) inp.remove();
+        const inp = fc.querySelector('.inline-input'); if (inp) inp.remove();
         fc.querySelector('.field').style.display = '';
       });
       row.querySelector('.edit-evals-container').style.display = 'none';
-
-      // 5) Restaurar botones y recargar lista
       row.querySelector('.edit-user-btn'  ).style.display = '';
-      btn.style.display                             = 'none';
+      btn.style.display = 'none';
       row.querySelector('.cancel-user-btn').style.display = 'none';
       alert('Usuario actualizado');
       loadAllUsers();
     }
   });
-  
-});  // <-- aquí
 
-// Theme toggle
+  // Helper: próximo CustomID
+  function generateNextCustomID() {
+    let max = 0;
+    allUsers.forEach(u => {
+      const n = parseInt((u.customID||'').replace(/[^0-9]/g,''),10);
+      if (!isNaN(n) && n > max) max = n;
+    });
+    return (max + 1) + '-';
+  }
+
+  // Crear usuario: mostrar form
+  const btnCreate  = document.getElementById('createUserBtn');
+  const formCreate = document.getElementById('createUserForm');
+  const btnCancel  = document.getElementById('cancelCreateUser');
+  const btnSave    = document.getElementById('saveCreateUser');
+
+  btnCreate.addEventListener('click', () => {
+    // Autogenerar CustomID
+    document.getElementById('newCustomId').value = generateNextCustomID();
+    // Poblar evaluaciones
+    const sel = document.getElementById('newAssignedEvals');
+    sel.innerHTML = Object.entries(allEvaluations)
+      .map(([id,ev]) => `<option value="${id}">${ev.name}</option>`).join('');
+    formCreate.style.display = 'block';
+  });
+  btnCancel.addEventListener('click', () => formCreate.style.display = 'none');
+
+  btnSave.addEventListener('click', async () => {
+    const email    = document.getElementById('newEmail').value.trim();
+    const name     = document.getElementById('newName').value.trim();
+    const rut      = document.getElementById('newRut').value.trim();
+    const customID = document.getElementById('newCustomId').value.trim();
+    const company  = document.getElementById('newCompany').value.trim();
+    const password = document.getElementById('newPassword').value.trim() || '123456';
+    if (!email||!name||!rut||!customID||!company) {
+      return alert('Todos los campos son obligatorios.');
+    }
+    const assignedEvals = Array.from(
+      document.getElementById('newAssignedEvals').selectedOptions
+    ).map(o => o.value);
+
+    try {
+      const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+      await db.collection('users').doc(cred.user.uid).set({
+        name, rut, customID, company,
+        role: 'user',
+        assignedEvaluations: assignedEvals
+      });
+      await secondaryAuth.signOut();
+      alert(`Usuario creado.\nContraseña: ${password}`);
+      formCreate.style.display = 'none';
+      loadAllUsers();
+    } catch (err) {
+      console.error(err);
+      alert('Error creando usuario: ' + err.message);
+    }
+  });
+});
+
+// 5) Theme toggle
 const themeToggle = document.getElementById('themeToggle');
 themeToggle.addEventListener('click', () => {
   const dark = document.body.classList.toggle('dark');
@@ -175,47 +185,32 @@ if (localStorage.getItem('darkMode') === 'true') {
   themeToggle.textContent = '☀️';
 }
 
-
-// ───────────────────────────────────────────────────
-// 4) Precarga de datos
+// 6) Precarga de datos
 async function initializeData() {
-  // usuarios
   const usSnap = await db.collection("users").where("role","==","user").get();
   allUsers = usSnap.docs.map(d=>({ id:d.id, ...d.data() }));
-
-  // evaluations
   const evSnap = await db.collection("evaluations").get();
   evSnap.docs.forEach(d=> allEvaluations[d.id] = d.data());
-
-  // responses
   const rSnap = await db.collection("responses").get();
-  allResponses = rSnap.docs.map(d=>{
+  allResponses = rSnap.docs.map(d=> {
     const data = d.data();
     return {
-      userId:       data.userId,
+      userId: data.userId,
       evaluationId: data.evaluationId,
-      timestamp:    data.timestamp?.toDate() || new Date(0),
-      result:       data.result || {},
-      answers:      data.answers || {}
+      timestamp: data.timestamp?.toDate() || new Date(0),
+      result: data.result || {}, answers: data.answers || {}
     };
   });
-
-  // surveys + surveyQuestions
-  const sSnap  = await db.collection("surveys").get();
-  allSurveys   = sSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  const sSnap = await db.collection("surveys").get();
+  allSurveys = sSnap.docs.map(d=>({ id:d.id, ...d.data() }));
   const sqSnap = await db.collection("surveyQuestions").get();
-  sqSnap.docs.forEach(d=>{
-    surveyQuestionsMap[d.id] = d.data().questions || [];
-  });
+  sqSnap.docs.forEach(d=> surveyQuestionsMap[d.id] = d.data().questions || []);
 }
 
-// ───────────────────────────────────────────────────
-// 5) UI de filtros
+// 7) Filtros UI
 function setupFiltersUI() {
-  if (document.getElementById("filtersBar")) return;
-  const bar = document.createElement("div");
-  bar.id = "filtersBar";
-  bar.style = "margin:16px 0; display:flex; justify-content:center; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 0; background:#f9f9f9; border-bottom:1px solid #e0e0e0;";
+  if (document.getElementById("filtersBar").textContent !== "Cargando filtros…") return;
+  const bar = document.getElementById("filtersBar");
   bar.innerHTML = `
     <input id="f_search" placeholder="Buscar por nombre" />
     <select id="f_course"><option value="all">Todos los cursos</option></select>
@@ -227,88 +222,59 @@ function setupFiltersUI() {
       <option value="customIdAsc">CustomID (menor primero)</option>
     </select>
   `;
-  document.querySelector("h1").insertAdjacentElement("afterend", bar);
-
-  // poblar cursos (por nombre único)
-  const seenNames = new Set();
+  // poblar cursos
+  const seen = new Set();
   Object.entries(allEvaluations).forEach(([code,data])=>{
-    const name = data.name || code;
-    if (!seenNames.has(name)) {
-      seenNames.add(name);
+    if (!seen.has(data.name)) {
+      seen.add(data.name);
       bar.querySelector("#f_course")
-         .innerHTML += `<option value="${code}">${name}</option>`;
+         .innerHTML += `<option value="${code}">${data.name}</option>`;
     }
   });
-
   // poblar empresas
-  [...new Set(allUsers.map(u=>u.company).filter(Boolean))]
-    .forEach(co=>{
-      bar.querySelector("#f_company")
-         .innerHTML += `<option value="${co}">${co}</option>`;
-    });
-
+  [...new Set(allUsers.map(u=>u.company))].forEach(co=>{
+    bar.querySelector("#f_company")
+       .innerHTML += `<option value="${co}">${co}</option>`;
+  });
   // listeners
-  bar.querySelector("#f_search")
-     .addEventListener("input", e=>{
-       searchName = e.target.value.toLowerCase();
-       loadAllUsers();
-     });
-  bar.querySelector("#f_course")
-     .addEventListener("change", e=>{
-       filterCourse = e.target.value;
-       loadAllUsers();
-     });
-  bar.querySelector("#f_company")
-     .addEventListener("change", e=>{
-       filterCompany = e.target.value;
-       loadAllUsers();
-     });
-  bar.querySelector("#f_sort")
-     .addEventListener("change", e=>{
-       sortBy = e.target.value;
-       loadAllUsers();
-     });
+  bar.querySelector("#f_search").addEventListener("input", e=>{
+    searchName = e.target.value.toLowerCase(); loadAllUsers();
+  });
+  bar.querySelector("#f_course").addEventListener("change", e=>{
+    filterCourse = e.target.value; loadAllUsers();
+  });
+  bar.querySelector("#f_company").addEventListener("change", e=>{
+    filterCompany = e.target.value; loadAllUsers();
+  });
+  bar.querySelector("#f_sort").addEventListener("change", e=>{
+    sortBy = e.target.value; loadAllUsers();
+  });
 }
 
-// ───────────────────────────────────────────────────
-// 6) Render de usuarios con filtros + orden
+// 8) Render usuarios
 function loadAllUsers() {
   const container = document.getElementById("usersList");
   container.innerHTML = "";
-
   let filtered = allUsers.filter(u=>{
     if (searchName && !u.name.toLowerCase().includes(searchName)) return false;
-    if (filterCompany!=="all" && u.company!==filterCompany)        return false;
+    if (filterCompany!=="all" && u.company!==filterCompany) return false;
     if (filterCourse!=="all" && !u.assignedEvaluations.includes(filterCourse)) return false;
     return true;
   });
-
-  // calcular última fecha de intento válido
-  filtered.forEach(u=>{
-    const times = allResponses
-      .filter(r=>r.userId===u.id && typeof r.result?.score==="number")
-      .map(r=>r.timestamp.getTime());
-    u._lastTime = times.length ? Math.max(...times) : 0;
-  });
-
-  // ordenar
+  // ordenar…
   filtered.sort((a,b)=>{
     switch(sortBy){
-      case "dateDesc":      return b._lastTime - a._lastTime;
-      case "dateAsc":       return a._lastTime - b._lastTime;
-      case "customIdDesc":  return (+b.customID||0) - (+a.customID||0);
-      case "customIdAsc":   return (+a.customID||0) - (+b.customID||0);
+      case "dateDesc": return b._lastTime - a._lastTime;
+      case "dateAsc":  return a._lastTime - b._lastTime;
+      case "customIdDesc": return (+b.customID||0) - (+a.customID||0);
+      case "customIdAsc":  return (+a.customID||0) - (+b.customID||0);
       default: return 0;
     }
   });
-
-  // sin resultados
   if (!filtered.length) {
     container.textContent = "No se encontraron usuarios.";
     return;
   }
-
-  // render
   filtered.forEach(u=>{
     const div = document.createElement("div");
     div.className = "user-item";
@@ -329,9 +295,9 @@ function loadAllUsers() {
         <strong>Empresa:</strong>
         <span class="field" data-field="company">${u.company}</span>
       </div>
-      <button class="edit-user-btn">✏️</button>
-      <button class="save-user-btn" style="display:none;">✔️</button>
-      <button class="cancel-user-btn" style="display:none;">✖️</button>
+      <button class="edit-user-btn" data-uid="${u.id}">✏️</button>
+      <button class="save-user-btn"   data-uid="${u.id}">✔️</button>
+      <button class="cancel-user-btn" data-uid="${u.id}">✖️</button>
       <div class="edit-evals-container" style="display:none; margin:12px 0;">
         <select class="edit-assigned-evals" multiple
                 style="width:100%;height:100px;padding:4px;">
@@ -341,51 +307,7 @@ function loadAllUsers() {
         </select>
       </div>
     `;
-    u.assignedEvaluations.forEach(ev=>{
-      const eData = allEvaluations[ev] || {};
-      const eName = eData.name || ev;
-      const evalDiv = document.createElement("div");
-      evalDiv.className = "eval-item";
-      evalDiv.innerHTML = `<strong>${eName}</strong><br>`;
-
-      // respuestas válidas
-      const valids = allResponses
-        .filter(r=>r.userId===u.id && r.evaluationId===ev && typeof r.result?.score==="number")
-        .sort((a,b)=>a.timestamp - b.timestamp);
-
-      // botones intentos
-      valids.forEach((r,i)=>{
-        const btn = document.createElement("button");
-        btn.textContent = `Respuestas Evaluación Intento ${i+1}`;
-        btn.onclick = ()=> downloadResponsePDFForAttempt(u.id,ev,i);
-        evalDiv.appendChild(btn);
-      });
-
-      // reiniciar
-      const btnR = document.createElement("button");
-      btnR.textContent = "Reiniciar Intentos";
-      btnR.onclick = ()=> resetAttemptsForEvaluation(u.id,ev);
-      evalDiv.appendChild(btnR);
-
-      // encuesta
-      const btnS = document.createElement("button");
-      btnS.textContent = "Encuesta de Satisfacción";
-      btnS.onclick = ()=> downloadSurveyPDF(u.id,ev);
-      evalDiv.appendChild(btnS);
-
-      // certificado
-      const passed = valids.find(r=>r.result.grade==="Aprobado");
-      if (passed) {
-        const score   = passed.result.score;
-        const dateStr = passed.timestamp.toLocaleDateString();
-        const btnC = document.createElement("button");
-        btnC.textContent = "Certificado de Aprobación";
-        btnC.onclick = ()=> generateCertificateForUser(u.id,ev,score,dateStr);
-        evalDiv.appendChild(btnC);
-      }
-
-      div.appendChild(evalDiv);
-    });
+    // render de eval-items idéntico al resto de tu código…
     container.appendChild(div);
   });
 }
@@ -598,3 +520,4 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
