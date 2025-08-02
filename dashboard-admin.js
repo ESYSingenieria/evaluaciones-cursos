@@ -58,6 +58,32 @@ auth.onAuthStateChanged(async user => {
   }
 });
 
+// Helper para formatear RUT chileno: "11111111-1" → "11.111.111-1"
+function formatRut(rut) {
+  // 1) Quitamos todo lo que no sea dígito ni 'K'/'k'
+  const clean = rut
+    .toUpperCase()
+    .replace(/[^0-9K]/g, '');
+
+  // 2) Separamos cuerpo (todo menos último char) y dígito verificador
+  const cuerpo = clean.slice(0, -1);
+  const dv     = clean.slice(-1);
+
+  // 3) Ponemos puntos cada tres dígitos desde el final
+  const withDots = cuerpo
+    .split('')
+    .reverse()
+    .join('')
+    .match(/.{1,3}/g)
+    .join('.')
+    .split('')
+    .reverse()
+    .join('');
+
+  // 4) Devolvemos con guion
+  return withDots + (withDots ? '-' : '') + dv;
+}
+
 // ───────────────────────────────────────────────────
 // AGREGAR: listener para cierre de sesión
 document.addEventListener('DOMContentLoaded', () => {
@@ -244,6 +270,26 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       console.error(err);
       alert('Error al crear usuario: ' + err.message);
+    }
+  });
+    // 1) Modal “Nuevo usuario”
+  const newRutInput = document.getElementById('newRut');
+  newRutInput.addEventListener('input', e => {
+    const pos = e.target.selectionStart;
+    e.target.value = formatRut(e.target.value);
+    // Opcional: reubicar cursor al final
+    e.target.setSelectionRange(e.target.value.length, e.target.value.length);
+  });
+
+  // 2) Inline edit de usuarios existentes
+  document.body.addEventListener('input', e => {
+    const inp = e.target;
+    // Solo inputs de RUT en modo edición
+    if (inp.matches('input[name="rut"]')) {
+      const val = formatRut(inp.value);
+      inp.value = val;
+      // opcional: mover cursor al final
+      inp.setSelectionRange(val.length, val.length);
     }
   });
 });  // <-- aquí
@@ -709,9 +755,3 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
-
-
-
-
-
-
