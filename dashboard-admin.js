@@ -71,10 +71,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Delegación para editar/guardar/cancelar inline con asignación de evaluaciones
   document.body.addEventListener('click', async e => {
-    const btn = e.target;
-    const uid = btn.dataset.uid;
-    if (!uid) return;
+    // 1) Asegurarnos de que click viene de un <button>
+    const btn = e.target.closest('button');
+    if (!btn) return;
+
+    // 2) Buscar la fila de usuario
     const row = btn.closest('.user-item');
+    if (!row) return;
+
+    // 3) Leer el UID del row (ahí sí existe)
+    const uid = row.dataset.uid;
 
     // — EDITAR:
     if (btn.matches('.edit-user-btn')) {
@@ -693,3 +699,4 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
