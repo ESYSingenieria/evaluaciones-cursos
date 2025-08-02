@@ -473,7 +473,8 @@ function loadAllUsers() {
 
       <div class="buttons" style="margin:8px 0;">
         <button class="edit-user-btn">✏️</button>
-        <button class="delete-user-btn" data-name="${u.name}">🗑️ Eliminar</button>
+        <button class="delete-user-btn" data-name="${u.name}"
+                style="margin-left:8px;background:#dc3545;">🗑️ Eliminar</button>
         <button class="save-user-btn" style="display:none;">✔️</button>
         <button class="cancel-user-btn" style="display:none;">✖️</button>
       </div>
@@ -775,4 +776,5 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
 
