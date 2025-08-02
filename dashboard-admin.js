@@ -696,5 +696,67 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
   }
 }
 
+document.addEventListener("DOMContentLoaded", () => {
+  const usersList = document.getElementById("usersList");
 
+  // Delegación de eventos para todos los botones de usuario
+  usersList.addEventListener("click", async e => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
 
+    const row = btn.closest(".user-item");
+    if (!row) return;
+    const uid = row.dataset.uid;
+    const editContainer = row.querySelector(".edit-container");
+    const editBtn  = row.querySelector(".edit-user-btn");
+    const saveBtn  = row.querySelector(".save-user-btn");
+    const cancelBtn= row.querySelector(".cancel-user-btn");
+
+    // 1) ✏️ Editar
+    if (btn.classList.contains("edit-user-btn")) {
+      editContainer.style.display    = "block";
+      editBtn.style.display          = "none";
+      saveBtn.style.display          = "inline-block";
+      cancelBtn.style.display        = "inline-block";
+      return;
+    }
+
+    // 2) ✖️ Cancelar
+    if (btn.classList.contains("cancel-user-btn")) {
+      editContainer.style.display    = "none";
+      editBtn.style.display          = "inline-block";
+      saveBtn.style.display          = "none";
+      cancelBtn.style.display        = "none";
+      return;
+    }
+
+    // 3) ✔️ Guardar
+    if (btn.classList.contains("save-user-btn")) {
+      // leer valores de inputs
+      const name    = row.querySelector('input[name="name"]').value.trim();
+      const rut     = row.querySelector('input[name="rut"]').value.trim();
+      const customID= row.querySelector('input[name="customID"]').value.trim();
+      const company = row.querySelector('input[name="company"]').value.trim();
+      const evsEd   = Array.from(
+        row.querySelectorAll('input[name="assignedEvals"]:checked')
+      ).map(cb => cb.value);
+
+      try {
+        // actualiza Firestore
+        await db.collection("users").doc(uid).update({
+          name,
+          rut,
+          customID,
+          company,
+          assignedEvaluations: evsEd
+        });
+
+        // recarga la lista y sale del modo edición
+        await loadAllUsers();
+      } catch (err) {
+        console.error(err);
+        alert("Error al guardar usuario: " + err.message);
+      }
+    }
+  });
+});
