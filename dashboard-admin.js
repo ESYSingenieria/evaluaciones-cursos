@@ -153,15 +153,6 @@ document.addEventListener('DOMContentLoaded', () => {
       loadAllUsers();
       return;
     }
-
-      row.querySelector('.edit-evals-container').style.display = 'none';
-
-      // 5) Restaurar botones y recargar lista
-      row.querySelector('.edit-user-btn'  ).style.display = '';
-      btn.style.display                             = 'none';
-      row.querySelector('.cancel-user-btn').style.display = 'none';
-      alert('Usuario actualizado');
-      loadAllUsers();
     
   });
   
@@ -175,6 +166,13 @@ document.addEventListener('DOMContentLoaded', () => {
   createBtn.addEventListener('click', async () => {
     // ── 1) Calcular siguiente customID a partir de la caché allUsers ──
     // Parseamos todos los customID numéricos, sacamos el mayor y le sumamos 1
+    // 1) Limpiar campos salvo el customID que vamos a rellenar
+    ['newEmail','newPassword','newName','newRut','newCompany'].forEach(id=>{
+      document.getElementById(id).value = '';
+    });
+    // (Opcional) Deseleccionar cualquier checkbox previo
+    document.getElementById('newEvalsContainer').innerHTML = '';
+
     const maxId = allUsers.reduce((max, u) => {
       const n = parseInt(u.customID, 10);
       return (!isNaN(n) && n > max) ? n : max;
@@ -228,7 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
         name,
         rut,
         company,
-        customID: '',       // genera o asigna aquí tu lógica
+        customID: customID,       // genera o asigna aquí tu lógica
         role: 'user',
         assignedEvaluations: evs
       });
@@ -709,6 +707,7 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
 
 
 
