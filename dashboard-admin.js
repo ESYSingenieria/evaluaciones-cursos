@@ -108,6 +108,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // 3) Leer el UID del row (ahí sí existe)
     const uid = row.dataset.uid;
 
+    // — BORRAR USUARIO:
+    if (btn.matches('.delete-user-btn')) {
+      const name = btn.dataset.name;
+      if (!confirm(`¿Estás seguro que quieres eliminar la cuenta del usuario: ${name}?`)) {
+        return;
+      }
+      try {
+        // 1) Eliminar doc de Firestore
+        await db.collection('users').doc(uid).delete();
+        // 2) (Opcional) eliminar también Auth user vía función backend o admin SDK
+        alert(`Usuario ${name} eliminado`);
+        loadAllUsers();
+      } catch (err) {
+        console.error(err);
+        alert('Error al eliminar usuario: ' + err.message);
+      }
+      return;
+    }
+    
     // — EDITAR:
     if (btn.matches('.edit-user-btn')) {
       // 1) Mostrar contenedor de edición
@@ -454,6 +473,7 @@ function loadAllUsers() {
 
       <div class="buttons" style="margin:8px 0;">
         <button class="edit-user-btn">✏️</button>
+        <button class="delete-user-btn" data-name="${u.name}">🗑️ Eliminar</button>
         <button class="save-user-btn" style="display:none;">✔️</button>
         <button class="cancel-user-btn" style="display:none;">✖️</button>
       </div>
@@ -755,3 +775,4 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
