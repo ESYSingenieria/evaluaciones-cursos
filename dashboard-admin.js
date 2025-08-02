@@ -202,12 +202,6 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('input[name="newAssignedEvals"]:checked')
     ).map(cb => cb.value);
 
-    // Editar usuario (dentro de tu delegado, usando el contenedor asociado):
-    const row    = btn.closest('.user-row');
-    const evsEd  = Array.from(
-      row.querySelectorAll('input[name="assignedEvals"]:checked')
-    ).map(cb => cb.value);
-
     try {
       // 1) Crear usuario en App secundaria
       const { user } = await secondaryAuth
@@ -238,18 +232,18 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });  // <-- aquí
 
-// Theme toggle
 const themeToggle = document.getElementById('themeToggle');
-themeToggle.addEventListener('click', () => {
-  const dark = document.body.classList.toggle('dark');
-  themeToggle.textContent = dark ? '☀️' : '🌙';
-  localStorage.setItem('darkMode', dark);
-});
-if (localStorage.getItem('darkMode') === 'true') {
-  document.body.classList.add('dark');
-  themeToggle.textContent = '☀️';
+if (themeToggle) {
+  themeToggle.addEventListener('click', () => {
+    const dark = document.body.classList.toggle('dark');
+    themeToggle.textContent = dark ? '☀️' : '🌙';
+    localStorage.setItem('darkMode', dark);
+  });
+  if (localStorage.getItem('darkMode') === 'true') {
+    document.body.classList.add('dark');
+    themeToggle.textContent = '☀️';
+  }
 }
-
 
 // ───────────────────────────────────────────────────
 // 4) Precarga de datos
@@ -699,4 +693,5 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
 
