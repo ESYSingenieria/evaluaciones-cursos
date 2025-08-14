@@ -110,14 +110,140 @@
   </div>
 
   <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      if (typeof db !== "undefined") {
-        loadBadgeData();   // sigue cargando la insignia actual (si viene ?id=...)
-      } else {
-        console.error("Firebase no está inicializado. Verifica tu configuración.");
+    (function initVerifierSearchV2(){
+      const input = document.getElementById('globalSearch');
+      const panel = document.getElementById('searchResults');
+      if(!input || !panel) return;
+
+      // helpers
+      const open  = ()=> panel.classList.add('open');
+      const close = ()=> { panel.classList.remove('open'); panel.innerHTML=''; };
+      const render = (items)=>{
+        if(!items.length){ panel.innerHTML = '<div class="sr-item disabled">Sin resultados</div>'; open(); return; }
+        panel.innerHTML = items.map(it => `
+          <div class="sr-item ${it.disabled?'disabled':''}" ${it.id?`data-id="${it.id}"`:''}>
+            <div class="sr-title">${it.title}</div>
+            <div class="sr-sub">${it.sub||''}</div>
+            ${it.meta?`<div class="sr-meta">${it.meta}</div>`:''}
+          </div>
+        `).join('');
+        open();
+      };
+
+      // navegación por clic y enter
+      panel.addEventListener('click', e=>{
+        const item = e.target.closest('.sr-item');
+        if(!item || item.classList.contains('disabled')) return;
+        const id = item.dataset.id;
+        if(id) window.location.href = `verificar.html?id=${id}`;
+      });
+      input.addEventListener('keydown', e=>{
+        if(e.key==='Enter'){
+          const first = panel.querySelector('.sr-item:not(.disabled)');
+          if(first && first.dataset.id) window.location.href = `verificar.html?id=${first.dataset.id}`;
+        }
+      });
+      document.addEventListener('click', e=>{
+        if(!panel.contains(e.target) && e.target!==input) close();
+      });
+
+      // debounce
+      let to=null;
+      input.addEventListener('input', ()=>{
+        clearTimeout(to);
+        const q = input.value.trim();
+        if(!q){ close(); return; }
+        panel.innerHTML = '<div class="sr-item disabled">Buscando…</div>'; open();
+        to = setTimeout(()=> doSearch(q), 260);
+      });
+
+      async function doSearch(raw){
+        try{
+          const items = [];
+          const onlyDigits = /^[0-9]+$/.test(raw.replace(/[^\d]/g,''));
+
+          // 1) Búsqueda por CustomID (si escribió solo números)
+          if(onlyDigits){
+            let cid = raw.replace(/[^\d]/g,'');
+            if(!cid.endsWith('-')) cid += '-';
+
+            // users por prefijo de customID
+            const usersSnap = await db.collection('users')
+              .orderBy('customID')
+              .startAt(cid)
+              .endAt(cid + '\uf8ff')
+              .limit(5)
+              .get();
+
+            if (usersSnap.empty){
+              items.push({disabled:true, title:`${cid}`, sub:'Sin usuarios con ese CustomID'});
+            }else{
+              // para cada usuario, traer sus certificados por nombre
+              for(const uDoc of usersSnap.docs){
+                const u = uDoc.data() || {};
+                const uname = (u.name||'').trim();
+                const uCID  = u.customID || cid;
+
+                const certSnap = await db.collection('certificates')
+                  .orderBy('name')
+                  .startAt(uname)
+                  .endAt(uname + '\uf8ff')
+                  .limit(6)
+                  .get();
+
+                if(certSnap.empty){
+                  items.push({disabled:true, title:`${uCID} — ${uname}`, sub:'Sin certificados asociados'});
+                }else{
+                  certSnap.forEach(c=>{
+                    const d = c.data() || {};
+                    items.push({
+                      id: c.id,
+                      title: d.courseName || 'Curso',
+                      sub: `${uCID} — ${d.name || uname}`,
+                      meta: `ID certificado: ${c.id}`
+                    });
+                  });
+                }
+              }
+            }
+          }
+
+          // 2) Búsqueda por NOMBRE (si hay letras o como complemento)
+          const term = raw;
+          const certByName = await db.collection('certificates')
+            .orderBy('name')
+            .startAt(term)
+            .endAt(term + '\uf8ff')
+            .limit(8)
+            .get();
+
+          certByName.forEach(doc=>{
+            const d = doc.data()||{};
+            items.push({
+              id: doc.id,
+              title: d.courseName || 'Curso',
+              sub: d.name || '',
+              meta: `ID certificado: ${doc.id}`
+            });
+          });
+
+          // quitar duplicados por ID
+          const seen=new Set(); const uniq=[];
+          for(const it of items){
+            if(!it.id){ uniq.push(it); continue; }
+            if(seen.has(it.id)) continue;
+            seen.add(it.id); uniq.push(it);
+          }
+
+          render(uniq.slice(0,12));
+        }catch(err){
+          console.error('Search error:', err);
+          render([{disabled:true, title:'Error de búsqueda', sub:'Intenta nuevamente'}]);
+        }
       }
-    });
+    })();
   </script>
 </body>
 </html>
+
 
