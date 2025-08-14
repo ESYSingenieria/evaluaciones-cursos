@@ -44,10 +44,12 @@
     .badge-footer a:hover{ text-decoration:underline; }
 
     /* ====== Buscador ====== */
-    .search-wrap{ position:relative; margin:-8px auto 18px; max-width:800px; }
+    .search-wrap{
+      position:relative;
+      margin: 0 0 18px 0;         /* ya no toca el logo */
+    }
     .search-input{
-      width:100%; padding:12px 14px; border:1px solid #e5e7eb; border-radius:12px; font-size:16px;
-      outline: none;
+      width:100%; padding:12px 14px; border:1px solid #e5e7eb; border-radius:12px; font-size:16px; outline:none;
     }
     .search-input:focus{ border-color:#007bff; box-shadow:0 0 0 3px rgba(0,123,255,.15); }
     .search-results{
@@ -70,22 +72,20 @@
     <a href="https://esys.cl/"><img src="logo.png" alt="ESYS" style="max-width:200px;height:auto;"></a>
   </header>
 
-  <!-- ====== BUSCADOR ====== -->
-  <div class="search-wrap">
-    <input id="globalSearch" class="search-input"
-           placeholder="Buscar por CustomID (ej.: 200) o por nombre…" autocomplete="off"/>
-    <div id="searchResults" class="search-results"></div>
-    <div class="search-hint">Tip: si escribes solo números, se busca por CustomID y el guion se agrega automáticamente (ej.: 200 → 200-).</div>
-  </div>
-
   <div class="badge-container">
+    <div class="search-wrap">
+      <input id="globalSearch" class="search-input"
+           placeholder="Buscar por CustomID (ej.: 200) o por nombre…" autocomplete="off"/>
+      <div id="searchResults" class="search-results"></div>
+      <div class="search-hint">Tip: si escribes solo números, se busca por CustomID y el guion se agrega automáticamente (ej.: 200 → 200-).</div>
+    </div>
+    
     <div class="badge-header">
       <img id="badgeImage" src="" alt="Insignia">
       <h1 id="courseName">Cargando...</h1>
     </div>
 
     <div class="badge-content">
-      <h2>Norma para la Seguridad Eléctrica en los Lugares de Trabajo - NFPA 70E 2024</h2>
       <p id="issuedTo">Cargando...</p>
       <p id="description">Cargando...</p>
     </div>
@@ -120,3 +120,4 @@
   </script>
 </body>
 </html>
+
