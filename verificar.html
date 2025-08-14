@@ -1,272 +1,328 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Verificación de Insignia</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Verificación de Insignia</title>
 
-  <link rel="stylesheet" href="styles.css"/>
+    <link rel="stylesheet" href="styles.css"/>
 
-  <!-- Firebase (compat) -->
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
+    <!-- Firebase (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
 
-  <!-- Tu JS principal -->
-  <script src="app.js" defer></script>
+    <!-- Tu JS principal -->
+    <script src="app.js" defer></script>
 
-  <style>
-    .badge-container{
-      max-width: 800px; margin: 30px auto; padding: 20px; background:#fff;
-      border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1);
-    }
-    .badge-header{ text-align:center; margin-bottom:20px; }
-    .badge-header img{ width:150px; height:auto; margin-bottom:10px; }
-    .badge-content{ text-align:center; margin-bottom:20px; }
-    .badge-content h2{ margin-bottom:10px; font-size:1.5rem; color:#007bff; }
-    .badge-content p{ margin-bottom:15px; color:#555; }
-    .badge-criteria, .badge-standards{ margin-top:25px; }
-    .badge-criteria h3, .badge-standards h3{ color:#333; margin-bottom:10px; font-size:1.1rem; }
-    .badge-criteria ul, .badge-standards ul{
-      list-style: none; padding:0; margin:0;
-    }
-    .badge-criteria ul li, .badge-standards ul li{
-      background:#f9f9f9; margin-bottom:10px; padding:10px;
-      border-radius:5px; box-shadow:0 1px 4px rgba(0,0,0,.1);
-    }
-    .badge-footer{ text-align:center; margin-top:30px; }
-    .badge-footer button{
-      background-color:#28a745; color:#fff; border:0; padding:10px 20px;
-      border-radius:5px; cursor:pointer; font-size:16px;
-    }
-    .badge-footer button:hover{ background-color:#218838; }
-    .badge-footer a{ display:block; margin-top:10px; color:#007bff; text-decoration:none; font-size:14px; }
-    .badge-footer a:hover{ text-decoration:underline; }
+    <style>
+        .badge-container{
+            max-width: 900px; margin: 30px auto; padding: 20px; background:#fff;
+            border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1);
+        }
+        .badge-header{ text-align:center; margin-bottom:20px; }
+        .badge-header img{ width:150px; height:auto; margin-bottom:10px; }
+        .badge-content{ text-align:center; margin-bottom:20px; }
+        .badge-content p{ margin-bottom:15px; color:#555; }
+        .badge-criteria, .badge-standards{ margin-top:25px; }
+        .badge-criteria h3, .badge-standards h3{ color:#333; margin-bottom:10px; font-size:1.1rem; }
+        .badge-criteria ul, .badge-standards ul{
+            list-style: none; padding:0; margin:0;
+        }
+        .badge-criteria ul li, .badge-standards ul li{
+            background:#f9f9f9; margin-bottom:10px; padding:10px;
+            border-radius:5px; box-shadow:0 1px 4px rgba(0,0,0,.1);
+        }
+        .badge-footer{ text-align:center; margin-top:30px; }
+        .badge-footer button{
+            background-color:#28a745; color:#fff; border:0; padding:10px 20px;
+            border-radius:5px; cursor:pointer; font-size:16px;
+        }
+        .badge-footer button:hover{ background-color:#218838; }
+        .badge-footer a{ display:block; margin-top:10px; color:#007bff; text-decoration:none; font-size:14px; }
+        .badge-footer a:hover{ text-decoration:underline; }
 
-    /* ====== Buscador ====== */
-    .search-wrap{
-      position:relative;
-      margin: 0 0 18px 0;         /* ya no toca el logo */
-    }
-    .search-input{
-      width:100%; padding:12px 14px; border:1px solid #e5e7eb; border-radius:12px; font-size:16px; outline:none;
-    }
-    .search-input:focus{ border-color:#007bff; box-shadow:0 0 0 3px rgba(0,123,255,.15); }
-    .search-results{
-      position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid #e5e7eb;
-      border-top:none; border-radius:0 0 12px 12px; box-shadow:0 10px 24px rgba(0,0,0,.08);
-      max-height:360px; overflow:auto; display:none; z-index:50;
-    }
-    .search-results.open{ display:block; }
-    .sr-item{ padding:10px 12px; cursor:pointer; }
-    .sr-item:hover{ background:#f8fafc; }
-    .sr-item.disabled{ cursor:default; color:#6b7280; }
-    .sr-title{ font-weight:600; }
-    .sr-sub{ font-size:12px; color:#4b5563; }
-    .sr-meta{ font-size:11px; color:#9ca3af; margin-top:2px; }
-    .search-hint{ font-size:12px; color:#6b7280; margin-top:6px; }
-  </style>
+        /* ====== Buscador ====== */
+        .search-wrap{
+            position:relative; margin: 0 0 18px 0;
+        }
+        .search-input{
+            width:100%; padding:12px 14px; border:1px solid #e5e7eb; border-radius:12px; font-size:16px; outline:none;
+        }
+        .search-input:focus{ border-color:#007bff; box-shadow:0 0 0 3px rgba(0,123,255,.15); }
+        .search-results{
+            position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid #e5e7eb;
+            border-top:none; border-radius:0 0 12px 12px; box-shadow:0 10px 24px rgba(0,0,0,.08);
+            max-height:360px; overflow:auto; display:none; z-index:50;
+        }
+        .search-results.open{ display:block; }
+        .sr-item{ padding:10px 12px; cursor:pointer; }
+        .sr-item:hover{ background:#f8fafc; }
+        .sr-item.disabled{ cursor:default; color:#6b7280; }
+        .sr-title{ font-weight:600; }
+        .sr-sub{ font-size:12px; color:#4b5563; }
+        .sr-meta{ font-size:11px; color:#9ca3af; margin-top:2px; }
+        .search-hint{ font-size:12px; color:#6b7280; margin-top:6px; }
+
+        /* ====== Mosaico insignias (solo landing sin ?id) ====== */
+        .badges{
+            display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+            gap:16px; margin: 6px 0 22px 0;
+        }
+        .badge-card{
+            background:#fff; border:1px solid #e5e7eb; border-radius:12px;
+            padding:12px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,.04);
+        }
+        .badge-card img{ max-width:80px; height:auto; display:block; margin:0 auto 8px; }
+        .badge-card .bc-title{ font-size:12px; color:#374151; line-height:1.2; }
+    </style>
 </head>
 <body>
-  <header style="text-align:center; padding:0; background:#ffffff;">
-    <a href="https://esys.cl/"><img src="logo.png" alt="ESYS" style="max-width:200px;height:auto;"></a>
-  </header>
+    <header style="text-align:center; padding:0; background:#ffffff;">
+        <a href="https://esys.cl/"><img src="logo.png" alt="ESYS" style="max-width:200px;height:auto;"></a>
+    </header>
 
-  <div class="badge-container">
-    <div class="search-wrap">
-      <input id="globalSearch" class="search-input"
-           placeholder="Buscar por Nombre o por ID de Usuario…" autocomplete="off"/>
-      <div id="searchResults" class="search-results"></div>
-      <div class="search-hint">Tip: El ID del usuario se puede encontrar en el certificado en la sección ID luego de los dos primeros dígitos. Ej.: (02"99"-2025) - ID Usuario = 99.</div>
+    <div class="badge-container">
+        <!-- Mosaico (visible solo cuando NO hay ?id) -->
+        <div id="badgesGrid" class="badges" style="display:none;"></div>
+
+        <!-- Buscador (siempre visible) -->
+        <div class="search-wrap">
+            <input id="globalSearch" class="search-input"
+                   placeholder="Buscar por Nombre o por ID de Usuario…" autocomplete="off"/>
+            <div id="searchResults" class="search-results"></div>
+            <div class="search-hint">
+                Tip: El ID del usuario se puede encontrar en el certificado en la sección ID luego de los dos primeros dígitos. Ej.: (02"99"-2025) - ID Usuario = 99.
+            </div>
+        </div>
+
+        <!-- Sección de detalle (solo con ?id) -->
+        <div id="detailSection">
+            <div class="badge-header">
+                <img id="badgeImage" src="" alt="Insignia">
+                <h1 id="courseName">Cargando...</h1>
+            </div>
+
+            <div class="badge-content">
+                <p id="issuedTo">Cargando...</p>
+                <p id="description">Cargando...</p>
+            </div>
+
+            <div class="badge-criteria">
+                <h3>Criterios de Aprobación</h3>
+                <ul id="criteriaList">
+                    <li>Cargando...</li>
+                </ul>
+            </div>
+
+            <div class="badge-standards">
+                <h3>Estándares</h3>
+                <ul id="standardsList">
+                    <li>Cargando...</li>
+                </ul>
+            </div>
+
+            <div class="badge-footer">
+                <button onclick="window.location.href='https://esys.cl/cursos-y-capacitaciones/'">Obtener esta Insignia</button>
+            </div>
+        </div>
     </div>
-    
-    <div class="badge-header">
-      <img id="badgeImage" src="" alt="Insignia">
-      <h1 id="courseName">Cargando...</h1>
-    </div>
 
-    <div class="badge-content">
-      <p id="issuedTo">Cargando...</p>
-      <p id="description">Cargando...</p>
-    </div>
+    <!-- Buscador (con nombre insensible a mayúsculas) -->
+    <script>
+        (function initVerifierSearchV2(){
+            const input = document.getElementById('globalSearch');
+            const panel = document.getElementById('searchResults');
+            if(!input || !panel) return;
 
-    <div class="badge-criteria">
-      <h3>Criterios de Aprobación</h3>
-      <ul id="criteriaList">
-        <li>Cargando...</li>
-      </ul>
-    </div>
+            const open  = ()=> panel.classList.add('open');
+            const close = ()=> { panel.classList.remove('open'); panel.innerHTML=''; };
+            const render = (items)=>{
+                if(!items.length){ panel.innerHTML = '<div class="sr-item disabled">Sin resultados</div>'; open(); return; }
+                panel.innerHTML = items.map(it => `
+                    <div class="sr-item ${it.disabled?'disabled':''}" ${it.id?`data-id="${it.id}"`:''}>
+                        <div class="sr-title">${it.title}</div>
+                        <div class="sr-sub">${it.sub||''}</div>
+                        ${it.meta?`<div class="sr-meta">${it.meta}</div>`:''}
+                    </div>
+                `).join('');
+                open();
+            };
 
-    <div class="badge-standards">
-      <h3>Estándares</h3>
-      <ul id="standardsList">
-        <li>Cargando...</li>
-      </ul>
-    </div>
+            panel.addEventListener('click', e=>{
+                const item = e.target.closest('.sr-item');
+                if(!item || item.classList.contains('disabled')) return;
+                const id = item.dataset.id;
+                if(id) window.location.href = `verificar.html?id=${id}`;
+            });
+            input.addEventListener('keydown', e=>{
+                if(e.key==='Enter'){
+                    const first = panel.querySelector('.sr-item:not(.disabled)');
+                    if(first && first.dataset.id) window.location.href = `verificar.html?id=${first.dataset.id}`;
+                }
+            });
+            document.addEventListener('click', e=>{
+                if(!panel.contains(e.target) && e.target!==input) close();
+            });
 
-    <div class="badge-footer">
-      <button onclick="window.location.href='https://esys.cl/cursos-y-capacitaciones/'">Obtener esta Insignia</button>
-    </div>
-  </div>
+            let to=null;
+            input.addEventListener('input', ()=>{
+                clearTimeout(to);
+                const q = input.value.trim();
+                if(!q){ close(); return; }
+                panel.innerHTML = '<div class="sr-item disabled">Buscando…</div>'; open();
+                to = setTimeout(()=> doSearch(q), 260);
+            });
 
-  <script>
-    (function initVerifierSearchV2(){
-      const input = document.getElementById('globalSearch');
-      const panel = document.getElementById('searchResults');
-      if(!input || !panel) return;
+            async function doSearch(raw){
+                try{
+                    const items = [];
+                    const onlyDigits = /^[0-9]+$/.test(raw.replace(/[^\d]/g,''));
 
-      // helpers
-      const open  = ()=> panel.classList.add('open');
-      const close = ()=> { panel.classList.remove('open'); panel.innerHTML=''; };
-      const render = (items)=>{
-        if(!items.length){ panel.innerHTML = '<div class="sr-item disabled">Sin resultados</div>'; open(); return; }
-        panel.innerHTML = items.map(it => `
-          <div class="sr-item ${it.disabled?'disabled':''}" ${it.id?`data-id="${it.id}"`:''}>
-            <div class="sr-title">${it.title}</div>
-            <div class="sr-sub">${it.sub||''}</div>
-            ${it.meta?`<div class="sr-meta">${it.meta}</div>`:''}
-          </div>
-        `).join('');
-        open();
-      };
+                    // --- 1) Búsqueda por CustomID (solo números) ---
+                    if(onlyDigits){
+                        let cid = raw.replace(/[^\d]/g,'');
+                        if(!cid.endsWith('-')) cid += '-';
 
-      // navegación por clic y enter
-      panel.addEventListener('click', e=>{
-        const item = e.target.closest('.sr-item');
-        if(!item || item.classList.contains('disabled')) return;
-        const id = item.dataset.id;
-        if(id) window.location.href = `verificar.html?id=${id}`;
-      });
-      input.addEventListener('keydown', e=>{
-        if(e.key==='Enter'){
-          const first = panel.querySelector('.sr-item:not(.disabled)');
-          if(first && first.dataset.id) window.location.href = `verificar.html?id=${first.dataset.id}`;
-        }
-      });
-      document.addEventListener('click', e=>{
-        if(!panel.contains(e.target) && e.target!==input) close();
-      });
-
-      // debounce
-      let to=null;
-      input.addEventListener('input', ()=>{
-        clearTimeout(to);
-        const q = input.value.trim();
-        if(!q){ close(); return; }
-        panel.innerHTML = '<div class="sr-item disabled">Buscando…</div>'; open();
-        to = setTimeout(()=> doSearch(q), 260);
-      });
-
-    async function doSearch(raw){
-        try{
-            const items = [];
-            const onlyDigits = /^[0-9]+$/.test(raw.replace(/[^\d]/g,''));
-
-            // --- 1) Búsqueda por CustomID (solo números) ---
-            if(onlyDigits){
-                let cid = raw.replace(/[^\d]/g,'');
-                if(!cid.endsWith('-')) cid += '-';
-
-                const usersSnap = await db.collection('users')
-                    .orderBy('customID')
-                    .startAt(cid)
-                    .endAt(cid + '\uf8ff')
-                    .limit(5)
-                    .get();
-
-                if (usersSnap.empty){
-                    items.push({disabled:true, title:`${cid}`, sub:'Sin usuarios con ese CustomID'});
-                }else{
-                    for(const uDoc of usersSnap.docs){
-                        const u = uDoc.data() || {};
-                        const uname = (u.name||'').trim();
-                        const uCID  = u.customID || cid;
-
-                        const certSnap = await db.collection('certificates')
-                            .orderBy('name')
-                            .startAt(uname)
-                            .endAt(uname + '\uf8ff')
-                            .limit(6)
+                        const usersSnap = await db.collection('users')
+                            .orderBy('customID')
+                            .startAt(cid)
+                            .endAt(cid + '\uf8ff')
+                            .limit(5)
                             .get();
 
-                        if(certSnap.empty){
-                            items.push({disabled:true, title:`${uCID} — ${uname}`, sub:'Sin certificados asociados'});
+                        if (usersSnap.empty){
+                            items.push({disabled:true, title:`${cid}`, sub:'Sin usuarios con ese CustomID'});
                         }else{
-                            certSnap.forEach(c=>{
-                                const d = c.data() || {};
-                                items.push({
-                                    id: c.id,
-                                    title: d.courseName || 'Curso',
-                                    sub: `${uCID} — ${d.name || uname}`,
-                                    meta: `ID certificado: ${c.id}`
-                                });
+                            for(const uDoc of usersSnap.docs){
+                                const u = uDoc.data() || {};
+                                const uname = (u.name||'').trim();
+                                const uCID  = u.customID || cid;
+
+                                const certSnap = await db.collection('certificates')
+                                    .orderBy('name')
+                                    .startAt(uname)
+                                    .endAt(uname + '\uf8ff')
+                                    .limit(6)
+                                    .get();
+
+                                if(certSnap.empty){
+                                    items.push({disabled:true, title:`${uCID} — ${uname}`, sub:'Sin certificados asociados'});
+                                }else{
+                                    certSnap.forEach(c=>{
+                                        const d = c.data() || {};
+                                        items.push({
+                                            id: c.id,
+                                            title: d.courseName || 'Curso',
+                                            sub: `${uCID} — ${d.name || uname}`,
+                                            meta: `ID certificado: ${c.id}`
+                                        });
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    // --- 2) Búsqueda por NOMBRE (case-insensitive con dos prefijos) ---
+                    const termLower = raw.toLowerCase();
+                    const termCap   = raw.replace(/\b\w/g, ch => ch.toUpperCase());
+
+                    async function queryByNamePrefix(prefix){
+                        const snap = await db.collection('certificates')
+                            .orderBy('name')
+                            .startAt(prefix)
+                            .endAt(prefix + '\uf8ff')
+                            .limit(8)
+                            .get();
+                        const out = [];
+                        snap.forEach(doc=>{
+                            const d = doc.data()||{};
+                            out.push({
+                                id: doc.id,
+                                title: d.courseName || 'Curso',
+                                sub: d.name || '',
+                                meta: `ID certificado: ${doc.id}`
                             });
+                        });
+                        return out;
+                    }
+
+                    const [byLower, byCap] = await Promise.all([
+                        queryByNamePrefix(termLower),
+                        queryByNamePrefix(termCap)
+                    ]);
+                    const map = new Map();
+                    [...byLower, ...byCap].forEach(r => { if(!map.has(r.id)) map.set(r.id, r); });
+                    items.push(...map.values());
+
+                    // --- quitar duplicados y renderizar ---
+                    const seen = new Set(); const uniq=[];
+                    for(const it of items){
+                        if(!it.id){ uniq.push(it); continue; }
+                        if(seen.has(it.id)) continue;
+                        seen.add(it.id); uniq.push(it);
+                    }
+                    render(uniq.slice(0,12));
+                }catch(err){
+                    console.error('Search error:', err);
+                    render([{disabled:true, title:'Error de búsqueda', sub:'Intenta nuevamente'}]);
+                }
+            }
+        })();
+    </script>
+
+    <!-- Con/sin ?id: mostrar detalle o landing + insignias -->
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const params = new URLSearchParams(location.search);
+                const hasId  = params.has('id');
+
+                const detail = document.getElementById('detailSection');
+                const grid   = document.getElementById('badgesGrid');
+
+                if (hasId) {
+                    if (typeof loadBadgeData === 'function') {
+                        loadBadgeData(); // carga el certificado usando ?id=...
+                    }
+                    // ocultar mosaico en modo detalle
+                    if (grid) grid.style.display = 'none';
+                } else {
+                    // modo landing: solo buscador + mosaico
+                    if (detail) detail.style.display = 'none';
+                    if (grid) {
+                        grid.style.display = 'grid';
+                        // Rellenar mosaico (una imagen por curso)
+                        try{
+                            const snap = await db.collection('certificates')
+                                .orderBy('courseName')
+                                .limit(80)
+                                .get();
+
+                            const byCourse = new Map();
+                            snap.forEach(doc=>{
+                                const d = doc.data()||{};
+                                const course = (d.courseName||'Curso').trim();
+                                if(byCourse.has(course)) return;
+                                const img = d.badgeImage || d.badgeUrl || 'logo.png';
+                                byCourse.set(course, img);
+                            });
+
+                            grid.innerHTML = [...byCourse.entries()].map(([course,img])=>`
+                                <div class="badge-card">
+                                    <img src="${img}" alt="${course}">
+                                    <div class="bc-title">${course}</div>
+                                </div>
+                            `).join('');
+                        }catch(e){
+                            console.error('Error cargando insignias:', e);
                         }
                     }
                 }
+            } catch (e) {
+                console.error(e);
             }
-
-            // --- 2) Búsqueda por NOMBRE (case-insensitive) ---
-            // Firestore no es case-insensitive, así que consultamos con dos variantes
-            // y unimos resultados: (a) todo en minúsculas y (b) Capitalización por palabra.
-            const termLower = raw.toLowerCase();
-            const termCap   = raw.replace(/\b\w/g, ch => ch.toUpperCase());
-
-            async function queryByNamePrefix(prefix){
-                const snap = await db.collection('certificates')
-                    .orderBy('name')
-                    .startAt(prefix)
-                    .endAt(prefix + '\uf8ff')
-                    .limit(8)
-                    .get();
-                const out = [];
-                snap.forEach(doc=>{
-                    const d = doc.data()||{};
-                    out.push({
-                        id: doc.id,
-                        title: d.courseName || 'Curso',
-                        sub: d.name || '',
-                        meta: `ID certificado: ${doc.id}`
-                    });
-                });
-                return out;
-            }
-
-            // Ejecuta ambas y combina (evita duplicados)
-            const [byLower, byCap] = await Promise.all([
-                queryByNamePrefix(termLower),
-                queryByNamePrefix(termCap)
-            ]);
-            const map = new Map();
-            [...byLower, ...byCap].forEach(r => { if(!map.has(r.id)) map.set(r.id, r); });
-            items.push(...map.values());
-
-            // --- quitar duplicados generales y renderizar ---
-            const seen = new Set(); const uniq=[];
-            for(const it of items){
-                if(!it.id){ uniq.push(it); continue; }
-                if(seen.has(it.id)) continue;
-                seen.add(it.id); uniq.push(it);
-            }
-            render(uniq.slice(0,12));
-        }catch(err){
-            console.error('Search error:', err);
-            render([{disabled:true, title:'Error de búsqueda', sub:'Intenta nuevamente'}]);
-        }
-    }
-    document.addEventListener('DOMContentLoaded', () => {
-      try {
-        if (typeof loadBadgeData === 'function') {
-          loadBadgeData(); // carga la insignia usando ?id=...
-        } else {
-          console.error('loadBadgeData no está definida');
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    });
-  </script>
+        });
+    </script>
 </body>
 </html>
-
-
