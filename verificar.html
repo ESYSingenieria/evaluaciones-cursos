@@ -242,25 +242,21 @@
         }
       }
     })();
-    (async function () {
-      // Espera a que Firebase (db) esté listo
-      const waitForDb = async (maxMs = 8000) => {
-        const t0 = Date.now();
-        while (!window.db) {
-          if (Date.now() - t0 > maxMs) throw new Error("db no disponible");
-          await new Promise(r => setTimeout(r, 50));
-        }
-      };
+    document.addEventListener('DOMContentLoaded', () => {
       try {
-        await waitForDb();
-        await loadBadgeData();   // <- carga el certificado por ?id=...
+        if (typeof loadBadgeData === 'function') {
+          loadBadgeData(); // carga la insignia usando ?id=...
+        } else {
+          console.error('loadBadgeData no está definida');
+        }
       } catch (e) {
         console.error(e);
       }
-    })();
+    });
   </script>
 </body>
 </html>
+
 
 
 
