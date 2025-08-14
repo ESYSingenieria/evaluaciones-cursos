@@ -38,24 +38,52 @@ let sortBy        = "dateDesc";
 
 // ───────────────────────────────────────────────────
 // 3) Auth & carga inicial
+// ───────────────────────────────────────────────────
+// 3) Auth & carga inicial (con guard para páginas públicas)
 auth.onAuthStateChanged(async user => {
-  if (!user) {
-    location.href = "index.html";
-    return;
-  }
-  const perfilSnap = await db.collection("users").doc(user.uid).get();
-  const role       = perfilSnap.data()?.role;
-  if (role === "admin" && !location.pathname.includes("dashboard-admin.html")) {
-    location.href = "dashboard-admin.html"; return;
-  }
-  if (role !== "admin" && location.pathname.includes("dashboard-admin.html")) {
-    location.href = "dashboard.html"; return;
-  }
-  if (location.pathname.includes("dashboard-admin.html")) {
-    await initializeData();
-    setupFiltersUI();
-    loadAllUsers();
-  }
+    const PATH = location.pathname;
+    const isAdminPage       = PATH.includes("dashboard-admin.html");
+    const isUserDashboard   = PATH.includes("dashboard.html");
+    const isLoginOrRoot     = /(?:^|\/)(index\.html)?$/.test(PATH);
+    const isVerification    = PATH.includes("/evaluaciones-cursos/verificar.html") || PATH.includes("verificar.html");
+
+    // PÁGINA PÚBLICA: no aplicar redirecciones ni inicializaciones
+    if (isVerification) {
+        return;
+    }
+
+    // Si no es una página de la app (admin/dashboard/index), no hacemos nada
+    if (!isAdminPage && !isUserDashboard && !isLoginOrRoot) {
+        return;
+    }
+
+    if (!user) {
+        // Solo redirige a login cuando intentan ver páginas privadas
+        if (isAdminPage || isUserDashboard) {
+            location.href = "index.html";
+        }
+        return;
+    }
+
+    const perfilSnap = await db.collection("users").doc(user.uid).get();
+    const role = perfilSnap.data()?.role;
+
+    // Reglas de acceso entre páginas privadas
+    if (isAdminPage && role !== "admin") {
+        location.href = "dashboard.html"; 
+        return;
+    }
+    if (!isAdminPage && role === "admin" && (isLoginOrRoot || isUserDashboard)) {
+        location.href = "dashboard-admin.html"; 
+        return;
+    }
+
+    // Inicialización SOLO en la página admin
+    if (isAdminPage) {
+        await initializeData();
+        setupFiltersUI();
+        loadAllUsers();
+    }
 });
 
 // Helper para formatear RUT chileno: "11111111-1" → "11.111.111-1"
@@ -845,3 +873,4 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
