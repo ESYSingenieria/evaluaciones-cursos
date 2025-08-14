@@ -767,7 +767,7 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     const { PDFName, PDFArray, PDFNumber, PDFString } = PDFLib;
 
     // Misma alineación que el ID y mismo salto vertical (14 pt)
-    const idX   = 147;
+    const idX   = 144;
     const idY   = height - 562;
     const vGap  = 14;                      // igual que entre "Duración" e "ID"
     const linkX = idX;
@@ -845,8 +845,3 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
-
-
-
-
-
