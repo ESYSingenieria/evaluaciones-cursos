@@ -69,25 +69,27 @@
 
     /* ====== Landing (sin ?id) ====== */
     .landing-title{
-      display:none; text-align:center; font-weight:600; color:#374151;
-      margin: 2px 0 10px; font-size:20px;
+      display:none; text-align:center; font-weight:700; color:#374151;
+      margin: 4px 0 12px; font-size:26px;   /* título más grande */
     }
     .badges{
-      display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
-      gap:18px; margin: 6px 0 22px 0;
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 190px)); /* columnas de ancho fijo */
+      justify-content: center;   /* centrar todo el conjunto */
+      gap:20px; margin: 6px 0 22px 0;
     }
     .badge-card{
       background:#fff; border:1px solid #e5e7eb; border-radius:12px;
-      padding:14px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,.04);
+      padding:16px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,.04);
     }
-    .badge-card img{ max-width:120px; height:auto; display:block; margin:0 auto 10px; }
+    .badge-card img{ max-width:150px; height:auto; display:block; margin:0 auto 10px; } /* insignias más grandes */
     .badge-card .bc-title{ font-size:13px; color:#374151; line-height:1.25; }
 
     /* barra más pequeña en landing (no se sale del contenedor) */
     .search-wrap.landing-width{
-      width: calc(100% - 40px);     /* un poco más chica que el contenedor */
+      width: calc(100% - 40px);
       margin-left:auto; margin-right:auto;
-      max-width: 760px;             /* tope en desktop para que no sobresalga */
+      max-width: 600px;  /* un poco más pequeña que el contenedor y el mosaico */
     }
   </style>
 </head>
@@ -98,7 +100,7 @@
 
   <div class="badge-container">
     <!-- Título y mosaico (solo cuando NO hay ?id) -->
-    <h1 id="landingTitle" class="landing-title">Certificaciones de Cursos</h1>
+    <h2 id="landingTitle" class="landing-title">Certificaciones de Cursos</h2>
     <div id="badgesGrid" class="badges" style="display:none;"></div>
 
     <!-- Buscador -->
@@ -299,27 +301,25 @@
         const title  = document.getElementById('landingTitle');
         const searchWrap = document.querySelector('.search-wrap');
 
-        // **ÚNICAS imágenes válidas de insignias**
+        // Imágenes válidas para mostrar en la landing (sin instructores)
         const BADGE_FILES = {
           sf6: 'SF6_badge.png',
           e70e: 'NFPA70E_2024_badge.png',
-          e70b: 'NFPA70B_2023_badge.png',
+          e70b: 'NFPA70B_2023_badge.png'
         };
 
         const getBadgeSrc = (courseName='') => {
           const n = courseName.toLowerCase();
           if (/sf6/.test(n)) return BADGE_FILES.sf6;
-          if (/70e/.test(n) && /instr/.test(n)) return BADGE_FILES.e70e_instr;
           if (/70e/.test(n)) return BADGE_FILES.e70e;
-          if (/70b/.test(n) && /instr/.test(n)) return BADGE_FILES.e70b_instr;
           if (/70b/.test(n)) return BADGE_FILES.e70b;
           return 'logo.png';
         };
 
-        // Ajustar ancho de la barra en landing (más pequeña, sin sobresalir)
+        // Ajuste de barra en landing
         const fitSearchLanding = () => {
           if (!searchWrap) return;
-          searchWrap.classList.add('landing-width'); // activa reglas CSS
+          searchWrap.classList.add('landing-width');
         };
 
         if (hasId) {
@@ -344,7 +344,10 @@
               snap.forEach(doc=>{
                 const d = doc.data()||{};
                 const course = (d.courseName||'Curso').trim();
-                if(byCourse.has(course)) return;
+
+                if (/instructor/i.test(course)) return; // <-- ocultar instructores
+                if (byCourse.has(course)) return;
+
                 byCourse.set(course, getBadgeSrc(course));
               });
 
@@ -370,4 +373,3 @@
   </script>
 </body>
 </html>
-
