@@ -46,7 +46,8 @@
     /* ====== Buscador ====== */
     .search-wrap{
       position:relative;
-      margin: 0 0 18px 0;         /* ya no toca el logo */
+      margin: 0 0 18px 0;
+      box-sizing: border-box;
     }
     .search-input{
       width:100%; padding:12px 14px; border:1px solid #e5e7eb; border-radius:12px; font-size:16px; outline:none;
@@ -66,20 +67,28 @@
     .sr-meta{ font-size:11px; color:#9ca3af; margin-top:2px; }
     .search-hint{ font-size:12px; color:#6b7280; margin-top:6px; }
 
-    /* ====== Mosaico insignias (solo landing sin ?id) ====== */
+    /* ====== Landing (sin ?id) ====== */
+    .landing-title{
+      display:none; text-align:center; font-weight:600; color:#374151;
+      margin: 2px 0 10px; font-size:20px;
+    }
     .badges{
-      display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
-      gap:16px; margin: 6px 0 22px 0;
+      display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
+      gap:18px; margin: 6px 0 22px 0;
     }
     .badge-card{
       background:#fff; border:1px solid #e5e7eb; border-radius:12px;
-      padding:12px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,.04);
+      padding:14px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,.04);
     }
-    .badge-card img{ max-width:80px; height:auto; display:block; margin:0 auto 8px; }
-    .badge-card .bc-title{ font-size:12px; color:#374151; line-height:1.2; }
+    .badge-card img{ max-width:120px; height:auto; display:block; margin:0 auto 10px; }
+    .badge-card .bc-title{ font-size:13px; color:#374151; line-height:1.25; }
 
-    /* barra con el mismo ancho que el mosaico (modo landing) */
-    .search-wrap.landing-width { width:auto; margin-left:auto; margin-right:auto; }
+    /* barra más pequeña en landing (no se sale del contenedor) */
+    .search-wrap.landing-width{
+      width: calc(100% - 40px);     /* un poco más chica que el contenedor */
+      margin-left:auto; margin-right:auto;
+      max-width: 760px;             /* tope en desktop para que no sobresalga */
+    }
   </style>
 </head>
 <body>
@@ -88,9 +97,11 @@
   </header>
 
   <div class="badge-container">
-    <!-- Mosaico (visible solo cuando NO hay ?id) -->
+    <!-- Título y mosaico (solo cuando NO hay ?id) -->
+    <h2 id="landingTitle" class="landing-title">Certificaciones de Cursos</h2>
     <div id="badgesGrid" class="badges" style="display:none;"></div>
 
+    <!-- Buscador -->
     <div class="search-wrap">
       <input id="globalSearch" class="search-input"
            placeholder="Buscar por Nombre o por ID de Usuario…" autocomplete="off"/>
@@ -260,7 +271,7 @@
           [...byLower, ...byCap].forEach(r => { if(!map.has(r.id)) map.set(r.id, r); });
           items.push(...map.values());
 
-          // --- quitar duplicados generales y renderizar ---
+          // --- quitar duplicados y renderizar ---
           const seen = new Set(); const uniq=[];
           for(const it of items){
             if(!it.id){ uniq.push(it); continue; }
@@ -285,41 +296,44 @@
 
         const detail = document.getElementById('detailSection');
         const grid   = document.getElementById('badgesGrid');
+        const title  = document.getElementById('landingTitle');
         const searchWrap = document.querySelector('.search-wrap');
 
-        // Mapa de imágenes locales *_badge
-        const BADGE_MAP = [
-          { test: /sf6/i,                                 file: 'SF6_badge.png' },
-          { test: /nfpa\s*70e.*instructor/i,              file: 'NFPA70E_2024_InstructorBadge.png' },
-          { test: /nfpa\s*70e/i,                           file: 'NFPA70E_2024_badge.png' },
-          { test: /nfpa\s*70b.*instructor/i,              file: 'NFPA70B_2023_InstructorBadge.png' },
-          { test: /nfpa\s*70b/i,                           file: 'NFPA70B_2023_badge.png' }
-        ];
-        const getBadgeSrc = (courseName) => {
-          for (const m of BADGE_MAP) if (m.test.test(courseName)) return m.file;
+        // **ÚNICAS imágenes válidas de insignias**
+        const BADGE_FILES = {
+          sf6: 'SF6_badge.png',
+          e70e: 'NFPA70E_2024_badge.png',
+          e70e_instr: 'NFPA70E_2024_InstructorBadge.png',
+          e70b: 'NFPA70B_2023_badge.png',
+          e70b_instr: 'NFPA70B_2023_InstructorBadge.png'
+        };
+
+        const getBadgeSrc = (courseName='') => {
+          const n = courseName.toLowerCase();
+          if (/sf6/.test(n)) return BADGE_FILES.sf6;
+          if (/70e/.test(n) && /instr/.test(n)) return BADGE_FILES.e70e_instr;
+          if (/70e/.test(n)) return BADGE_FILES.e70e;
+          if (/70b/.test(n) && /instr/.test(n)) return BADGE_FILES.e70b_instr;
+          if (/70b/.test(n)) return BADGE_FILES.e70b;
           return 'logo.png';
         };
 
-        // Ajustar ancho de la barra al ancho del mosaico
-        const fitSearchToGrid = () => {
-          if (!grid || !searchWrap) return;
-          const w = Math.round(grid.getBoundingClientRect().width);
-          if (w > 0) {
-            searchWrap.classList.add('landing-width');
-            searchWrap.style.width = w + 'px';
-          }
+        // Ajustar ancho de la barra en landing (más pequeña, sin sobresalir)
+        const fitSearchLanding = () => {
+          if (!searchWrap) return;
+          searchWrap.classList.add('landing-width'); // activa reglas CSS
         };
-        const scheduleFit = () => requestAnimationFrame(fitSearchToGrid);
-        window.addEventListener('resize', scheduleFit);
 
         if (hasId) {
           // Detalle
           if (typeof loadBadgeData === 'function') loadBadgeData();
           if (grid) grid.style.display = 'none';
+          if (title) title.style.display = 'none';
           if (searchWrap) { searchWrap.classList.remove('landing-width'); searchWrap.style.width = ''; }
         } else {
           // Landing
           if (detail) detail.style.display = 'none';
+          if (title) title.style.display = 'block';
           if (grid) {
             grid.style.display = 'grid';
             try{
@@ -343,11 +357,12 @@
                 </div>
               `).join('');
 
-              scheduleFit();
-              setTimeout(scheduleFit, 100);
+              fitSearchLanding();
             }catch(e){
               console.error('Error cargando insignias:', e);
             }
+          } else {
+            fitSearchLanding();
           }
         }
       } catch (e) {
