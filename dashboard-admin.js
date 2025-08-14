@@ -767,12 +767,12 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     const verifyUrl = `https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${encodeURIComponent(certificateID)}`;
 
     // Texto visible (lo muestro sin https:// para que se vea más limpio; el link real sí va con https)
-    const linkText  = `Verificar certificado: esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${certificateID}`;
+    const linkText  = `Verificar Autenticidad de Certificado`;
     const linkFont  = perpetuaFont;    // misma fuente que usas arriba
     const linkSize  = 12;
 
     // Coloca el enlace alineado con el ID (ID está en x:184, y:height-576)
-    const linkX     = 184;
+    const linkX     = 147;
     const linkY     = height - 596;    // un poco más abajo que el ID
 
     // Dibuja el texto del enlace en azul
@@ -846,6 +846,7 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
 
 
 
