@@ -1538,3 +1538,149 @@ if (Array.isArray(standards)) {
         document.body.innerHTML = "<h1>Hubo un error al cargar los datos.</h1>";
     }
 }
+
+// =============== BUSCADOR EN verificar.html =================
+(function initVerifierSearch() {
+  const input   = document.getElementById('globalSearch');
+  const panel   = document.getElementById('searchResults');
+  if (!input || !panel) return; // Sólo en verificar.html
+
+  // Debounce simple
+  let t = null;
+  input.addEventListener('input', () => {
+    clearTimeout(t);
+    const q = input.value.trim();
+    if (!q) { closePanel(); return; }
+    t = setTimeout(() => doSearch(q), 260);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!panel.contains(e.target) && e.target !== input) closePanel();
+  });
+
+  panel.addEventListener('click', (e) => {
+    const item = e.target.closest('.sr-item');
+    if (!item || item.classList.contains('disabled')) return;
+    const certId = item.dataset.id;
+    if (certId) window.location.href = `verificar.html?id=${certId}`;
+  });
+
+  function openPanel()  { panel.classList.add('open'); }
+  function closePanel() { panel.classList.remove('open'); panel.innerHTML = ''; }
+
+  function render(items) {
+    if (!items.length) {
+      panel.innerHTML = `<div class="sr-item disabled">Sin resultados</div>`;
+      openPanel();
+      return;
+    }
+    panel.innerHTML = items.map(it => `
+      <div class="sr-item ${it.disabled ? 'disabled' : ''}" ${it.id ? `data-id="${it.id}"` : ''}>
+        <div class="sr-title">${it.title}</div>
+        <div class="sr-sub">${it.sub}</div>
+        ${it.meta ? `<div class="sr-meta">${it.meta}</div>` : ''}
+      </div>
+    `).join('');
+    openPanel();
+  }
+
+  async function doSearch(raw) {
+    const suggestions = [];
+    panel.innerHTML = `<div class="sr-item disabled">Buscando…</div>`;
+    openPanel();
+
+    // ¿Parece búsqueda por CustomID?
+    const onlyDigits = /^[0-9]+$/.test(raw.replace(/[^\d]/g, ''));
+    if (onlyDigits) {
+      // Normaliza: agrega guion final si no está
+      let cid = raw.replace(/[^\d]/g, '');
+      if (!cid.endsWith('-')) cid = cid + '-';
+
+      try {
+        // 1) Encuentra usuarios cuyo customID empiece por ese prefijo
+        const usersSnap = await db.collection('users')
+          .orderBy('customID')
+          .startAt(cid)
+          .endAt(cid + '\uf8ff')
+          .limit(5)
+          .get();
+
+        if (usersSnap.empty) {
+          suggestions.push({ disabled:true, title:`${cid}`, sub:'Sin usuarios con ese CustomID', meta:'' });
+        } else {
+          // 2) Por cada usuario, busca certificados por nombre
+          for (const uDoc of usersSnap.docs) {
+            const u = uDoc.data();
+            const name = (u.name || '').trim();
+            const customID = u.customID || cid;
+
+            const certSnap = await db.collection('certificates')
+              .orderBy('name')
+              .startAt(name)
+              .endAt(name + '\uf8ff')
+              .limit(6)
+              .get();
+
+            if (certSnap.empty) {
+              suggestions.push({
+                disabled:true,
+                title: `${customID} — ${name}`,
+                sub: 'Sin certificados asociados',
+                meta: ''
+              });
+            } else {
+              certSnap.forEach(c => {
+                const d = c.data();
+                suggestions.push({
+                  id:   c.id,
+                  title: d.courseName || 'Curso',
+                  sub:  `${customID} — ${d.name || name}`,
+                  meta: `ID certificado: ${c.id}`
+                });
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Search customID error:', err);
+        suggestions.push({ disabled:true, title:'Error de búsqueda', sub:'Intenta nuevamente', meta:'' });
+      }
+    }
+
+    // Búsqueda por NOMBRE (si hay letras o también como fallback)
+    try {
+      const term = raw;
+      const certByName = await db.collection('certificates')
+        .orderBy('name')
+        .startAt(term)
+        .endAt(term + '\uf8ff')
+        .limit(8)
+        .get();
+
+      certByName.forEach(doc => {
+        const d = doc.data();
+        suggestions.push({
+          id:   doc.id,
+          title: d.courseName || 'Curso',
+          sub:  `${d.name || ''}`,
+          meta: `ID certificado: ${doc.id}`
+        });
+      });
+    } catch (err) {
+      console.error('Search name error:', err);
+    }
+
+    // Quita duplicados por ID (si llegaron por ambas vías)
+    const seen = new Set();
+    const unique = [];
+    for (const s of suggestions) {
+      if (!s.id) { unique.push(s); continue; }
+      if (seen.has(s.id)) continue;
+      seen.add(s.id);
+      unique.push(s);
+    }
+
+    render(unique.slice(0, 12));
+  }
+})();
+
