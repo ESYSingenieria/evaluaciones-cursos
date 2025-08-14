@@ -762,6 +762,76 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     page.drawText(`ID: ${certificateID}`, {
       x:184, y:height-576, size:12, font:perpetuaFont, color:PDFLib.rgb(0,0,0)
     });
+    
+    // === ENLACE DE VERIFICACIÓN CLICKEABLE (debajo del ID) ===
+    const verifyUrl = `https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${encodeURIComponent(certificateID)}`;
+
+    // Texto visible (lo muestro sin https:// para que se vea más limpio; el link real sí va con https)
+    const linkText  = `Verificar certificado: esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${certificateID}`;
+    const linkFont  = perpetuaFont;    // misma fuente que usas arriba
+    const linkSize  = 12;
+
+    // Coloca el enlace alineado con el ID (ID está en x:184, y:height-576)
+    const linkX     = 184;
+    const linkY     = height - 596;    // un poco más abajo que el ID
+
+    // Dibuja el texto del enlace en azul
+    page.drawText(linkText, {
+      x: linkX,
+      y: linkY,
+      size: linkSize,
+      font: linkFont,
+      color: PDFLib.rgb(0, 0, 1)
+    });
+
+    // (Opcional) subrayado fino para parecer enlace
+    const linkWidth = linkFont.widthOfTextAtSize(linkText, linkSize);
+    page.drawLine({
+      start: { x: linkX, y: linkY - 1 },
+      end:   { x: linkX + linkWidth, y: linkY - 1 },
+      thickness: 0.5,
+      color: PDFLib.rgb(0, 0, 1)
+    });
+
+    // Crea la anotación de LINK (acción URI) que cubre el texto
+    const { PDFName, PDFArray, PDFNumber, PDFString } = PDFLib;
+
+    const urlAction = pdfDoc.context.obj({
+      Type: PDFName.of('Action'),
+      S:    PDFName.of('URI'),
+      URI:  PDFString.of(verifyUrl)
+    });
+
+    // Rectángulo [x1, y1, x2, y2] del área clickeable (algo más alto que la letra)
+    const annotRect = PDFArray.withContext(pdfDoc.context);
+    annotRect.push(
+      PDFNumber.of(linkX),
+      PDFNumber.of(linkY - 2),                   // un pelín bajo del baseline
+      PDFNumber.of(linkX + linkWidth),
+      PDFNumber.of(linkY + linkSize + 2)         // por encima de la altura de la fuente
+    );
+
+    const borderArr = PDFArray.withContext(pdfDoc.context);
+    borderArr.push(PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)); // sin borde visible
+
+    const linkAnnot = pdfDoc.context.obj({
+      Type:    PDFName.of('Annot'),
+      Subtype: PDFName.of('Link'),
+      Rect:    annotRect,
+      Border:  borderArr,
+      A:       urlAction
+    });
+
+    const linkRef = pdfDoc.context.register(linkAnnot);
+
+    // Inserta la anotación en /Annots de la página
+    let annots = page.node.lookup(PDFName.of('Annots'), PDFArray);
+    if (!annots) {
+      annots = pdfDoc.context.obj([]);
+      page.node.set(PDFName.of('Annots'), annots);
+    }
+    annots.push(linkRef);
+    // === FIN ENLACE DE VERIFICACIÓN ===
 
     // descargar
     const pdfBytes = await pdfDoc.save();
@@ -776,5 +846,6 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     alert("No se pudo generar el certificado. Revisa la consola.");
   }
 }
+
 
 
