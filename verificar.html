@@ -12,8 +12,93 @@
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
 
-  <!-- Tu JS principal -->
-  <script src="app.js" defer></script>
+  <!-- (IMPORTANTE) NO cargar app.js aquí para evitar redirecciones -->
+  <!-- <script src="app.js" defer></script> -->
+
+  <!-- Firebase mínimo + loadBadgeData local (solo para esta página pública) -->
+  <script>
+    // ===== Firebase minimal (página pública de verificación) =====
+    const firebaseConfig = {
+      apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
+      authDomain: "plataforma-de-cursos-esys.firebaseapp.com",
+      projectId: "plataforma-de-cursos-esys",
+      storageBucket: "plataforma-de-cursos-esys.firebasestorage.app",
+      messagingSenderId: "950684050808",
+      appId: "1:950684050808:web:33d2ef70f2343642f4548d"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // ===== Lógica local para mostrar el certificado por ?id =====
+    async function loadBadgeData(){
+      const params = new URLSearchParams(location.search);
+      const id = params.get('id');
+      if (!id) return; // landing, sin detalle
+
+      // Referencias a elementos
+      const imgEl   = document.getElementById('badgeImage');
+      const nameEl  = document.getElementById('courseName');
+      const toEl    = document.getElementById('issuedTo');
+      const descEl  = document.getElementById('description');
+      const critUL  = document.getElementById('criteriaList');
+      const stdUL   = document.getElementById('standardsList');
+
+      // Map de imágenes (sin instructores)
+      const BADGE_FILES = {
+        sf6:  'SF6_badge.png',
+        e70e: 'NFPA70E_2024_badge.png',
+        e70b: 'NFPA70B_2023_badge.png'
+      };
+      const getBadgeSrc = (courseName='')=>{
+        const n = courseName.toLowerCase();
+        if (/sf6/.test(n)) return BADGE_FILES.sf6;
+        if (/70e/.test(n)) return BADGE_FILES.e70e;
+        if (/70b/.test(n)) return BADGE_FILES.e70b;
+        return 'logo.png';
+      };
+
+      try{
+        const doc = await db.collection('certificates').doc(id).get();
+        if (!doc.exists){
+          nameEl.textContent = 'Certificado no encontrado';
+          toEl.textContent   = '';
+          descEl.textContent = 'Verifica que el ID esté correctamente escrito.';
+          imgEl.src = 'logo.png';
+          critUL.innerHTML = '<li>—</li>';
+          stdUL.innerHTML  = '<li>—</li>';
+          return;
+        }
+        const d = doc.data() || {};
+
+        // Título y destinatario
+        const courseName = (d.courseName || 'Curso').trim();
+        const issuedTo   = (d.name || '—').trim();
+        nameEl.textContent = courseName;
+        toEl.textContent   = `Emitido a: ${issuedTo}`;
+
+        // Descripción
+        descEl.textContent = d.description || 'Certificado emitido por ESYS Ingeniería.';
+
+        // Imagen
+        imgEl.src = getBadgeSrc(courseName);
+        imgEl.onerror = ()=> imgEl.src = 'logo.png';
+
+        // Listas
+        const criteria  = Array.isArray(d.criteria)  ? d.criteria  : (d.criteria  ? [d.criteria]  : []);
+        const standards = Array.isArray(d.standards) ? d.standards : (d.standards ? [d.standards] : []);
+        const toLi = arr => (arr.length ? arr.map(x=>`<li>${x}</li>`).join('') : '<li>—</li>');
+        critUL.innerHTML = toLi(criteria);
+        stdUL.innerHTML  = toLi(standards);
+      }catch(err){
+        console.error('Error cargando certificado:', err);
+        nameEl.textContent = 'Error al cargar';
+        descEl.textContent = 'Intenta nuevamente en unos segundos.';
+        imgEl.src = 'logo.png';
+        critUL.innerHTML = '<li>—</li>';
+        stdUL.innerHTML  = '<li>—</li>';
+      }
+    }
+  </script>
 
   <style>
     .badge-container{
@@ -70,26 +155,26 @@
     /* ====== Landing (sin ?id) ====== */
     .landing-title{
       display:none; text-align:center; font-weight:700; color:#374151;
-      margin: 4px 0 12px; font-size:26px;   /* título más grande */
+      margin: 4px 0 12px; font-size:26px;
     }
     .badges{
       display:grid;
-      grid-template-columns: repeat(auto-fit, minmax(190px, 190px)); /* columnas de ancho fijo */
-      justify-content: center;   /* centrar todo el conjunto */
+      grid-template-columns: repeat(auto-fit, minmax(190px, 190px));
+      justify-content: center;
       gap:20px; margin: 6px 0 22px 0;
     }
     .badge-card{
       background:#fff; border:1px solid #e5e7eb; border-radius:12px;
       padding:16px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,.04);
     }
-    .badge-card img{ max-width:150px; height:auto; display:block; margin:0 auto 10px; } /* insignias más grandes */
+    .badge-card img{ max-width:150px; height:auto; display:block; margin:0 auto 10px; }
     .badge-card .bc-title{ font-size:13px; color:#374151; line-height:1.25; }
 
     /* barra más pequeña en landing (no se sale del contenedor) */
     .search-wrap.landing-width{
       width: calc(100% - 40px);
       margin-left:auto; margin-right:auto;
-      max-width: 600px;  /* un poco más pequeña que el contenedor y el mosaico */
+      max-width: 600px;
     }
   </style>
 </head>
