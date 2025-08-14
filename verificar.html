@@ -157,91 +157,103 @@
         to = setTimeout(()=> doSearch(q), 260);
       });
 
-      async function doSearch(raw){
+    async function doSearch(raw){
         try{
-          const items = [];
-          const onlyDigits = /^[0-9]+$/.test(raw.replace(/[^\d]/g,''));
+            const items = [];
+            const onlyDigits = /^[0-9]+$/.test(raw.replace(/[^\d]/g,''));
 
-          // 1) Búsqueda por CustomID (si escribió solo números)
-          if(onlyDigits){
-            let cid = raw.replace(/[^\d]/g,'');
-            if(!cid.endsWith('-')) cid += '-';
+            // --- 1) Búsqueda por CustomID (solo números) ---
+            if(onlyDigits){
+                let cid = raw.replace(/[^\d]/g,'');
+                if(!cid.endsWith('-')) cid += '-';
 
-            // users por prefijo de customID
-            const usersSnap = await db.collection('users')
-              .orderBy('customID')
-              .startAt(cid)
-              .endAt(cid + '\uf8ff')
-              .limit(5)
-              .get();
+                const usersSnap = await db.collection('users')
+                    .orderBy('customID')
+                    .startAt(cid)
+                    .endAt(cid + '\uf8ff')
+                    .limit(5)
+                    .get();
 
-            if (usersSnap.empty){
-              items.push({disabled:true, title:`${cid}`, sub:'Sin usuarios con ese CustomID'});
-            }else{
-              // para cada usuario, traer sus certificados por nombre
-              for(const uDoc of usersSnap.docs){
-                const u = uDoc.data() || {};
-                const uname = (u.name||'').trim();
-                const uCID  = u.customID || cid;
-
-                const certSnap = await db.collection('certificates')
-                  .orderBy('name')
-                  .startAt(uname)
-                  .endAt(uname + '\uf8ff')
-                  .limit(6)
-                  .get();
-
-                if(certSnap.empty){
-                  items.push({disabled:true, title:`${uCID} — ${uname}`, sub:'Sin certificados asociados'});
+                if (usersSnap.empty){
+                    items.push({disabled:true, title:`${cid}`, sub:'Sin usuarios con ese CustomID'});
                 }else{
-                  certSnap.forEach(c=>{
-                    const d = c.data() || {};
-                    items.push({
-                      id: c.id,
-                      title: d.courseName || 'Curso',
-                      sub: `${uCID} — ${d.name || uname}`,
-                      meta: `ID certificado: ${c.id}`
-                    });
-                  });
+                    for(const uDoc of usersSnap.docs){
+                        const u = uDoc.data() || {};
+                        const uname = (u.name||'').trim();
+                        const uCID  = u.customID || cid;
+
+                        const certSnap = await db.collection('certificates')
+                            .orderBy('name')
+                            .startAt(uname)
+                            .endAt(uname + '\uf8ff')
+                            .limit(6)
+                            .get();
+
+                        if(certSnap.empty){
+                            items.push({disabled:true, title:`${uCID} — ${uname}`, sub:'Sin certificados asociados'});
+                        }else{
+                            certSnap.forEach(c=>{
+                                const d = c.data() || {};
+                                items.push({
+                                    id: c.id,
+                                    title: d.courseName || 'Curso',
+                                    sub: `${uCID} — ${d.name || uname}`,
+                                    meta: `ID certificado: ${c.id}`
+                                });
+                            });
+                        }
+                    }
                 }
-              }
             }
-          }
 
-          // 2) Búsqueda por NOMBRE (si hay letras o como complemento)
-          const term = raw;
-          const certByName = await db.collection('certificates')
-            .orderBy('name')
-            .startAt(term)
-            .endAt(term + '\uf8ff')
-            .limit(8)
-            .get();
+            // --- 2) Búsqueda por NOMBRE (case-insensitive) ---
+            // Firestore no es case-insensitive, así que consultamos con dos variantes
+            // y unimos resultados: (a) todo en minúsculas y (b) Capitalización por palabra.
+            const termLower = raw.toLowerCase();
+            const termCap   = raw.replace(/\b\w/g, ch => ch.toUpperCase());
 
-          certByName.forEach(doc=>{
-            const d = doc.data()||{};
-            items.push({
-              id: doc.id,
-              title: d.courseName || 'Curso',
-              sub: d.name || '',
-              meta: `ID certificado: ${doc.id}`
-            });
-          });
+            async function queryByNamePrefix(prefix){
+                const snap = await db.collection('certificates')
+                    .orderBy('name')
+                    .startAt(prefix)
+                    .endAt(prefix + '\uf8ff')
+                    .limit(8)
+                    .get();
+                const out = [];
+                snap.forEach(doc=>{
+                    const d = doc.data()||{};
+                    out.push({
+                        id: doc.id,
+                        title: d.courseName || 'Curso',
+                        sub: d.name || '',
+                        meta: `ID certificado: ${doc.id}`
+                    });
+                });
+                return out;
+            }
 
-          // quitar duplicados por ID
-          const seen=new Set(); const uniq=[];
-          for(const it of items){
-            if(!it.id){ uniq.push(it); continue; }
-            if(seen.has(it.id)) continue;
-            seen.add(it.id); uniq.push(it);
-          }
+            // Ejecuta ambas y combina (evita duplicados)
+            const [byLower, byCap] = await Promise.all([
+                queryByNamePrefix(termLower),
+                queryByNamePrefix(termCap)
+            ]);
+            const map = new Map();
+            [...byLower, ...byCap].forEach(r => { if(!map.has(r.id)) map.set(r.id, r); });
+            items.push(...map.values());
 
-          render(uniq.slice(0,12));
+            // --- quitar duplicados generales y renderizar ---
+            const seen = new Set(); const uniq=[];
+            for(const it of items){
+                if(!it.id){ uniq.push(it); continue; }
+                if(seen.has(it.id)) continue;
+                seen.add(it.id); uniq.push(it);
+            }
+            render(uniq.slice(0,12));
         }catch(err){
-          console.error('Search error:', err);
-          render([{disabled:true, title:'Error de búsqueda', sub:'Intenta nuevamente'}]);
+            console.error('Search error:', err);
+            render([{disabled:true, title:'Error de búsqueda', sub:'Intenta nuevamente'}]);
         }
-      }
-    })();
+    }
     document.addEventListener('DOMContentLoaded', () => {
       try {
         if (typeof loadBadgeData === 'function') {
@@ -256,4 +268,5 @@
   </script>
 </body>
 </html>
+
 
