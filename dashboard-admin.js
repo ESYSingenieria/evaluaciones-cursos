@@ -129,7 +129,8 @@ async function listSessionsForCourseDate(courseKey, date) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-
+// Extra: obtener fecha YYYY-MM-DD desde un sessionId
+const dateFromSessionId = (id = "") => (id.match(/\d{4}-\d{2}-\d{2}/) || [])[0] || "";
 
 // Helper para formatear RUT chileno: "11111111-1" → "11.111.111-1"
 function formatRut(rut) {
@@ -432,7 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
         grid.classList.toggle("hidden", !cb.checked);
         if (cb.checked) {
           const sessions = await listSessionsForCourse(evalId);
-          const fechas = [...new Set(sessions.map(s => s.courseDate || (s.id.split("_")[1])) )]
+          const fechas = [...new Set(sessions.map(s => s.courseDate || dateFromSessionId(s.id)))]
                           .filter(Boolean).sort();
           $dateExisting.innerHTML = `<option value="">(ninguna)</option>` + fechas.map(f=>`<option value="${f}">${f}</option>`).join("");
           updatePriceMode();
@@ -977,7 +978,7 @@ function loadAllUsers() {
         grid.style.display = cb.checked ? "grid" : "none";
         if (cb.checked) {
           const sessions = await listSessionsForCourse(cb.value);
-          const fechas = [...new Set(sessions.map(s => s.courseDate || (s.id.split("_")[1])) )].filter(Boolean).sort();
+          const fechas = [...new Set(sessions.map(s => s.courseDate || dateFromSessionId(s.id)) )].filter(Boolean).sort();
           $dateExisting.innerHTML = `<option value="">(ninguna)</option>` + fechas.map(f=>`<option value="${f}">${f}</option>`).join("");
           updatePriceMode();
         }
@@ -1383,3 +1384,4 @@ async function removeParticipantFromSession(sessionId, user) {
     tx.update(ref, { inscriptions: arr, totalInscritos, totalPagado });
   });
 }
+
