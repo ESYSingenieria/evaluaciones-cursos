@@ -86,6 +86,51 @@ auth.onAuthStateChanged(async user => {
     }
 });
 
+
+
+// === INSCRIPCIONES: estados y helpers ===
+let allCourses = {};              // para leer courses.price
+let filterDate = "all";
+let filterForma = "all";
+
+const toYYYYMMDD = (s) => {
+  if (!s) return "";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s; // ya viene YYYY-MM-DD
+  return d.toISOString().slice(0,10);
+};
+function slugify(str="") {
+  return (str || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^\w\s-]/g,"")
+    .trim().replace(/\s+/g,"-")
+    .replace(/-+/g,"-")
+    .toLowerCase();
+}
+const buildSessionId = (courseKey, date, forma, empresa) => {
+  const base = `${courseKey}_${date}_${forma}`;
+  return (forma === "cerrado") ? `${base}_${slugify(empresa||"sin-empresa")}` : base;
+};
+// consultas por prefijo de ID (para cargar “fechas existentes” y variantes)
+async function listSessionsForCourse(courseKey) {
+  const prefix = `${courseKey}_`;
+  const q = db.collection("inscriptions")
+    .orderBy(firebase.firestore.FieldPath.documentId())
+    .startAt(prefix).endAt(prefix + "\uf8ff");
+  const snap = await q.get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+async function listSessionsForCourseDate(courseKey, date) {
+  const prefix = `${courseKey}_${date}_`;
+  const q = db.collection("inscriptions")
+    .orderBy(firebase.firestore.FieldPath.documentId())
+    .startAt(prefix).endAt(prefix + "\uf8ff");
+  const snap = await q.get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+
+
 // Helper para formatear RUT chileno: "11111111-1" → "11.111.111-1"
 function formatRut(rut) {
   // 1) Quitamos todo lo que no sea dígito ni 'K'/'k'
@@ -207,22 +252,86 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btn.matches('.save-user-btn')) {
       const editCont = row.querySelector('.edit-container');
       const updates = {};
-
-      // 1) Leer inputs de texto (.edit-field)
       editCont.querySelectorAll('input.edit-field').forEach(inp => {
         updates[inp.name] = inp.value.trim();
       });
 
-      // 2) Leer checkboxes marcados
-      updates.assignedEvaluations = Array.from(
-        editCont.querySelectorAll('input[name="assignedEvals"]:checked')
-      ).map(cb => cb.value);
+      // evaluaciones seleccionadas
+      const assigned = Array.from(editCont.querySelectorAll('input[name="assignedEvals"]:checked')).map(cb => cb.value);
+      updates.assignedEvaluations = assigned;
 
-      // 3) Persistir
+      // remover de inscriptions si se desmarcó una evaluación
+      const prevMeta      = (allUsers.find(x => x.id === uid).assignedCoursesMeta) || {};
+      const prevAssigned  = Object.keys(prevMeta);
+      const removed       = prevAssigned.filter(id => !assigned.includes(id));
+      for (const evalId of removed) {
+        const oldSession = prevMeta[evalId]?.sessionId;
+        if (oldSession) {
+          await removeParticipantFromSession(oldSession, allUsers.find(x => x.id === uid));
+        }
+      }
+
+      // === NUEVO: metas por evaluación + escritura en inscriptions ===
+      const newMeta = {};
+      for (const evalId of assigned) {
+        const grid = row.querySelector(`.eval-grid[data-evalid="${evalId}"]`);
+        if (!grid) continue;
+
+        const date  = toYYYYMMDD(grid.querySelector(".meta-date").value || grid.querySelector(".meta-date-existing").value);
+        const forma = grid.querySelector(".meta-forma").value;
+        const variant = grid.querySelector(".meta-variant").value;
+        const empresa = grid.querySelector(".meta-empresa").value.trim();
+        let   priceInput = Number(grid.querySelector(".meta-precio").value || 0);
+        if (!priceInput) {
+          const sug = grid.querySelector(".meta-precio-sugerido").value;
+          if (sug) priceInput = Number(sug);
+        }
+
+        const courseKey = evalId;
+        const sessionId = variant !== "__new__" ? variant : buildSessionId(courseKey, date, forma, empresa);
+
+        // si cambia de sesión, remover de la anterior
+        const oldSession = (allUsers.find(x=>x.id===uid).assignedCoursesMeta||{})[evalId]?.sessionId || "";
+        if (oldSession && oldSession !== sessionId) {
+          await removeParticipantFromSession(oldSession, allUsers.find(x=>x.id===uid));
+        }
+
+        // participante
+        const participant = {
+          name: updates.name || allUsers.find(x=>x.id===uid).name || "",
+          rut: updates.rut || allUsers.find(x=>x.id===uid).rut || "",
+          email: allUsers.find(x=>x.id===uid).email || "",
+          company: updates.company || allUsers.find(x=>x.id===uid).company || "",
+          customID: updates.customID || allUsers.find(x=>x.id===uid).customID || "",
+          price: (forma === "abierto") ? priceInput : 0
+        };
+
+        await upsertParticipantInSession({
+          sessionId,
+          courseKey,
+          date,
+          forma,
+          empresa,
+          participant,
+          precioTotalCerrado: (forma === "cerrado") ? priceInput : 0
+        });
+
+        newMeta[evalId] = {
+          evaluationId: evalId,
+          courseKey,
+          sessionId,
+          date,
+          formaCurso: forma,
+          empresaSolicitante: (forma === "cerrado" ? empresa : ""),
+          priceParticipant: (forma === "abierto") ? participant.price : null,
+          precioTotalCerrado: (forma === "cerrado") ? (priceInput||null) : null
+        };
+      }
+      updates.assignedCoursesMeta = newMeta;
+
       await db.collection('users').doc(uid).update(updates);
-
-      // 4) Volver a cargar la lista completa
       alert('Usuario actualizado');
+      await initializeData();
       loadAllUsers();
       return;
     }
@@ -238,14 +347,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   createBtn.addEventListener('click', async () => {
     // ── 1) Calcular siguiente customID a partir de la caché allUsers ──
-    // Parseamos todos los customID numéricos, sacamos el mayor y le sumamos 1
-    // 1) Limpiar campos salvo el customID que vamos a rellenar
     ['newEmail','newPassword','newName','newRut','newCompany'].forEach(id=>{
       document.getElementById(id).value = '';
     });
-    // ponemos la contraseña por defecto
     document.getElementById('newPassword').value = '123456';
-    // (Opcional) Deseleccionar cualquier checkbox previo
     document.getElementById('newEvalsContainer').innerHTML = '';
 
     const maxId = allUsers.reduce((max, u) => {
@@ -255,19 +360,137 @@ document.addEventListener('DOMContentLoaded', () => {
     const nextId = maxId + 1;
     const customIDStr = String(nextId).padStart(3, '0') + '-';  // ej. "001-", "002-"
 
-    // ── 2) Insertarlo en el input y habilitar la casilla ──
+    // ── 2) Insertarlo en el input ──
     const inputCID = document.getElementById('newCustomId');
     inputCID.value = customIDStr;
 
-    // ── 3) Poblar checkboxes de evaluaciones (solo IDs) ──
+    // ── 3) Poblar evaluaciones + METADATOS por evaluación ──
     const newContainer = document.getElementById('newEvalsContainer');
-    newContainer.innerHTML = Object.keys(allEvaluations)
-      .map(id => `
-        <label class="eval-option">
-          <input type="checkbox" name="newAssignedEvals" value="${id}">
-          <span>${id}</span>
-        </label>
-      `).join('');
+    newContainer.innerHTML = Object.keys(allEvaluations).map(evalId=>{
+      const recommended = allCourses[evalId]?.price || "";
+      return `
+        <div class="eval-item" style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:12px 16px;margin:12px 0;">
+          <label class="eval-option" style="display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" name="newAssignedEvals" value="${evalId}">
+            <span>${evalId}</span>
+          </label>
+          <div class="eval-grid hidden" data-evalid="${evalId}" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
+            <div>
+              <label style="font-size:12px;color:#444;">Fecha del curso</label>
+              <input type="date" class="meta-date" />
+              <small class="muted">O elige existente:</small>
+              <select class="meta-date-existing"><option value="">(cargar…)</option></select>
+            </div>
+            <div>
+              <label style="font-size:12px;color:#444;">Variante</label>
+              <select class="meta-variant"><option value="__new__">Crear nueva</option></select>
+            </div>
+            <div>
+              <label style="font-size:12px;color:#444;">Forma del curso</label>
+              <select class="meta-forma">
+                <option value="abierto">abierto</option>
+                <option value="cerrado">cerrado</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:12px;color:#444;">Empresa (si es cerrado)</label>
+              <input type="text" class="meta-empresa" list="dl_new_${evalId}" />
+              <datalist id="dl_new_${evalId}"></datalist>
+            </div>
+            <div>
+              <label class="lbl-precio" style="font-size:12px;color:#444;">Precio por participante</label>
+              <div style="display:flex;gap:6px;">
+                <input type="number" class="meta-precio" min="0" step="1000" />
+                <select class="meta-precio-sugerido">
+                  <option value="">(courses.price)</option>
+                  ${recommended?`<option value="${recommended}">${recommended}</option>`:""}
+                </select>
+              </div>
+              <small class="muted precio-help"></small>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    // ── 3.b) Listeners para cada evaluación (toggle + fechas existentes + variantes + bloqueo de precio en cerrados) ──
+    newContainer.querySelectorAll('input[name="newAssignedEvals"]').forEach(cb=>{
+      const evalId = cb.value;
+      const grid = newContainer.querySelector(`.eval-grid[data-evalid="${evalId}"]`);
+      const $date = grid.querySelector(".meta-date");
+      const $dateExisting = grid.querySelector(".meta-date-existing");
+      const $variant = grid.querySelector(".meta-variant");
+      const $forma = grid.querySelector(".meta-forma");
+      const $empresa = grid.querySelector(".meta-empresa");
+      const $empresaDL = grid.querySelector(`datalist#dl_new_${evalId}`);
+      const $precio = grid.querySelector(".meta-precio");
+      const $precioSug = grid.querySelector(".meta-precio-sugerido");
+      const $lblPrecio = grid.querySelector(".lbl-precio");
+      const $precioHelp = grid.querySelector(".precio-help");
+
+      cb.addEventListener("change", async ()=>{
+        grid.classList.toggle("hidden", !cb.checked);
+        if (cb.checked) {
+          const sessions = await listSessionsForCourse(evalId);
+          const fechas = [...new Set(sessions.map(s => s.courseDate || (s.id.split("_")[1])) )]
+                          .filter(Boolean).sort();
+          $dateExisting.innerHTML = `<option value="">(ninguna)</option>` + fechas.map(f=>`<option value="${f}">${f}</option>`).join("");
+          updatePriceMode();
+        }
+      });
+
+      async function refreshVariantsForDate(courseKey, date) {
+        $variant.innerHTML = `<option value="__new__">Crear nueva</option>`;
+        $empresaDL.innerHTML = "";
+        if (!date) return;
+        const sessions = await listSessionsForCourseDate(courseKey, date);
+        const empresas = new Set();
+        sessions.forEach(s=>{
+          const isClosed = (s.formaCurso||"").toLowerCase()==="cerrado" || s.id.includes("_cerrado_");
+          const label = isClosed ? `${date} · cerrado · ${s.empresaSolicitante||s.id.split("_").slice(3).join("_")}` : `${date} · abierto`;
+          $variant.innerHTML += `<option value="${s.id}">${label}</option>`;
+          if (isClosed && s.empresaSolicitante) empresas.add(s.empresaSolicitante);
+        });
+        [...empresas].forEach(e=>{ $empresaDL.innerHTML += `<option value="${e}"></option>`; });
+      }
+
+      function updatePriceMode(){
+        const selectedSessionId = $variant.value !== "__new__" ? $variant.value : "";
+        const isCerrado = $forma.value === "cerrado";
+
+        $lblPrecio.textContent = isCerrado ? "Precio TOTAL del curso (cerrado)" : "Precio por participante";
+        $precioHelp.textContent = isCerrado
+          ? "Se fija una sola vez (primer inscrito) y luego queda bloqueado."
+          : "Puedes escribir o usar el sugerido del curso.";
+
+        const varIsClosed = selectedSessionId.includes("_cerrado_");
+        $empresa.parentElement.style.display = (isCerrado || varIsClosed) ? "" : "none";
+
+        if (selectedSessionId) {
+          db.collection("inscriptions").doc(selectedSessionId).get().then(doc=>{
+            const data = doc.data() || {};
+            if (data.formaCurso === "cerrado") {
+              $precio.value = data.totalPagado || "";
+              $precio.disabled = true;
+              $precioSug.disabled = true;
+              if (data.empresaSolicitante) $empresa.value = data.empresaSolicitante;
+            } else {
+              $precio.disabled = false;
+              $precioSug.disabled = false;
+            }
+          });
+        } else {
+          $precio.disabled = false;
+          $precioSug.disabled = false;
+        }
+      }
+
+      $precioSug.addEventListener("change", ()=>{ if ($precioSug.value) $precio.value = $precioSug.value; });
+      $dateExisting.addEventListener("change", async ()=>{ if ($dateExisting.value) $date.value = $dateExisting.value; await refreshVariantsForDate(evalId, $date.value); updatePriceMode(); });
+      $date.addEventListener("change", async ()=>{ $date.value = toYYYYMMDD($date.value); await refreshVariantsForDate(evalId, $date.value); updatePriceMode(); });
+      $variant.addEventListener("change", updatePriceMode);
+      $forma.addEventListener("change", updatePriceMode);
+    });
 
     // ── 4) Mostrar el modal ──
     form.style.display = 'block';
@@ -285,31 +508,68 @@ document.addEventListener('DOMContentLoaded', () => {
     const name     = document.getElementById('newName').value.trim();
     const rut      = document.getElementById('newRut').value.trim();
     const company  = document.getElementById('newCompany').value.trim();
-    // Crear usuario:
     const customID = document.getElementById('newCustomId').value;
-    const evs = Array.from(
-      document.querySelectorAll('input[name="newAssignedEvals"]:checked')
-    ).map(cb => cb.value);
-    
+
     try {
-      // 1) Crear usuario en App secundaria
+      // 1) Crear usuario en App secundaria (Auth)
       const { user } = await secondaryAuth
                              .createUserWithEmailAndPassword(email, pwd);
+      const uid = user.uid;
 
-      // 2) Guardar datos en Firestore
-      await db.collection('users').doc(user.uid).set({
-        name,
-        rut,
-        company,
-        customID: customID,       // genera o asigna aquí tu lógica
+      // 2) Evaluaciones seleccionadas
+      const assigned = [...document.querySelectorAll('input[name="newAssignedEvals"]:checked')]
+                        .map(cb=>cb.value);
+      const meta = {};
+
+      // 2.b) Construir metas y escribir en inscriptions
+      for (const evalId of assigned) {
+        const grid = document.querySelector(`#newEvalsContainer .eval-grid[data-evalid="${evalId}"]`);
+        const date  = toYYYYMMDD(grid.querySelector(".meta-date").value || grid.querySelector(".meta-date-existing").value);
+        const forma = grid.querySelector(".meta-forma").value;
+        const variant = grid.querySelector(".meta-variant").value;
+        const empresa = grid.querySelector(".meta-empresa").value.trim();
+        let   priceInput = Number(grid.querySelector(".meta-precio").value || 0);
+        if (!priceInput) {
+          const sug = grid.querySelector(".meta-precio-sugerido").value;
+          if (sug) priceInput = Number(sug);
+        }
+
+        const courseKey = evalId;
+        const sessionId = variant !== "__new__" ? variant : buildSessionId(courseKey, date, forma, empresa);
+
+        // Participante
+        const participant = { name, rut, email, company, customID, price: (forma === "abierto") ? priceInput : 0 };
+
+        // Upsert en inscriptions
+        await upsertParticipantInSession({
+          sessionId, courseKey, date, forma, empresa,
+          participant, precioTotalCerrado: (forma === "cerrado") ? priceInput : 0
+        });
+
+        // Meta por curso
+        meta[evalId] = {
+          evaluationId: evalId,
+          courseKey, sessionId, date,
+          formaCurso: forma,
+          empresaSolicitante: (forma === "cerrado" ? empresa : ""),
+          priceParticipant: (forma === "abierto") ? participant.price : null,
+          precioTotalCerrado: (forma === "cerrado") ? (priceInput||null) : null
+        };
+      }
+
+      // 3) Guardar documento del usuario en Firestore
+      await db.collection('users').doc(uid).set({
+        name, rut, company, customID,
         role: 'user',
-        assignedEvaluations: evs
+        email,
+        assignedEvaluations: assigned,
+        assignedCoursesMeta: meta
       });
 
-      // 3) Cerrar sesión de la App secundaria
+      // 4) Cerrar sesión de la App secundaria
       await secondaryAuth.signOut();
 
-      // 4) Refrescar lista y ocultar formulario
+      // 5) Refrescar lista y ocultar formulario
       await initializeData();
       loadAllUsers();
       form.style.display = 'none';
@@ -385,6 +645,10 @@ async function initializeData() {
   sqSnap.docs.forEach(d=>{
     surveyQuestionsMap[d.id] = d.data().questions || [];
   });
+
+  // courses (para precio recomendado y nombre corto)
+  const coSnap = await db.collection("courses").get();
+  coSnap.docs.forEach(d => allCourses[d.id] = d.data() || {});
 }
 
 // ───────────────────────────────────────────────────
@@ -398,6 +662,12 @@ function setupFiltersUI() {
     <input id="f_search" placeholder="Buscar por nombre" />
     <select id="f_course"><option value="all">Todos los cursos</option></select>
     <select id="f_company"><option value="all">Todas las empresas</option></select>
+    <select id="f_date"><option value="all">Todas las fechas</option></select>
+    <select id="f_forma">
+      <option value="all">Cualquier forma</option>
+      <option value="abierto">Abierto</option>
+      <option value="cerrado">Cerrado</option>
+    </select>
     <select id="f_sort">
       <option value="dateDesc">Fecha (más recientes primero)</option>
       <option value="dateAsc">Fecha (más antiguos primero)</option>
@@ -425,6 +695,16 @@ function setupFiltersUI() {
          .innerHTML += `<option value="${co}">${co}</option>`;
     });
 
+  // Fechas (desde meta de usuarios si existe)
+  const allDates = new Set();
+  allUsers.forEach(u => {
+    const meta = u.assignedCoursesMeta || {};
+    Object.values(meta).forEach(m => { if (m?.date) allDates.add(m.date); });
+  });
+  [...allDates].sort().forEach(d => {
+    bar.querySelector("#f_date").innerHTML += `<option value="${d}">${d}</option>`;
+  });
+
   // listeners
   bar.querySelector("#f_search")
      .addEventListener("input", e=>{
@@ -441,6 +721,14 @@ function setupFiltersUI() {
        filterCompany = e.target.value;
        loadAllUsers();
      });
+  bar.querySelector("#f_date").addEventListener("change", e => { 
+    filterDate = e.target.value; 
+    loadAllUsers(); 
+  });
+  bar.querySelector("#f_forma").addEventListener("change", e => { 
+    filterForma = e.target.value; 
+    loadAllUsers(); 
+  });
   bar.querySelector("#f_sort")
      .addEventListener("change", e=>{
        sortBy = e.target.value;
@@ -454,9 +742,35 @@ function loadAllUsers() {
 
   // 1) Filtrar
   const filtered = allUsers.filter(u => {
-    if (searchName && !u.name.toLowerCase().includes(searchName)) return false;
+    // filtros ya existentes
+    if (searchName && !String(u.name).toLowerCase().includes(searchName)) return false;
     if (filterCompany !== "all" && u.company !== filterCompany) return false;
-    if (filterCourse  !== "all" && !u.assignedEvaluations.includes(filterCourse)) return false;
+
+    // NUEVO: usamos metas por curso/fecha/forma si existen
+    const meta = u.assignedCoursesMeta || {};
+    const metaArr = Object.values(meta);
+
+    // curso: acepta match por meta o por assignedEvaluations (compatibilidad)
+    if (filterCourse !== "all") {
+      const inMeta   = metaArr.some(m =>
+        m?.evaluationId === filterCourse || m?.courseKey === filterCourse
+      );
+      const inLegacy = (u.assignedEvaluations || []).includes(filterCourse);
+      if (!inMeta && !inLegacy) return false;
+    }
+
+    // fecha
+    if (filterDate !== "all") {
+      const hit = metaArr.some(m => m?.date === filterDate);
+      if (!hit) return false;
+    }
+
+    // forma (abierto/cerrado)
+    if (filterForma !== "all") {
+      const hit = metaArr.some(m => m?.formaCurso === filterForma);
+      if (!hit) return false;
+    }
+
     return true;
   });
 
@@ -473,8 +787,8 @@ function loadAllUsers() {
     switch (sortBy) {
       case "dateDesc":     return b._lastTime - a._lastTime;
       case "dateAsc":      return a._lastTime - b._lastTime;
-      case "customIdDesc": return (+b.customID||0) - (+a.customID||0);
-      case "customIdAsc":  return (+a.customID||0) - (+b.customID||0);
+      case "customIdDesc": return (parseInt(b.customID, 10) || 0) - (parseInt(a.customID, 10) || 0);
+      case "customIdAsc":  return (parseInt(a.customID, 10) || 0) - (parseInt(b.customID, 10) || 0);
       default:             return 0;
     }
   });
@@ -517,19 +831,70 @@ function loadAllUsers() {
       <div class="field-container"><input type="text" name="company"  value="${u.company}"  class="edit-field" /></div>
     `;
 
-    // 5.2) Checkboxes solo con el ID de documento
+    // 5.2) Checkboxes + metadatos por evaluación
     const checkedSet = new Set(u.assignedEvaluations || []);
-    const checkboxesHtml = Object.entries(allEvaluations)
-      .map(([id]) => `
-        <label class="eval-option" style="display:flex;align-items:center;margin:4px 0;cursor:pointer;">
-          <input type="checkbox"
-                 name="assignedEvals"
-                 value="${id}"
-                 ${checkedSet.has(id) ? "checked" : ""}
-                 style="margin-right:8px;">
-          <span>${id}</span>
-        </label>
-      `).join("");
+    const metaByEval = u.assignedCoursesMeta || {};
+
+    const checkboxesHtml = Object.keys(allEvaluations).map(evalId => {
+      const m = metaByEval[evalId] || {};
+      const recommended = allCourses[evalId]?.price || "";
+      return `
+        <div class="eval-item" style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:12px 16px;margin:12px 0;">
+          <label class="eval-option" style="display:flex;align-items:center;gap:8px;padding:6px 0;">
+            <input type="checkbox" name="assignedEvals" value="${evalId}" ${checkedSet.has(evalId) ? "checked":""}>
+            <span>${evalId}</span>
+          </label>
+
+          <div class="eval-grid"
+               data-evalid="${evalId}"
+               style="display:${checkedSet.has(evalId)?"grid":"none"};grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
+            <div>
+              <label style="font-size:12px;color:#444;">Fecha del curso</label>
+              <input type="date" class="meta-date" value="${m.date||""}" />
+              <small class="muted">O elige existente:</small>
+              <select class="meta-date-existing"><option value="">(cargar…)</option></select>
+            </div>
+
+            <div>
+              <label style="font-size:12px;color:#444;">Variante</label>
+              <select class="meta-variant">
+                <option value="__new__">Crear nueva</option>
+              </select>
+              <small class="muted">Si ya existe en esa fecha, selecciónala</small>
+            </div>
+
+            <div>
+              <label style="font-size:12px;color:#444;">Forma del curso</label>
+              <select class="meta-forma">
+                <option value="abierto" ${m.formaCurso==="abierto"?"selected":""}>abierto</option>
+                <option value="cerrado" ${m.formaCurso==="cerrado"?"selected":""}>cerrado</option>
+              </select>
+            </div>
+
+            <div>
+              <label style="font-size:12px;color:#444;">Empresa (si es cerrado)</label>
+              <input type="text" class="meta-empresa" value="${m.empresaSolicitante||""}" list="dl_${u.id}_${evalId}" />
+              <datalist id="dl_${u.id}_${evalId}"></datalist>
+            </div>
+
+            <div>
+              <label class="lbl-precio" style="font-size:12px;color:#444;">
+                ${m.formaCurso==="cerrado"?"Precio TOTAL del curso":"Precio por participante"}
+              </label>
+              <div style="display:flex;gap:6px;">
+                <input type="number" class="meta-precio" min="0" step="1000"
+                       value="${m.formaCurso==="cerrado"?(m.precioTotalCerrado||""):(m.priceParticipant||"")}" />
+                <select class="meta-precio-sugerido">
+                  <option value="">(courses.price)</option>
+                  ${recommended?`<option value="${recommended}">${recommended}</option>`:""}
+                </select>
+              </div>
+              <small class="muted precio-help"></small>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
 
     const editHtml = `
       <div class="edit-container" style="display:none; padding-top:12px; border-top:1px solid #eee;">
@@ -539,13 +904,99 @@ function loadAllUsers() {
         </div>
       </div>
     `;
-
+    
     // 5.3) Placeholder para el resumen de evaluaciones (modo “view”)
     const summaryHtml = `<div class="eval-summary" style="margin-top:12px;"></div>`;
 
     // Juntamos todo e inyectamos
     row.innerHTML = staticHtml + editHtml + summaryHtml;
     container.appendChild(row);
+
+        // === Listeners por evaluación (toggle + fechas/variantes + bloqueo de precio) ===
+    row.querySelectorAll('input[name="assignedEvals"]').forEach(cb=>{
+      const evalId = cb.value;
+      const grid = row.querySelector(`.eval-grid[data-evalid="${evalId}"]`);
+      const $date = grid.querySelector(".meta-date");
+      const $dateExisting = grid.querySelector(".meta-date-existing");
+      const $variant = grid.querySelector(".meta-variant");
+      const $forma = grid.querySelector(".meta-forma");
+      const $empresa = grid.querySelector(".meta-empresa");
+      const $empresaDL = grid.querySelector(`datalist#dl_${u.id}_${evalId}`);
+      const $precio = grid.querySelector(".meta-precio");
+      const $precioSug = grid.querySelector(".meta-precio-sugerido");
+      const $lblPrecio = grid.querySelector(".lbl-precio");
+      const $precioHelp = grid.querySelector(".precio-help");
+
+      async function refreshVariantsForDate(courseKey, date) {
+        $variant.innerHTML = `<option value="__new__">Crear nueva</option>`;
+        $empresaDL.innerHTML = "";
+        if (!date) return;
+        const sessions = await listSessionsForCourseDate(courseKey, date);
+        const empresas = new Set();
+        sessions.forEach(s=>{
+          const isClosed = (s.formaCurso||"").toLowerCase()==="cerrado" || s.id.includes("_cerrado_");
+          const label = isClosed ? `${date} · cerrado · ${s.empresaSolicitante||s.id.split("_").slice(3).join("_")}` : `${date} · abierto`;
+          $variant.innerHTML += `<option value="${s.id}">${label}</option>`;
+          if (isClosed && s.empresaSolicitante) empresas.add(s.empresaSolicitante);
+        });
+        [...empresas].forEach(e=>{ $empresaDL.innerHTML += `<option value="${e}"></option>`; });
+      }
+
+      function updatePriceMode() {
+        const selectedSessionId = $variant.value !== "__new__" ? $variant.value : "";
+        const isCerrado = $forma.value === "cerrado";
+
+        $lblPrecio.textContent = isCerrado ? "Precio TOTAL del curso (cerrado)" : "Precio por participante";
+        $precioHelp.textContent = isCerrado
+          ? "En cursos cerrados se fija una sola vez (primer inscrito) y luego queda bloqueado."
+          : "Puedes escribir o usar el sugerido del curso.";
+
+        const varIsClosed = selectedSessionId.includes("_cerrado_");
+        $empresa.parentElement.style.display = (isCerrado || varIsClosed) ? "" : "none";
+
+        if (selectedSessionId) {
+          db.collection("inscriptions").doc(selectedSessionId).get().then(doc=>{
+            const data = doc.data() || {};
+            if (data.formaCurso === "cerrado") {
+              $precio.value = data.totalPagado || "";
+              $precio.disabled = true;
+              $precioSug.disabled = true;
+              if (data.empresaSolicitante) $empresa.value = data.empresaSolicitante;
+            } else {
+              $precio.disabled = false;
+              $precioSug.disabled = false;
+            }
+          });
+        } else {
+          $precio.disabled = false;
+          $precioSug.disabled = false;
+        }
+      }
+
+      cb.addEventListener("change", async ()=>{
+        grid.style.display = cb.checked ? "grid" : "none";
+        if (cb.checked) {
+          const sessions = await listSessionsForCourse(cb.value);
+          const fechas = [...new Set(sessions.map(s => s.courseDate || (s.id.split("_")[1])) )].filter(Boolean).sort();
+          $dateExisting.innerHTML = `<option value="">(ninguna)</option>` + fechas.map(f=>`<option value="${f}">${f}</option>`).join("");
+          updatePriceMode();
+        }
+      });
+
+      $precioSug.addEventListener("change", ()=>{ if ($precioSug.value) $precio.value = $precioSug.value; });
+      $dateExisting.addEventListener("change", async ()=>{
+        if ($dateExisting.value) $date.value = $dateExisting.value;
+        await refreshVariantsForDate(cb.value, $date.value);
+        updatePriceMode();
+      });
+      $date.addEventListener("change", async ()=>{
+        $date.value = toYYYYMMDD($date.value);
+        await refreshVariantsForDate(cb.value, $date.value);
+        updatePriceMode();
+      });
+      $variant.addEventListener("change", updatePriceMode);
+      $forma.addEventListener("change", updatePriceMode);
+    });
 
     // ==== Llenar el resumen de evaluación (botones) ====
     const summaryContainer = row.querySelector(".eval-summary");
@@ -584,10 +1035,10 @@ function loadAllUsers() {
       const passed = valids.find(r => r.result.grade==="Aprobado");
       if (passed) {
         const score   = passed.result.score;
-        const dateStr = new Date(passed.timestamp).toLocaleDateString();
+        const dateISO = toYYYYMMDD(passed.timestamp); // YYYY-MM-DD consistente
         const btnC = document.createElement("button");
         btnC.textContent = "Certificado de Aprobación";
-        btnC.onclick = () => generateCertificateForUser(u.id, ev, score, dateStr);
+        btnC.onclick = () => generateCertificateForUser(u.id, ev, score, dateISO);
         evalDiv.appendChild(btnC);
       }
 
@@ -727,8 +1178,9 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
     const certificateTemplate= evalData.certificateTemplate;
     const evaluationIDNumber = evalData.ID;
     // ID dinámico
-    const [d,m,y]    = approvalDate.split('-');
-    const year       = new Date(`${y}-${m}-${d}`).getFullYear();
+    const apDate  = new Date(approvalDate);
+    const dateStr = toYYYYMMDD(apDate);
+    const year    = apDate.getFullYear();
     const certificateID = `${evaluationIDNumber}${customID}${year}`;
 
     // carga plantilla
@@ -781,7 +1233,7 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
       y0 -= 40;
     }
 
-    page.drawText(`Fecha de Aprobación: ${approvalDate}`, {
+    page.drawText(`Fecha de Aprobación: ${dateStr}`, {
       x:147, y:height-534, size:12, font:perpetuaFont, color:PDFLib.rgb(0,0,0)
     });
     page.drawText(`Duración del Curso: ${evaluationTime}`, {
@@ -874,3 +1326,60 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
   }
 }
 
+async function upsertParticipantInSession({ sessionId, courseKey, date, forma, empresa, participant, precioTotalCerrado=0 }) {
+  const ref = db.collection("inscriptions").doc(sessionId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.exists ? snap.data() : null;
+
+    if (!data) {
+      const arr = [participant];
+      const baseDoc = {
+        courseKey,
+        courseDate: date,
+        formaCurso: forma,
+        empresaSolicitante: (forma === "cerrado") ? (empresa||"") : "",
+        empresaSlug: (forma === "cerrado") ? slugify(empresa||"") : "",
+        inscriptions: arr,
+        totalInscritos: arr.length,
+        totalPagado: (forma === "cerrado") ? (precioTotalCerrado||0) : (participant.price||0)
+      };
+      tx.set(ref, baseDoc);
+      return;
+    }
+
+    const arr = Array.isArray(data.inscriptions) ? [...data.inscriptions] : [];
+    const idx = arr.findIndex(p => (p.email && p.email===participant.email) || (p.customID && p.customID===participant.customID));
+    if (idx >= 0) arr[idx] = { ...arr[idx], ...participant }; else arr.push(participant);
+
+    let totalInscritos = arr.length;
+    let totalPagado;
+    if ((data.formaCurso||forma) === "cerrado") {
+      totalPagado = typeof data.totalPagado === "number" ? data.totalPagado : (precioTotalCerrado||0);
+    } else {
+      totalPagado = arr.reduce((s,p)=> s + (Number(p.price)||0), 0);
+    }
+
+    tx.update(ref, { inscriptions: arr, totalInscritos, totalPagado });
+  });
+}
+
+async function removeParticipantFromSession(sessionId, user) {
+  const ref = db.collection("inscriptions").doc(sessionId);
+  await db.runTransaction(async (tx)=>{
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const data = snap.data();
+    let arr = Array.isArray(data.inscriptions) ? [...data.inscriptions] : [];
+    const before = arr.length;
+    arr = arr.filter(p => !((p.email && p.email===user.email) || (p.customID && p.customID===user.customID)));
+    if (arr.length === before) return;
+
+    let totalInscritos = arr.length;
+    let totalPagado = (data.formaCurso === "cerrado")
+      ? (data.totalPagado || 0)
+      : arr.reduce((s,p)=> s + (Number(p.price)||0), 0);
+
+    tx.update(ref, { inscriptions: arr, totalInscritos, totalPagado });
+  });
+}
