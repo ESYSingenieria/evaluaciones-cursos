@@ -111,22 +111,37 @@ const buildSessionId = (courseKey, date, forma, empresa) => {
   const base = `${courseKey}_${date}_${forma}`;
   return (forma === "cerrado") ? `${base}_${slugify(empresa||"sin-empresa")}` : base;
 };
-// consultas por prefijo de ID (para cargar “fechas existentes” y variantes)
+
 async function listSessionsForCourse(courseKey) {
   const prefix = `${courseKey}_`;
-  const q = db.collection("inscriptions")
+  const q1 = db.collection("inscripciones")
     .orderBy(firebase.firestore.FieldPath.documentId())
-    .startAt(prefix).endAt(prefix + "\uf8ff");
-  const snap = await q.get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    .startAt(prefix).endAt(prefix + "\uf8ff")
+    .get();
+  const q2 = db.collection("inscriptions")
+    .orderBy(firebase.firestore.FieldPath.documentId())
+    .startAt(prefix).endAt(prefix + "\uf8ff")
+    .get();
+  const [s1, s2] = await Promise.all([q1, q2]);
+  const map = new Map();
+  [...s1.docs, ...s2.docs].forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+  return [...map.values()];
 }
+
 async function listSessionsForCourseDate(courseKey, date) {
   const prefix = `${courseKey}_${date}_`;
-  const q = db.collection("inscriptions")
+  const q1 = db.collection("inscripciones")
     .orderBy(firebase.firestore.FieldPath.documentId())
-    .startAt(prefix).endAt(prefix + "\uf8ff");
-  const snap = await q.get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    .startAt(prefix).endAt(prefix + "\uf8ff")
+    .get();
+  const q2 = db.collection("inscriptions")
+    .orderBy(firebase.firestore.FieldPath.documentId())
+    .startAt(prefix).endAt(prefix + "\uf8ff")
+    .get();
+  const [s1, s2] = await Promise.all([q1, q2]);
+  const map = new Map();
+  [...s1.docs, ...s2.docs].forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+  return [...map.values()];
 }
 
 // Extra: obtener fecha YYYY-MM-DD desde un sessionId
@@ -297,15 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
           await removeParticipantFromSession(oldSession, allUsers.find(x=>x.id===uid));
         }
 
-        // participante
-        const participant = {
-          name: updates.name || allUsers.find(x=>x.id===uid).name || "",
-          rut: updates.rut || allUsers.find(x=>x.id===uid).rut || "",
-          email: allUsers.find(x=>x.id===uid).email || "",
-          company: updates.company || allUsers.find(x=>x.id===uid).company || "",
-          customID: updates.customID || allUsers.find(x=>x.id===uid).customID || "",
-          price: (forma === "abierto") ? priceInput : 0
-        };
+        const participant = { name, rut, company, customID, price: (forma === "abierto") ? priceInput : 0 };
 
         await upsertParticipantInSession({
           sessionId,
@@ -433,8 +440,7 @@ document.addEventListener('DOMContentLoaded', () => {
         grid.classList.toggle("hidden", !cb.checked);
         if (cb.checked) {
           const sessions = await listSessionsForCourse(evalId);
-          const fechas = [...new Set(sessions.map(s => s.courseDate || dateFromSessionId(s.id)))]
-                          .filter(Boolean).sort();
+          const fechas = [...new Set(sessions.map(s => s.courseDate || dateFromSessionId(s.id)))].filter(Boolean).sort();
           $dateExisting.innerHTML = `<option value="">(ninguna)</option>` + fechas.map(f=>`<option value="${f}">${f}</option>`).join("");
           updatePriceMode();
         }
@@ -468,9 +474,13 @@ document.addEventListener('DOMContentLoaded', () => {
         $empresa.parentElement.style.display = (isCerrado || varIsClosed) ? "" : "none";
 
         if (selectedSessionId) {
-          db.collection("inscriptions").doc(selectedSessionId).get().then(doc=>{
-            const data = doc.data() || {};
-            if (data.formaCurso === "cerrado") {
+          db.collection("inscripciones").doc(selectedSessionId).get().then(async doc => {
+            let data = doc.exists ? (doc.data() || {}) : null;
+            if (!data) {
+              const doc2 = await db.collection("inscriptions").doc(selectedSessionId).get();
+              data = doc2.exists ? (doc2.data() || {}) : {};
+            }
+            if ((data.formaCurso || "").toLowerCase() === "cerrado") {
               $precio.value = data.totalPagado || "";
               $precio.disabled = true;
               $precioSug.disabled = true;
@@ -539,7 +549,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const sessionId = variant !== "__new__" ? variant : buildSessionId(courseKey, date, forma, empresa);
 
         // Participante
-        const participant = { name, rut, email, company, customID, price: (forma === "abierto") ? priceInput : 0 };
+        const participant = {
+          name: updates.name || allUsers.find(x => x.id === uid).name || "",
+          rut: updates.rut || allUsers.find(x => x.id === uid).rut || "",
+          company: updates.company || allUsers.find(x => x.id === uid).company || "",
+          customID: updates.customID || allUsers.find(x => x.id === uid).customID || "",
+          price: (forma === "abierto") ? priceInput : 0
+        };
 
         // Upsert en inscriptions
         await upsertParticipantInSession({
@@ -775,12 +791,23 @@ function loadAllUsers() {
     return true;
   });
 
-  // 2) Calcular última fecha válida
+  // 2) Calcular última fecha válida (respuestas del curso seleccionado)
   filtered.forEach(u => {
     const times = allResponses
-      .filter(r => r.userId === u.id && typeof r.result?.score === "number")
+      .filter(r =>
+        r.userId === u.id &&
+        typeof r.result?.score === "number" &&
+        (filterCourse === "all" || r.evaluationId === filterCourse)
+      )
       .map(r => r.timestamp.getTime());
-    u._lastTime = times.length ? Math.max(...times) : 0;
+
+    let lastByMeta = 0;
+    if (filterCourse !== "all") {
+      const md = (u.assignedCoursesMeta || {})[filterCourse]?.date;
+      if (md) lastByMeta = new Date(md).getTime();
+    }
+
+    u._lastTime = times.length ? Math.max(...times) : lastByMeta;
   });
 
   // 3) Ordenar
@@ -978,7 +1005,7 @@ function loadAllUsers() {
         grid.style.display = cb.checked ? "grid" : "none";
         if (cb.checked) {
           const sessions = await listSessionsForCourse(cb.value);
-          const fechas = [...new Set(sessions.map(s => s.courseDate || dateFromSessionId(s.id)) )].filter(Boolean).sort();
+          const fechas = [...new Set(sessions.map(s => s.courseDate || dateFromSessionId(s.id)))].filter(Boolean).sort();
           $dateExisting.innerHTML = `<option value="">(ninguna)</option>` + fechas.map(f=>`<option value="${f}">${f}</option>`).join("");
           updatePriceMode();
         }
@@ -1327,61 +1354,66 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
   }
 }
 
-async function upsertParticipantInSession({ sessionId, courseKey, date, forma, empresa, participant, precioTotalCerrado=0 }) {
-  const ref = db.collection("inscriptions").doc(sessionId);
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const data = snap.exists ? snap.data() : null;
+  async function upsertParticipantInSession({ sessionId, courseKey, date, forma, empresa, participant, precioTotalCerrado = 0 }) {
+    const ref = db.collection("inscripciones").doc(sessionId); // ← nueva colección
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const data = snap.exists ? snap.data() : null;
 
-    if (!data) {
-      const arr = [participant];
-      const baseDoc = {
-        courseKey,
-        courseDate: date,
-        formaCurso: forma,
-        empresaSolicitante: (forma === "cerrado") ? (empresa||"") : "",
-        empresaSlug: (forma === "cerrado") ? slugify(empresa||"") : "",
-        inscriptions: arr,
-        totalInscritos: arr.length,
-        totalPagado: (forma === "cerrado") ? (precioTotalCerrado||0) : (participant.price||0)
-      };
-      tx.set(ref, baseDoc);
-      return;
-    }
+      if (!data) {
+        const arr = [participant];
+        const baseDoc = {
+          courseKey,
+          courseDate: date,
+          formaCurso: forma,
+          empresaSolicitante: (forma === "cerrado") ? (empresa || "") : "",
+          inscriptions: arr,
+          totalInscritos: arr.length,
+          totalPagado: (forma === "cerrado") ? (precioTotalCerrado || 0) : (participant.price || 0)
+        };
+        tx.set(ref, baseDoc);
+        return;
+      }
 
-    const arr = Array.isArray(data.inscriptions) ? [...data.inscriptions] : [];
-    const idx = arr.findIndex(p => (p.email && p.email===participant.email) || (p.customID && p.customID===participant.customID));
-    if (idx >= 0) arr[idx] = { ...arr[idx], ...participant }; else arr.push(participant);
+      const arr = Array.isArray(data.inscriptions) ? [...data.inscriptions] : [];
+      const idx = arr.findIndex(p =>
+        (p.customID && p.customID === participant.customID) ||
+        (p.rut && p.rut === participant.rut)
+      );
+      if (idx >= 0) arr[idx] = { ...arr[idx], ...participant }; else arr.push(participant);
 
-    let totalInscritos = arr.length;
-    let totalPagado;
-    if ((data.formaCurso||forma) === "cerrado") {
-      totalPagado = typeof data.totalPagado === "number" ? data.totalPagado : (precioTotalCerrado||0);
-    } else {
-      totalPagado = arr.reduce((s,p)=> s + (Number(p.price)||0), 0);
-    }
+      const totalInscritos = arr.length;
+      let totalPagado;
+      if ((data.formaCurso || forma) === "cerrado") {
+        totalPagado = typeof data.totalPagado === "number" ? data.totalPagado : (precioTotalCerrado || 0);
+      } else {
+        totalPagado = arr.reduce((s, p) => s + (Number(p.price) || 0), 0);
+      }
 
-    tx.update(ref, { inscriptions: arr, totalInscritos, totalPagado });
-  });
-}
+      tx.update(ref, { inscriptions: arr, totalInscritos, totalPagado });
+    });
+  }
 
 async function removeParticipantFromSession(sessionId, user) {
-  const ref = db.collection("inscriptions").doc(sessionId);
-  await db.runTransaction(async (tx)=>{
-    const snap = await tx.get(ref);
-    if (!snap.exists) return;
-    const data = snap.data();
-    let arr = Array.isArray(data.inscriptions) ? [...data.inscriptions] : [];
-    const before = arr.length;
-    arr = arr.filter(p => !((p.email && p.email===user.email) || (p.customID && p.customID===user.customID)));
-    if (arr.length === before) return;
-
-    let totalInscritos = arr.length;
-    let totalPagado = (data.formaCurso === "cerrado")
-      ? (data.totalPagado || 0)
-      : arr.reduce((s,p)=> s + (Number(p.price)||0), 0);
-
-    tx.update(ref, { inscriptions: arr, totalInscritos, totalPagado });
-  });
-}
-
+  async function removeFrom(colName) {
+    const ref = db.collection(colName).doc(sessionId);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const data = snap.data();
+      let arr = Array.isArray(data.inscriptions) ? [...data.inscriptions] : [];
+      const before = arr.length;
+      arr = arr.filter(p =>
+        !((p.customID && p.customID === user.customID) || (p.rut && p.rut === user.rut))
+      );
+      if (arr.length === before) return;
+      const totalInscritos = arr.length;
+      const totalPagado = (data.formaCurso === "cerrado")
+        ? (data.totalPagado || 0)
+        : arr.reduce((s, p) => s + (Number(p.price) || 0), 0);
+        tx.update(ref, { inscriptions: arr, totalInscritos, totalPagado });
+      });
+    }
+    await removeFrom("inscripciones");
+    await removeFrom("inscriptions"); // legado
+  }
