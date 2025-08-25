@@ -112,6 +112,14 @@ const buildSessionId = (courseKey, date, forma, empresa) => {
   return (forma === "cerrado") ? `${base}_${slugify(empresa||"sin-empresa")}` : base;
 };
 
+// Devuelve un Set con TODOS los evalIds que pertenecen al curso seleccionado (mismo nombre)
+function getSelectedEvalIdSet() {
+  if (filterCourse === "all") return null;
+  const nm = (window.evalNameById && evalNameById[filterCourse]) || filterCourse;
+  const set = (window.evalIdsByName && evalIdsByName[nm]) ? evalIdsByName[nm] : null;
+  return set ? new Set(set) : new Set([filterCourse]);
+}
+
 async function listSessionsForCourse(courseKey) {
   const prefix = `${courseKey}_`;
   const q1 = db.collection("inscripciones")
@@ -642,6 +650,16 @@ async function initializeData() {
   const evSnap = await db.collection("evaluations").get();
   evSnap.docs.forEach(d=> allEvaluations[d.id] = d.data());
 
+  // === Agrupar evaluaciones por NOMBRE de curso (para tratar v2/v3 como el mismo curso) ===
+  window.evalNameById = {};      // id -> name
+  window.evalIdsByName = {};     // name -> Set(ids)
+  Object.entries(allEvaluations).forEach(([id, data]) => {
+    const nm = data.name || id;
+    evalNameById[id] = nm;
+    if (!evalIdsByName[nm]) evalIdsByName[nm] = new Set();
+    evalIdsByName[nm].add(id);
+  });
+
   // responses
   const rSnap = await db.collection("responses").get();
   allResponses = rSnap.docs.map(d=>{
@@ -767,12 +785,11 @@ function loadAllUsers() {
     const meta = u.assignedCoursesMeta || {};
     const metaArr = Object.values(meta);
 
-    // curso: acepta match por meta o por assignedEvaluations (compatibilidad)
-    if (filterCourse !== "all") {
-      const inMeta   = metaArr.some(m =>
-        m?.evaluationId === filterCourse || m?.courseKey === filterCourse
-      );
-      const inLegacy = (u.assignedEvaluations || []).includes(filterCourse);
+    // curso: acepta match por CUALQUIER versión que comparta el mismo nombre
+    const allowedIds = getSelectedEvalIdSet(); // Set o null
+    if (allowedIds) {
+      const inMeta   = metaArr.some(m => allowedIds.has(m?.evaluationId) || allowedIds.has(m?.courseKey));
+      const inLegacy = (u.assignedEvaluations || []).some(id => allowedIds.has(id));
       if (!inMeta && !inLegacy) return false;
     }
 
@@ -791,20 +808,25 @@ function loadAllUsers() {
     return true;
   });
 
-  // 2) Calcular última fecha válida (respuestas del curso seleccionado)
+  // 2) Calcular última fecha válida (del curso seleccionado o todos si 'all')
   filtered.forEach(u => {
+    const allowedIds = getSelectedEvalIdSet(); // Set o null
     const times = allResponses
       .filter(r =>
         r.userId === u.id &&
         typeof r.result?.score === "number" &&
-        (filterCourse === "all" || r.evaluationId === filterCourse)
+        (!allowedIds || allowedIds.has(r.evaluationId))
       )
       .map(r => r.timestamp.getTime());
 
     let lastByMeta = 0;
-    if (filterCourse !== "all") {
-      const md = (u.assignedCoursesMeta || {})[filterCourse]?.date;
-      if (md) lastByMeta = new Date(md).getTime();
+    if (allowedIds) {
+      const meta = u.assignedCoursesMeta || {};
+      const metaTimes = Object.values(meta)
+        .filter(m => allowedIds.has(m?.evaluationId) || allowedIds.has(m?.courseKey))
+        .map(m => new Date(m.date).getTime())
+        .filter(t => !isNaN(t));
+      if (metaTimes.length) lastByMeta = Math.max(...metaTimes);
     }
 
     u._lastTime = times.length ? Math.max(...times) : lastByMeta;
@@ -1417,3 +1439,4 @@ async function removeParticipantFromSession(sessionId, user) {
     await removeFrom("inscripciones");
     await removeFrom("inscriptions"); // legado
   }
+
