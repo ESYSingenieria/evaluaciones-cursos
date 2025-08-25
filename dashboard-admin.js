@@ -246,6 +246,44 @@ document.addEventListener('DOMContentLoaded', () => {
       const current = allUsers.find(u => u.id === uid).assignedEvaluations || [];
       editCont.querySelectorAll('input[name="assignedEvals"]').forEach(cb => {
         cb.checked = current.includes(cb.value);
+        // Inicializar combos si el checkbox ya venía marcado
+        row.querySelectorAll('input[name="assignedEvals"]').forEach(async cb => {
+          if (!cb.checked) return;
+          const evalId = cb.value;
+          const grid   = row.querySelector(`.eval-grid[data-evalid="${evalId}"]`);
+          const $date  = grid.querySelector(".meta-date");
+          const $dateExisting = grid.querySelector(".meta-date-existing");
+          const $variant = grid.querySelector(".meta-variant");
+          const $forma   = grid.querySelector(".meta-forma");
+          const $empresa = grid.querySelector(".meta-empresa");
+
+          const sessions = await listSessionsForCourse(evalId);
+          const fechas = [...new Set(sessions.map(s => s.courseDate || dateFromSessionId(s.id)))]
+                          .filter(Boolean).sort();
+          $dateExisting.innerHTML = `<option value="">(ninguna)</option>`
+            + fechas.map(f=>`<option value="${f}">${f}</option>`).join("");
+
+          // refrescar variantes para la fecha ya guardada (si existe)
+          const metaByEval = (allUsers.find(x=>x.id===u.id)?.assignedCoursesMeta)||{};
+          const m0 = metaByEval[evalId] || {};
+          if (m0.date) {
+            $date.value = m0.date;
+            await (async function refresh() {
+              $variant.innerHTML = `<option value="__new__">Crear nueva</option>`;
+              const sessionsByDate = await listSessionsForCourseDate(evalId, m0.date);
+              sessionsByDate.forEach(s=>{
+                const isClosed = (s.formaCurso||"").toLowerCase()==="cerrado" || s.id.includes("_cerrado_");
+                const label = isClosed ? `${m0.date} · cerrado` : `${m0.date} · abierto`;
+                $variant.innerHTML += `<option value="${s.id}">${label}</option>`;
+              });
+            })();
+          }
+
+          // ocultar/mostrar Empresa acorde a “Forma”
+          const isCerrado = $forma.value === "cerrado";
+          $empresa.parentElement.style.display = isCerrado ? "" : "none";
+        });
+
       });
 
       return;
@@ -383,7 +421,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── 3) Poblar evaluaciones + METADATOS por evaluación ──
     const newContainer = document.getElementById('newEvalsContainer');
     newContainer.innerHTML = Object.keys(allEvaluations).map(evalId=>{
-      const recommended = allCourses[evalId]?.price || "";
+      const evalName = (allEvaluations[evalId]?.name) || evalId;
+      const recommended = (window.priceByCourseName?.[evalName]) || "";
       return `
         <div class="eval-item" style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:12px 16px;margin:12px 0;">
           <label class="eval-option" style="display:flex;align-items:center;gap:8px;">
@@ -398,8 +437,9 @@ document.addEventListener('DOMContentLoaded', () => {
               <select class="meta-date-existing"><option value="">(cargar…)</option></select>
             </div>
             <div>
-              <label style="font-size:12px;color:#444;">Variante</label>
-              <select class="meta-variant"><option value="__new__">Crear nueva</option></select>
+              <label style="font-size:12px;color:#444;">Cursos Existentes</label>
+              <select class="meta-variant"><option value="__new__">Crear nuevo</option></select>
+              <small class="muted">Si ya existe el curso, selecciónalo</small>
             </div>
             <div>
               <label style="font-size:12px;color:#444;">Forma del curso</label>
@@ -684,6 +724,12 @@ async function initializeData() {
   // courses (para precio recomendado y nombre corto)
   const coSnap = await db.collection("courses").get();
   coSnap.docs.forEach(d => allCourses[d.id] = d.data() || {});
+  // índice por NOMBRE de curso → price (para sugerencia por nombre)
+  window.priceByCourseName = {};
+  coSnap.docs.forEach(d => {
+    const data = d.data() || {};
+    if (data.name) window.priceByCourseName[data.name] = data.price;
+  });
 }
 
 // ───────────────────────────────────────────────────
@@ -887,7 +933,8 @@ function loadAllUsers() {
 
     const checkboxesHtml = Object.keys(allEvaluations).map(evalId => {
       const m = metaByEval[evalId] || {};
-      const recommended = allCourses[evalId]?.price || "";
+      const evalName = (allEvaluations[evalId]?.name) || evalId;
+      const recommended = (window.priceByCourseName?.[evalName]) || "";
       return `
         <div class="eval-item" style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:12px 16px;margin:12px 0;">
           <label class="eval-option" style="display:flex;align-items:center;gap:8px;padding:6px 0;">
@@ -906,11 +953,11 @@ function loadAllUsers() {
             </div>
 
             <div>
-              <label style="font-size:12px;color:#444;">Variante</label>
+              <label style="font-size:12px;color:#444;">Cursos Existentes</label>
               <select class="meta-variant">
-                <option value="__new__">Crear nueva</option>
+                <option value="__new__">Crear nuevo</option>
               </select>
-              <small class="muted">Si ya existe en esa fecha, selecciónala</small>
+              <small class="muted">Si ya existe el curso, selecciónalo</small>
             </div>
 
             <div>
@@ -1046,6 +1093,42 @@ function loadAllUsers() {
       });
       $variant.addEventListener("change", updatePriceMode);
       $forma.addEventListener("change", updatePriceMode);
+    });
+
+    // Inicializar combos si el checkbox YA estaba marcado (evitar "cargar...")
+    row.querySelectorAll('input[name="assignedEvals"]').forEach(async cb => {
+      if (!cb.checked) return;
+      const evalId = cb.value;
+      const grid   = row.querySelector(`.eval-grid[data-evalid="${evalId}"]`);
+      const $date  = grid.querySelector(".meta-date");
+      const $dateExisting = grid.querySelector(".meta-date-existing");
+      const $variant = grid.querySelector(".meta-variant");
+      const $forma   = grid.querySelector(".meta-forma");
+      const $empresa = grid.querySelector(".meta-empresa");
+
+      // llenar fechas existentes
+      const sessions = await listSessionsForCourse(evalId);
+      const fechas = [...new Set(sessions.map(s => s.courseDate || dateFromSessionId(s.id)))]
+                      .filter(Boolean).sort();
+      $dateExisting.innerHTML = `<option value="">(ninguna)</option>`
+        + fechas.map(f=>`<option value="${f}">${f}</option>`).join("");
+
+      // refrescar variantes para la fecha que ya tiene guardada el usuario (si existe)
+      const m0 = (u.assignedCoursesMeta || {})[evalId] || {};
+      if (m0.date) {
+        $date.value = m0.date;
+        $variant.innerHTML = `<option value="__new__">Crear nueva</option>`;
+        const sessionsByDate = await listSessionsForCourseDate(evalId, m0.date);
+        sessionsByDate.forEach(s=>{
+          const isClosed = (s.formaCurso||"").toLowerCase()==="cerrado" || s.id.includes("_cerrado_");
+          const label = isClosed ? `${m0.date} · cerrado` : `${m0.date} · abierto`;
+          $variant.innerHTML += `<option value="${s.id}">${label}</option>`;
+        });
+      }
+
+      // ocultar Empresa si forma=abierto al entrar (sin tener que cambiar nada)
+      const isCerrado = $forma.value === "cerrado";
+      $empresa.parentElement.style.display = isCerrado ? "" : "none";
     });
 
     // ==== Llenar el resumen de evaluación (botones) ====
@@ -1439,4 +1522,5 @@ async function removeParticipantFromSession(sessionId, user) {
     await removeFrom("inscripciones");
     await removeFrom("inscriptions"); // legado
   }
+
 
