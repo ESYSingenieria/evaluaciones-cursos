@@ -152,6 +152,41 @@ async function listSessionsForCourseDate(courseKey, date) {
   return [...map.values()];
 }
 
+// Lee un sessionId desde 'inscripciones' (nuevo) o 'inscriptions' (legado)
+async function fetchSessionDocById(sessionId){
+  let doc = await db.collection("inscripciones").doc(sessionId).get();
+  if (!doc.exists) {
+    doc = await db.collection("inscriptions").doc(sessionId).get();
+  }
+  return doc.exists ? (doc.data() || null) : null;
+}
+
+// Llena el <select class="meta-variant"> con TODAS las sesiones del courseKey (sin pedir fecha)
+async function refreshAllVariants($variant, $empresaDL, courseKey){
+  $variant.innerHTML = `<option value="__new__">Crear nuevo</option>`;
+  if ($empresaDL) $empresaDL.innerHTML = "";
+  const sessions = await listSessionsForCourse(courseKey); // ya mezcla ES+EN
+
+  const empresas = new Set();
+  const vistos   = new Set();
+
+  sessions.forEach(s=>{
+    if (vistos.has(s.id)) return; vistos.add(s.id);
+
+    const date     = s.courseDate || dateFromSessionId(s.id) || "(sin fecha)";
+    const isClosed = (String(s.formaCurso||"").toLowerCase()==="cerrado") || s.id.includes("_cerrado_");
+    const empresa  = s.empresaSolicitante || (isClosed ? s.id.split("_").slice(3).join("_").replace(/-/g," ") : "");
+    const label    = isClosed ? `${date} · cerrado${empresa?` · ${empresa}`:""}` : `${date} · abierto`;
+
+    $variant.innerHTML += `<option value="${s.id}">${label}</option>`;
+    if (isClosed && empresa) empresas.add(empresa);
+  });
+
+  if ($empresaDL){
+    [...empresas].forEach(e=>{ $empresaDL.innerHTML += `<option value="${e}"></option>`; });
+  }
+}
+
 // Extra: obtener fecha YYYY-MM-DD desde un sessionId
 const dateFromSessionId = (id = "") => (id.match(/\d{4}-\d{2}-\d{2}/) || [])[0] || "";
 
@@ -264,7 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
             + fechas.map(f=>`<option value="${f}">${f}</option>`).join("");
 
           // refrescar variantes para la fecha ya guardada (si existe)
-          const metaByEval = (allUsers.find(x=>x.id===u.id)?.assignedCoursesMeta)||{};
+          const metaByEval = (allUsers.find(x=>x.id===uid)?.assignedCoursesMeta)||{};
           const m0 = metaByEval[evalId] || {};
           if (m0.date) {
             $date.value = m0.date;
@@ -433,8 +468,6 @@ document.addEventListener('DOMContentLoaded', () => {
             <div>
               <label style="font-size:12px;color:#444;">Fecha del curso</label>
               <input type="date" class="meta-date" />
-              <small class="muted">O elige existente:</small>
-              <select class="meta-date-existing"><option value="">(cargar…)</option></select>
             </div>
             <div>
               <label style="font-size:12px;color:#444;">Cursos Existentes</label>
@@ -486,27 +519,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
       cb.addEventListener("change", async ()=>{
         grid.classList.toggle("hidden", !cb.checked);
-        if (cb.checked) {
-          const sessions = await listSessionsForCourse(evalId);
-          const fechas = [...new Set(sessions.map(s => s.courseDate || dateFromSessionId(s.id)))].filter(Boolean).sort();
-          $dateExisting.innerHTML = `<option value="">(ninguna)</option>` + fechas.map(f=>`<option value="${f}">${f}</option>`).join("");
-          updatePriceMode();
-        }
+        if (!cb.checked) return;
+
+        // 1) Llenar inmediatamente "Cursos existentes" (sin pedir fecha)
+        await refreshAllVariants($variant, $empresaDL, evalId);
+
+        // 2) Llenar "fechas existentes" (si decides mantener ese combo)
+        const sessions = await listSessionsForCourse(evalId);
+        const fechas = [...new Set(sessions.map(s => s.courseDate || dateFromSessionId(s.id)))]
+                        .filter(Boolean).sort();
+        $dateExisting.innerHTML = `<option value="">(ninguna)</option>` + fechas.map(f=>`<option value="${f}">${f}</option>`).join("");
+
+        // 3) Mostrar/ocultar Empresa según forma actual
+        $empresa.parentElement.style.display = ($forma.value === "cerrado") ? "" : "none";
+
+        updatePriceMode();
       });
 
-      async function refreshVariantsForDate(courseKey, date) {
-        $variant.innerHTML = `<option value="__new__">Crear nueva</option>`;
-        $empresaDL.innerHTML = "";
-        if (!date) return;
-        const sessions = await listSessionsForCourseDate(courseKey, date);
-        const empresas = new Set();
-        sessions.forEach(s=>{
-          const isClosed = (s.formaCurso||"").toLowerCase()==="cerrado" || s.id.includes("_cerrado_");
-          const label = isClosed ? `${date} · cerrado · ${s.empresaSolicitante||s.id.split("_").slice(3).join("_")}` : `${date} · abierto`;
-          $variant.innerHTML += `<option value="${s.id}">${label}</option>`;
-          if (isClosed && s.empresaSolicitante) empresas.add(s.empresaSolicitante);
-        });
-        [...empresas].forEach(e=>{ $empresaDL.innerHTML += `<option value="${e}"></option>`; });
+      // Al elegir una sesión existente: sincroniza fecha/forma/empresa y precio
+      async function syncFromVariant(){
+        const id = ($variant.value !== "__new__") ? $variant.value : "";
+        if (!id) return;
+
+        // A) fecha desde el sessionId o doc
+        const dId = dateFromSessionId(id);
+        if (dId) $date.value = dId;
+
+        // B) leer doc (ES->EN) para forma/empresa y bloqueo de precio
+        const data = await fetchSessionDocById(id) || {};
+        if (data.formaCurso) $forma.value = String(data.formaCurso).toLowerCase();
+        if ((String(data.formaCurso||"").toLowerCase() === "cerrado") && data.empresaSolicitante){
+          $empresa.value = data.empresaSolicitante;
+        }
+
+        // C) visibilidad empresa
+        const isCerrado = ($forma.value === "cerrado") || id.includes("_cerrado_");
+        $empresa.parentElement.style.display = isCerrado ? "" : "none";
+
+        updatePriceMode();
       }
 
       function updatePriceMode(){
@@ -518,17 +568,10 @@ document.addEventListener('DOMContentLoaded', () => {
           ? "Se fija una sola vez (primer inscrito) y luego queda bloqueado."
           : "Puedes escribir o usar el sugerido del curso.";
 
-        const varIsClosed = selectedSessionId.includes("_cerrado_");
-        $empresa.parentElement.style.display = (isCerrado || varIsClosed) ? "" : "none";
-
         if (selectedSessionId) {
-          db.collection("inscripciones").doc(selectedSessionId).get().then(async doc => {
-            let data = doc.exists ? (doc.data() || {}) : null;
-            if (!data) {
-              const doc2 = await db.collection("inscriptions").doc(selectedSessionId).get();
-              data = doc2.exists ? (doc2.data() || {}) : {};
-            }
-            if ((data.formaCurso || "").toLowerCase() === "cerrado") {
+          fetchSessionDocById(selectedSessionId).then(data=>{
+            data = data || {};
+            if (String(data.formaCurso||"").toLowerCase() === "cerrado") {
               $precio.value = data.totalPagado || "";
               $precio.disabled = true;
               $precioSug.disabled = true;
@@ -544,11 +587,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
+      // Eventos
       $precioSug.addEventListener("change", ()=>{ if ($precioSug.value) $precio.value = $precioSug.value; });
-      $dateExisting.addEventListener("change", async ()=>{ if ($dateExisting.value) $date.value = $dateExisting.value; await refreshVariantsForDate(evalId, $date.value); updatePriceMode(); });
-      $date.addEventListener("change", async ()=>{ $date.value = toYYYYMMDD($date.value); await refreshVariantsForDate(evalId, $date.value); updatePriceMode(); });
-      $variant.addEventListener("change", updatePriceMode);
-      $forma.addEventListener("change", updatePriceMode);
+      $variant.addEventListener("change", syncFromVariant);
+      $forma.addEventListener("change", ()=>{
+        $empresa.parentElement.style.display = ($forma.value === "cerrado") ? "" : "none";
+        updatePriceMode();
+      });
+      $dateExisting.addEventListener("change", async ()=>{
+        if ($dateExisting.value) $date.value = $dateExisting.value;
+      });
+      $date.addEventListener("change", ()=>{ $date.value = toYYYYMMDD($date.value); });
     });
 
     // ── 4) Mostrar el modal ──
@@ -598,10 +647,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Participante
         const participant = {
-          name: updates.name || allUsers.find(x => x.id === uid).name || "",
-          rut: updates.rut || allUsers.find(x => x.id === uid).rut || "",
-          company: updates.company || allUsers.find(x => x.id === uid).company || "",
-          customID: updates.customID || allUsers.find(x => x.id === uid).customID || "",
+          name,
+          rut,
+          company,
+          customID,
           price: (forma === "abierto") ? priceInput : 0
         };
 
@@ -948,8 +997,6 @@ function loadAllUsers() {
             <div>
               <label style="font-size:12px;color:#444;">Fecha del curso</label>
               <input type="date" class="meta-date" value="${m.date||""}" />
-              <small class="muted">O elige existente:</small>
-              <select class="meta-date-existing"><option value="">(cargar…)</option></select>
             </div>
 
             <div>
@@ -1052,9 +1099,9 @@ function loadAllUsers() {
         $empresa.parentElement.style.display = (isCerrado || varIsClosed) ? "" : "none";
 
         if (selectedSessionId) {
-          db.collection("inscriptions").doc(selectedSessionId).get().then(doc=>{
-            const data = doc.data() || {};
-            if (data.formaCurso === "cerrado") {
+          fetchSessionDocById(selectedSessionId).then(data=>{
+            data = data || {};
+            if (String(data.formaCurso||"").toLowerCase() === "cerrado") {
               $precio.value = data.totalPagado || "";
               $precio.disabled = true;
               $precioSug.disabled = true;
@@ -1522,5 +1569,6 @@ async function removeParticipantFromSession(sessionId, user) {
     await removeFrom("inscripciones");
     await removeFrom("inscriptions"); // legado
   }
+
 
 
