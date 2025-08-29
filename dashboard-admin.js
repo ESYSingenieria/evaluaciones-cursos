@@ -1709,8 +1709,8 @@ async function removeParticipantFromSession(sessionId, user) {
     }
     await removeFrom("inscripciones");
     await removeFrom("inscriptions"); // legado
-  };
-}
+  }
+
 
 // Lee objeto attendance del participante dentro de la sesión
 async function readAttendanceFromSession(sessionId, user) {
@@ -1755,6 +1755,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
