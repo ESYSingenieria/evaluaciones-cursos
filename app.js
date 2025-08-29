@@ -297,88 +297,94 @@ const loadEvaluations = async () => {
     try {
         const userDoc = await db.collection('users').doc(user.uid).get();
         const assignedEvaluations = userDoc.data().assignedEvaluations || [];
+        const meta = userDoc.data().assignedCoursesMeta || {};
+        const myCID = userDoc.data().customID || "";
+        const myRUT = userDoc.data().rut || "";
+
 
         const snapshot = await db.collection('evaluations').get();
-        evaluationsList.innerHTML = ''; // Limpiar la lista
+        evaluationsList.innerHTML = '';
 
-        snapshot.forEach(doc => {
-            if (assignedEvaluations.includes(doc.id)) {
-                const evaluation = doc.data();
-                console.log(`Evaluación: ${evaluation.title}, isLocked: ${evaluation.isLocked}`); // Depuración
+        for (const doc of snapshot.docs) {
+          if (!assignedEvaluations.includes(doc.id)) continue;
 
-                // Asegurarse de que isLocked esté definido
-                const isLocked = evaluation.isLocked === true;
+          const evaluation = doc.data();
 
-                // Crear contenedor para la evaluación
-                const div = document.createElement('div');
-                div.className = "evaluation-item";
+          // === Nuevo: bloqueo por usuario-curso leyendo inscripciones ===
+          // Busca la meta que apunte a esta evaluación (por evaluationId o courseKey)
+          const m = Object.values(meta).find(mm => mm?.evaluationId === doc.id || mm?.courseKey === doc.id) || null;
+          let isLocked = true; // default: bloqueada
 
-                // Imagen de portada
-                const img = document.createElement('img');
-                img.src = evaluation.imageURL || 'default-image.jpg'; // Imagen por defecto si no está configurada
-                img.alt = `Portada de ${evaluation.title}`;
-                img.className = 'evaluation-image';
-                img.style.borderRadius = "5px";
-                img.style.marginBottom = "10px";
-
-                // Título del curso
-                const title = document.createElement('h3');
-                title.textContent = evaluation.title;
-                title.style.marginBottom = "10px";
-
-                // Crear un contenedor para los botones
-                const buttonContainer = document.createElement('div');
-                buttonContainer.style.display = "flex";
-                buttonContainer.style.justifyContent = "center";
-                buttonContainer.style.gap = "10px"; // Reduce la separación entre botones
-                buttonContainer.style.marginTop = "-6px"; // Ajusta la posición más abajo
-                buttonContainer.style.position = "relative";
-                buttonContainer.style.top = "-2px"; // Mueve los botones ligeramente hacia abajo
-
-                // Botón para abrir el manual
-                const manualButton = document.createElement('button');
-                manualButton.textContent = "Abrir Manual";
-                manualButton.style.padding = "10px 20px";
-                manualButton.style.backgroundColor = "#007BFF";
-                manualButton.style.color = "white";
-                manualButton.style.border = "none";
-                manualButton.style.borderRadius = "5px";
-                manualButton.style.cursor = "pointer";
-                manualButton.addEventListener("click", () => {
-                    const manualUrl = `manual.html?evaluationId=${doc.id}`;
-                    window.open(manualUrl, "_blank");
-                });
-
-                // Botón para iniciar evaluación
-                const startButton = document.createElement('button');
-                startButton.textContent = "Comenzar Evaluación";
-                startButton.disabled = isLocked; // Deshabilitar si está bloqueada
-                startButton.style.padding = "10px 20px";
-                startButton.style.backgroundColor = isLocked ? "#ccc" : "#28a745"; // Gris si está bloqueada
-                startButton.style.color = isLocked ? "#666" : "white";
-                startButton.style.border = "none";
-                startButton.style.borderRadius = "5px";
-                startButton.style.cursor = isLocked ? "not-allowed" : "pointer";
-
-                if (!isLocked) {
-                    startButton.addEventListener("click", () => {
-                        window.location.href = `evaluation.html?id=${doc.id}`;
-                    });
-                }
-
-                // Agregar los botones al contenedor
-                buttonContainer.appendChild(manualButton);
-                buttonContainer.appendChild(startButton);
-
-                // Agregar elementos al contenedor principal
-                div.appendChild(img); // Imagen
-                div.appendChild(title); // Título
-                div.appendChild(buttonContainer); // Contenedor de botones
-
-                // Agregar el contenedor al listado
-                evaluationsList.appendChild(div);
+          if (m?.sessionId) {
+            const sSnap = await db.collection('inscripciones').doc(m.sessionId).get();
+            if (sSnap.exists) {
+              const arr = Array.isArray(sSnap.data().inscriptions) ? sSnap.data().inscriptions : [];
+              const me = arr.find(p => (myCID && p.customID === myCID) || (myRUT && p.rut === myRUT));
+              if (me && me.evaluationLocked === false) {
+                isLocked = false; // solo se desbloquea si explicitamente está en false
+              }
             }
-        });
+          }
+
+          // === (lo demás de tu render queda igual, solo usa isLocked de arriba)
+          const div = document.createElement('div');
+          div.className = "evaluation-item";
+
+          const img = document.createElement('img');
+          img.src = evaluation.imageURL || 'default-image.jpg';
+          img.alt = `Portada de ${evaluation.title}`;
+          img.className = 'evaluation-image';
+          img.style.borderRadius = "5px";
+          img.style.marginBottom = "10px";
+
+          const title = document.createElement('h3');
+          title.textContent = evaluation.title;
+          title.style.marginBottom = "10px";
+
+          const buttonContainer = document.createElement('div');
+          buttonContainer.style.display = "flex";
+          buttonContainer.style.justifyContent = "center";
+          buttonContainer.style.gap = "10px";
+          buttonContainer.style.marginTop = "-6px";
+          buttonContainer.style.position = "relative";
+          buttonContainer.style.top = "-2px";
+
+          const manualButton = document.createElement('button');
+          manualButton.textContent = "Abrir Manual";
+          manualButton.style.padding = "10px 20px";
+          manualButton.style.backgroundColor = "#007BFF";
+          manualButton.style.color = "white";
+          manualButton.style.border = "none";
+          manualButton.style.borderRadius = "5px";
+          manualButton.style.cursor = "pointer";
+          manualButton.addEventListener("click", () => {
+            const manualUrl = `manual.html?evaluationId=${doc.id}`;
+            window.open(manualUrl, "_blank");
+          });
+
+          const startButton = document.createElement('button');
+          startButton.textContent = "Comenzar Evaluación";
+          startButton.disabled = isLocked;
+          startButton.style.padding = "10px 20px";
+          startButton.style.backgroundColor = isLocked ? "#ccc" : "#28a745";
+          startButton.style.color = isLocked ? "#666" : "white";
+          startButton.style.border = "none";
+          startButton.style.borderRadius = "5px";
+          startButton.style.cursor = isLocked ? "not-allowed" : "pointer";
+
+          if (!isLocked) {
+            startButton.addEventListener("click", () => {
+              window.location.href = `evaluation.html?id=${doc.id}`;
+            });
+          }
+
+          buttonContainer.appendChild(manualButton);
+          buttonContainer.appendChild(startButton);
+          div.appendChild(img);
+          div.appendChild(title);
+          div.appendChild(buttonContainer);
+          evaluationsList.appendChild(div);
+        }
 
         if (evaluationsList.innerHTML === '') {
             evaluationsList.innerHTML = '<p>No tienes evaluaciones asignadas.</p>';
@@ -639,6 +645,27 @@ const loadEvaluation = async () => {
     if (!user) {
         window.location.href = 'index.html';
         return;
+    }
+    // Bloqueo por usuario-curso (evita apertura directa por URL)
+    const userDoc = await db.collection('users').doc(user.uid).get();
+    const meta = userDoc.data().assignedCoursesMeta || {};
+    const myCID = userDoc.data().customID || "";
+    const myRUT = userDoc.data().rut || "";
+
+    const m = Object.values(meta).find(mm => mm?.evaluationId === evaluationId || mm?.courseKey === evaluationId) || null;
+    let blocked = true;
+    if (m?.sessionId) {
+      const sSnap = await db.collection('inscripciones').doc(m.sessionId).get();
+      if (sSnap.exists) {
+        const arr = Array.isArray(sSnap.data().inscriptions) ? sSnap.data().inscriptions : [];
+        const me = arr.find(p => (myCID && p.customID === myCID) || (myRUT && p.rut === myRUT));
+        blocked = (me?.evaluationLocked !== false);
+      }
+    }
+    if (blocked) {
+      alert('Tu evaluación aún está bloqueada. Consulta con el instructor.');
+      window.location.href = 'dashboard.html';
+      return;
     }
 
     try {
