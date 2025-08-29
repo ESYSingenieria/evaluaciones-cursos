@@ -152,6 +152,26 @@ async function listSessionsForCourseDate(courseKey, date) {
   return [...map.values()];
 }
 
+// Rellena el <select class="meta-variant"> con sesiones que coincidan con la FECHA dada
+async function fillVariantsByDate($variant, $empresaDL, courseKey, date) {
+  $variant.innerHTML = `<option value="__new__">Crear nueva</option>`;
+  if ($empresaDL) $empresaDL.innerHTML = "";
+  if (!date) return;
+
+  const sessions = await listSessionsForCourseDate(courseKey, date); // busca en ES+EN
+  const empresas = new Set();
+
+  sessions.forEach(s => {
+    const isClosed = (String(s.formaCurso || "").toLowerCase() === "cerrado") || s.id.includes("_cerrado_");
+    const empresa  = s.empresaSolicitante || (isClosed ? s.id.split("_").slice(3).join("_").replace(/-/g, " ") : "");
+    const label    = isClosed ? `${date} · cerrado${empresa ? ` · ${empresa}` : ""}` : `${date} · abierto`;
+    $variant.innerHTML += `<option value="${s.id}">${label}</option>`;
+    if (isClosed && empresa) empresas.add(empresa);
+  });
+
+  if ($empresaDL) [...empresas].forEach(e => { $empresaDL.innerHTML += `<option value="${e}"></option>`; });
+}
+
 // Lee un sessionId desde 'inscripciones' (nuevo) o 'inscriptions' (legado)
 async function fetchSessionDocById(sessionId){
   let doc = await db.collection("inscripciones").doc(sessionId).get();
@@ -533,20 +553,11 @@ document.addEventListener('DOMContentLoaded', () => {
         grid.classList.toggle("hidden", !cb.checked);
         if (!cb.checked) return;
 
-        // 1) Llenar inmediatamente "Cursos existentes" (sin pedir fecha)
-        await refreshAllVariants($variant, $empresaDL, evalId);
+        // No cargar nada hasta que elijan FECHA
+        $variant.innerHTML = `<option value="__new__">Crear nuevo</option>`;
+        if ($empresaDL) $empresaDL.innerHTML = "";
 
-        // 2) Llenar "fechas existentes" (si decides mantener ese combo)
-        const sessions = await listSessionsForCourse(evalId);
-        const fechas = [...new Set(sessions.map(s => s.courseDate || dateFromSessionId(s.id)))]
-                        .filter(Boolean).sort();
-        if ($dateExisting) {
-          $dateExisting.innerHTML = `<option value="">(ninguna)</option>` + fechas.map(f=>`<option value="${f}">${f}</option>`).join("");
-        }
-
-        // 3) Mostrar/ocultar Empresa según forma actual
         $empresa.parentElement.style.display = ($forma.value === "cerrado") ? "" : "none";
-
         updatePriceMode();
       });
 
@@ -611,7 +622,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if ($dateExisting) $dateExisting.addEventListener("change", async ()=>{
         if ($dateExisting.value) $date.value = $dateExisting.value;
       });
-      if ($date) $date.addEventListener("change", ()=>{ $date.value = toYYYYMMDD($date.value); });
+      if ($date) $date.addEventListener("change", async ()=>{
+        $date.value = toYYYYMMDD($date.value);
+        await fillVariantsByDate($variant, $empresaDL, evalId, $date.value);
+        updatePriceMode();
+      });
     });
 
     // ── 4) Mostrar el modal ──
@@ -1102,21 +1117,6 @@ function loadAllUsers() {
       const $lblPrecio = grid.querySelector(".lbl-precio");
       const $precioHelp = grid.querySelector(".precio-help");
 
-      async function refreshVariantsForDate(courseKey, date) {
-        $variant.innerHTML = `<option value="__new__">Crear nueva</option>`;
-        $empresaDL.innerHTML = "";
-        if (!date) return;
-        const sessions = await listSessionsForCourseDate(courseKey, date);
-        const empresas = new Set();
-        sessions.forEach(s=>{
-          const isClosed = (s.formaCurso||"").toLowerCase()==="cerrado" || s.id.includes("_cerrado_");
-          const label = isClosed ? `${date} · cerrado · ${s.empresaSolicitante||s.id.split("_").slice(3).join("_")}` : `${date} · abierto`;
-          $variant.innerHTML += `<option value="${s.id}">${label}</option>`;
-          if (isClosed && s.empresaSolicitante) empresas.add(s.empresaSolicitante);
-        });
-        [...empresas].forEach(e=>{ $empresaDL.innerHTML += `<option value="${e}"></option>`; });
-      }
-
       function updatePriceMode() {
         const selectedSessionId = $variant.value !== "__new__" ? $variant.value : "";
         const isCerrado = $forma.value === "cerrado";
@@ -1164,15 +1164,17 @@ function loadAllUsers() {
 
       if ($dateExisting) $dateExisting.addEventListener("change", async ()=>{
         if ($dateExisting.value) $date.value = $dateExisting.value;
-        await refreshVariantsForDate(cb.value, $date.value);
+        await fillVariantsByDate($variant, $empresaDL, cb.value, $date.value);
         updatePriceMode();
       });
 
+
       if ($date) $date.addEventListener("change", async ()=>{
         $date.value = toYYYYMMDD($date.value);
-        await refreshVariantsForDate(cb.value, $date.value);
+        await fillVariantsByDate($variant, $empresaDL, cb.value, $date.value);
         updatePriceMode();
       });
+
 
       if ($variant) $variant.addEventListener("change", updatePriceMode);
       if ($forma)   $forma.addEventListener("change", updatePriceMode);
@@ -1188,6 +1190,7 @@ function loadAllUsers() {
       const $variant = grid.querySelector(".meta-variant");
       const $forma   = grid.querySelector(".meta-forma");
       const $empresa = grid.querySelector(".meta-empresa");
+      const $empresaDL = grid.querySelector(`datalist#dl_${u.id}_${evalId}`);
 
       // llenar fechas existentes
       const sessions = await listSessionsForCourse(evalId);
@@ -1202,14 +1205,9 @@ function loadAllUsers() {
       const m0 = (u.assignedCoursesMeta || {})[evalId] || {};
       if (m0.date) {
         $date.value = m0.date;
-        $variant.innerHTML = `<option value="__new__">Crear nueva</option>`;
-        const sessionsByDate = await listSessionsForCourseDate(evalId, m0.date);
-        sessionsByDate.forEach(s=>{
-          const isClosed = (s.formaCurso||"").toLowerCase()==="cerrado" || s.id.includes("_cerrado_");
-          const label = isClosed ? `${m0.date} · cerrado` : `${m0.date} · abierto`;
-          $variant.innerHTML += `<option value="${s.id}">${label}</option>`;
-        });
+        await fillVariantsByDate($variant, $empresaDL, evalId, m0.date);
       }
+
 
       // ocultar Empresa si forma=abierto al entrar (sin tener que cambiar nada)
       const isCerrado = $forma.value === "cerrado";
@@ -1609,6 +1607,7 @@ async function removeParticipantFromSession(sessionId, user) {
     await removeFrom("inscripciones");
     await removeFrom("inscriptions"); // legado
   }
+
 
 
 
