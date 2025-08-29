@@ -1360,6 +1360,111 @@ function loadAllUsers() {
         warn.textContent = "Asigne fecha del curso (en edición) para habilitar asistencia.";
         evalDiv.appendChild(warn);
       }
+
+      // === ASISTENCIA + BLOQUEO POR USUARIO-CURSO ===
+      (async () => {
+        const metaAll = u.assignedCoursesMeta || {};
+        // Meta para este ev (permite courseKey o evaluationId)
+        const m = Object.values(metaAll).find(mm => mm?.evaluationId === ev || mm?.courseKey === ev) || null;
+        if (!m || !m.sessionId || !m.date) {
+          // sin sessionId/fecha -> no pintamos control
+          return;
+        }
+
+        const timeEval = (allEvaluations[ev]?.timeEvaluation) || "8 HRS.";
+        const hours = parseHoursFromTimeEval(timeEval);
+        const slots = buildAttendanceSlots(m.date, hours); // [{key,label},...]
+
+        // contenedor
+        const ctrl = document.createElement("div");
+        ctrl.style.marginTop = "6px";
+        ctrl.style.padding = "8px";
+        ctrl.style.background = "#f6f8fa";
+        ctrl.style.border = "1px solid #e3e5e7";
+        ctrl.style.borderRadius = "6px";
+
+        // Título fila
+        const h = document.createElement("div");
+        h.innerHTML = `<strong>Asistencia (${slots.length} bloques • ${hours} hrs)</strong>`;
+        ctrl.appendChild(h);
+
+        // Fila de checkboxes
+        const rowAtt = document.createElement("div");
+        rowAtt.style.display = "flex";
+        rowAtt.style.flexWrap = "wrap";
+        rowAtt.style.gap = "10px";
+        rowAtt.style.marginTop = "6px";
+        ctrl.appendChild(rowAtt);
+
+        // Estado inicial desde inscripciones
+        const { participant } = await readParticipantState(m.sessionId, u);
+        const att = participant?.attendance || {};
+        let locked = (participant?.evaluationLocked !== false); // true si undefined
+
+        // Checkboxes
+        const requiredKeys = slots.map(s => s.key);
+        slots.forEach(s => {
+          const lab = document.createElement("label");
+          lab.style.display = "inline-flex";
+          lab.style.alignItems = "center";
+          lab.style.gap = "6px";
+
+          const chk = document.createElement("input");
+          chk.type = "checkbox";
+          chk.checked = !!att[s.key];
+          chk.addEventListener("change", async () => {
+            await setParticipantAttendanceFlag(m.sessionId, u, s.key, chk.checked, requiredKeys);
+            // refresca lock y texto
+            const st = await readParticipantState(m.sessionId, u);
+            const p2 = st.participant || {};
+            locked = (p2.evaluationLocked !== false);
+            lockBtn.textContent = locked ? "Desbloquear evaluación" : "Bloquear evaluación";
+            lockInfo.textContent = locked ? "Estado: BLOQUEADA" : "Estado: DESBLOQUEADA";
+            lockInfo.style.color = locked ? "#b00020" : "#0a7a29";
+          });
+
+          const span = document.createElement("span");
+          span.textContent = s.label;
+
+          lab.appendChild(chk);
+          lab.appendChild(span);
+          rowAtt.appendChild(lab);
+        });
+
+        // Botón lock/unlock
+        const tools = document.createElement("div");
+        tools.style.display = "flex";
+        tools.style.alignItems = "center";
+        tools.style.gap = "10px";
+        tools.style.marginTop = "8px";
+
+        const lockBtn = document.createElement("button");
+        lockBtn.className = "btn-lock";
+        lockBtn.style.background = "#0d6efd";
+        lockBtn.style.color = "#fff";
+        lockBtn.style.border = "none";
+        lockBtn.style.borderRadius = "6px";
+        lockBtn.style.padding = "6px 10px";
+        lockBtn.textContent = locked ? "Desbloquear evaluación" : "Bloquear evaluación";
+        lockBtn.addEventListener("click", async () => {
+          locked = !locked; // invertimos
+          await setParticipantEvaluationLocked(m.sessionId, u, locked);
+          lockBtn.textContent = locked ? "Desbloquear evaluación" : "Bloquear evaluación";
+          lockInfo.textContent = locked ? "Estado: BLOQUEADA" : "Estado: DESBLOQUEADA";
+          lockInfo.style.color = locked ? "#b00020" : "#0a7a29";
+        });
+
+        const lockInfo = document.createElement("span");
+        lockInfo.textContent = locked ? "Estado: BLOQUEADA" : "Estado: DESBLOQUEADA";
+        lockInfo.style.fontWeight = "600";
+        lockInfo.style.color = locked ? "#b00020" : "#0a7a29";
+
+        tools.appendChild(lockBtn);
+        tools.appendChild(lockInfo);
+        ctrl.appendChild(tools);
+
+        evalDiv.appendChild(ctrl);
+      })();
       
       summaryContainer.appendChild(evalDiv);
     });
@@ -1654,7 +1759,7 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
       const data = snap.exists ? snap.data() : null;
 
       if (!data) {
-        const arr = [participant];
+        const arr = [ { ...participant, evaluationLocked: true, attendance: {} } ];
         const baseDoc = {
           courseKey,
           courseDate: date,
@@ -1673,7 +1778,11 @@ async function generateCertificateForUser(uid, evaluationID, score, approvalDate
         (p.customID && p.customID === participant.customID) ||
         (p.rut && p.rut === participant.rut)
       );
-      if (idx >= 0) arr[idx] = { ...arr[idx], ...participant }; else arr.push(participant);
+      if (idx >= 0) arr[idx] = { ...arr[idx], ...participant };
+      else {
+        arr.push({ ...participant, evaluationLocked: true, attendance: {} });
+      }
+
 
       const totalInscritos = arr.length;
       let totalPagado;
@@ -1711,6 +1820,100 @@ async function removeParticipantFromSession(sessionId, user) {
     await removeFrom("inscriptions"); // legado
   }
 
+// === Helpers de asistencia y bloqueo (PEGA DESPUÉS de removeParticipantFromSession) ===
+
+function parseHoursFromTimeEval(s = "") {
+  const m = String(s).match(/\d+/);
+  return m ? Math.max(1, parseInt(m[0], 10)) : 8; // fallback 8
+}
+function addDays(iso, n) {
+  const d = new Date(iso); d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0,10);
+}
+// Devuelve slots de 4 horas: AM/PM por día. count = ceil(hours/4)
+function buildAttendanceSlots(baseDate, hours) {
+  const blocks = Math.max(1, Math.ceil(hours / 4));
+  const out = [];
+  for (let i = 0; i < blocks; i++) {
+    const dayOffset = Math.floor(i / 2);
+    const ampm = (i % 2 === 0) ? "AM" : "PM";
+    const date = addDays(baseDate, dayOffset);
+    const key = `${date}_${ampm}`;
+    const label = `[${date}], ${ampm}`;
+    out.push({ key, label });
+  }
+  return out;
+}
+
+// Lee el participante dentro de un doc de sesión
+function findParticipant(arr = [], user = {}) {
+  const cid = (user.customID || "").trim();
+  const rut = (user.rut || "").trim();
+  return arr.find(p => (cid && p.customID === cid) || (rut && p.rut === rut));
+}
+
+// Actualiza UNA casilla de asistencia y, si todas están OK, auto-desbloquea
+async function setParticipantAttendanceFlag(sessionId, user, slotKey, value, requiredKeys = []) {
+  const ref = db.collection("inscripciones").doc(sessionId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const data = snap.data();
+    const arr = Array.isArray(data.inscriptions) ? [...data.inscriptions] : [];
+    const idx = arr.findIndex(p =>
+      (user.customID && p.customID === user.customID) ||
+      (user.rut && p.rut === user.rut)
+    );
+    if (idx < 0) return;
+
+    const att = { ...(arr[idx].attendance || {}) };
+    att[slotKey] = !!value;
+
+    // ¿todas marcadas?
+    const allOk = requiredKeys.length
+      ? requiredKeys.every(k => att[k] === true)
+      : false;
+
+    // No pisamos manual si el admin ya lo desbloqueó, solo auto-desbloqueamos si allOk
+    const currentLocked = (arr[idx].evaluationLocked !== false); // true si undefined
+    const newLocked = allOk ? false : currentLocked;
+
+    arr[idx] = {
+      ...arr[idx],
+      attendance: att,
+      evaluationLocked: newLocked
+    };
+    tx.update(ref, { inscriptions: arr });
+  });
+}
+
+// Setea bloqueo/desbloqueo manual del admin
+async function setParticipantEvaluationLocked(sessionId, user, locked) {
+  const ref = db.collection("inscripciones").doc(sessionId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const data = snap.data();
+    const arr = Array.isArray(data.inscriptions) ? [...data.inscriptions] : [];
+    const idx = arr.findIndex(p =>
+      (user.customID && p.customID === user.customID) ||
+      (user.rut && p.rut === user.rut)
+    );
+    if (idx < 0) return;
+    arr[idx] = { ...arr[idx], evaluationLocked: !!locked };
+    tx.update(ref, { inscriptions: arr });
+  });
+}
+
+// Lee participante + su bloqueo/asistencia (para pintar UI)
+async function readParticipantState(sessionId, user) {
+  const snap = await db.collection("inscripciones").doc(sessionId).get();
+  if (!snap.exists) return { participant: null, data: null };
+  const data = snap.data();
+  const arr = Array.isArray(data.inscriptions) ? data.inscriptions : [];
+  const participant = findParticipant(arr, user) || null;
+  return { participant, data };
+}
 
 // Lee objeto attendance del participante dentro de la sesión
 async function readAttendanceFromSession(sessionId, user) {
@@ -1755,6 +1958,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
