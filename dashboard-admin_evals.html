@@ -1,115 +1,191 @@
-<!-- dashboard-admin.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <title>Panel de Administración</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Panel de Evaluaciones - Plataforma de Cursos</title>
 
-  <style>
-    header { display:flex; justify-content:center; align-items:center; padding:10px 20px; background:#fff; }
-    .logo { max-width:200px; height:auto; }
-
-    .dashboard-container { width:100%; margin:0; padding:0 16px; box-sizing:border-box; }
-    #usersList { width:100%; margin:0; padding:0; box-sizing:border-box; }
-
-    #filtersBar{
-      width:100%; background:#fff; border:1px solid #ddd; border-radius:6px; box-shadow:0 2px 4px rgba(0,0,0,.1);
-      padding:16px; margin:16px 0; display:flex; flex-wrap:wrap; gap:12px; justify-content:flex-start; align-items:center;
-    }
-    #filtersBar input, #filtersBar select{
-      padding:8px 12px; border:1px solid #ccc; border-radius:4px; background:#f9f9f9; font-size:14px;
-    }
-    #filtersBar input:focus, #filtersBar select:focus{
-      outline:none; border-color:#007bff; box-shadow:0 0 0 2px rgba(0,123,255,.2);
-    }
-
-    .user-item{ width:100%; margin:0 0 16px 0; padding:16px; background:#fff; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,.05); position:relative; padding-top:40px; }
-    .user-item .edit-user-btn{ position:absolute; top:16px; right:16px; background:#007bff; color:#fff; border:none; padding:8px; border-radius:4px; cursor:pointer; }
-    .user-item .save-user-btn{ position:absolute; top:16px; right:56px; }
-    .user-item .cancel-user-btn{ position:absolute; top:16px; right:96px; }
-    .user-item button{
-      margin:4px 8px 4px 0; padding:8px 12px; border:none; border-radius:4px; background:#007bff; color:#fff; cursor:pointer; white-space:nowrap; font-size:14px;
-    }
-    .user-item .delete-user-btn{ background:#dc3545; color:#fff; }
-    .user-item .delete-user-btn:hover{ background:#c82333; }
-
-    .evals-container{ display:flex; flex-direction:column; max-height:260px; overflow-y:auto; margin:12px 0; padding:4px; border:1px solid #ddd; border-radius:6px; }
-    .eval-option{ display:flex; align-items:center; gap:8px; padding:6px 8px; margin:6px 0; border-radius:4px; }
-    .eval-option input[type="checkbox"]{ margin:0 8px 0 0; }
-    .eval-item{ background:#f9f9f9; border:1px solid #e0e0e0; border-radius:6px; padding:12px 16px; margin:12px 0; }
-    .eval-grid{ display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:8px; }
-    .eval-grid > div label{ font-size:12px; color:#444; display:block; margin-bottom:4px; }
-    .muted{ color:#777; font-size:12px; }
-    .hidden{ display:none !important; }
-
-    #logoutContainer{ position:fixed; bottom:20px; right:20px; z-index:1000; }
-    #logoutButton{ padding:10px 20px; background:#ff4d4d; color:#fff; border:none; border-radius:5px; cursor:pointer; }
-
-    body.dark{ background:#121212; color:#eee; }
-    body.dark .user-item{ background:#1e1e1e; box-shadow:0 2px 6px rgba(0,0,0,.5); }
-    body.dark header{ background:#222; }
-
-    @media (max-width:768px){
-      header{ padding:8px 12px; }
-      .dashboard-container{ width:100%; padding:0 10px; }
-      #logoutContainer{ width:100%; }
-    }
-  </style>
-
-  <!-- Firebase SDKs (v8 compat) -->
+  <!-- Firebase SDKs v8 (mismos que usas en el panel de usuarios) -->
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
 
-  <!-- pdf-lib, fontkit, jsPDF -->
-  <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
-  <script src="https://unpkg.com/@pdf-lib/fontkit/dist/fontkit.umd.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- Conexión a TU proyecto (mismo config que ya usas) -->
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
+      authDomain: "plataforma-de-cursos-esys.firebaseapp.com",
+      projectId: "plataforma-de-cursos-esys",
+      storageBucket: "plataforma-de-cursos-esys.firebasestorage.app",
+      messagingSenderId: "950684050808",
+      appId: "1:950684050808:web:33d2ef70f2343642f4548d"
+    };
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+  </script>
 
-  <!-- Lógica -->
-  <script src="dashboard-admin.js" defer></script>
+  <style>
+    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial; background:#f4f6f8; color:#111; }
+    header{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px; background:#fff; border-bottom:1px solid #e5e7eb; }
+    .title{ font-size:22px; font-weight:800; }
+    .nav-actions{ display:flex; gap:10px; }
+    .btn{ border:none; border-radius:8px; padding:10px 14px; cursor:pointer; font-weight:600; }
+    .btn-primary{ background:#0d6efd; color:#fff; }
+    .btn-secondary{ background:#6c757d; color:#fff; }
+    .btn-danger{ background:#dc3545; color:#fff; }
+    .btn-outline{ background:#e9ecef; color:#111; }
+    .container{ max-width:1200px; margin:18px auto; padding:0 16px; }
+
+    .card{ background:#fff; border:2px solid #dfe3e8; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); padding:16px; }
+    .card h2{ margin:0 0 12px 0; }
+
+    .docbar{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+    .docbar input[type="text"]{ border:1px solid #ccc; border-radius:8px; padding:10px 12px; min-width:260px; background:#f9fafb; }
+
+    .grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    .full{ grid-column:1 / -1; }
+    .field{ display:flex; flex-direction:column; gap:6px; }
+    .field label{ font-weight:700; font-size:14px; }
+    .field input[type="text"],
+    .field input[type="number"],
+    .field textarea{ border:1px solid #ccc; border-radius:8px; padding:10px 12px; font-size:14px; background:#f9fafb; }
+    .field textarea{ min-height:120px; resize:vertical; }
+    .muted{ color:#6b7280; font-size:12px; }
+
+    .chip-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+    .chip-row input[type="text"]{ flex:1 1 auto; }
+    .small-btn{ padding:6px 10px; border:none; border-radius:6px; color:#fff; cursor:pointer; }
+    .small-add{ background:#198754; }
+    .small-del{ background:#dc3545; }
+
+    .q-card{ border:1px solid #e5e7eb; border-radius:10px; padding:12px; background:#f9fbff; margin:10px 0; }
+    .q-row{ display:flex; gap:8px; align-items:center; margin:8px 0; }
+    .q-row input[type="text"]{ flex:1 1 auto; }
+    .q-actions{ display:flex; gap:8px; }
+    .q-add{ background:#0d6efd; }
+    .q-del{ background:#fd7e14; }
+    .q-del-opt{ background:#dc3545; }
+
+    .mt-8{ margin-top:8px; }
+    .mt-12{ margin-top:12px; }
+    .mt-16{ margin-top:16px; }
+    .hidden{ display:none !important; }
+  </style>
 </head>
 <body>
   <header>
-    <a href="https://esys.cl/"><img src="logo.png" alt="Logo de la Empresa" class="logo" /></a>
+    <div class="title">Panel de Evaluaciones</div>
+    <div class="nav-actions">
+      <button class="btn btn-outline" id="btnGoUsers">Ir al Panel de Usuarios</button>
+      <button class="btn btn-secondary" id="btnSignOut">Cerrar Sesión</button>
+    </div>
   </header>
 
-  <h1>Panel de Administración - Plataforma de Cursos</h1>
+  <main class="container">
+    <section class="card">
+      <h2>Crear / Editar Evaluación</h2>
 
-  <div class="dashboard-container">
-    <!-- La barra de filtros se inyecta por JS aquí -->
-    <div id="usersList">Cargando usuarios…</div>
-  </div>
+      <div class="docbar">
+        <input id="docIdInput" type="text" placeholder="Nombre de documento (Firestore), ej: nfpa_70b_2023_v1" />
+        <button id="btnLoad" class="btn btn-outline">Cargar evaluación</button>
+        <button id="btnNew" class="btn btn-outline">Nueva</button>
+        <button id="btnSave" class="btn btn-primary">Guardar</button>
+      </div>
 
-  <!-- Botón “+ Usuario” flotante -->
-  <button id="createUserBtn"
-          style="position:fixed; bottom:80px; right:20px; background:#28a745; color:#fff; border:none;
-                 padding:12px 16px; border-radius:50%; font-size:20px; cursor:pointer; z-index:1000;">
-    +
-  </button>
+      <div class="grid">
+        <div class="field">
+          <label for="idInput">Identificador de Evaluación (ID)</label>
+          <input id="idInput" type="text" placeholder="02, 03, ...">
+        </div>
 
-  <!-- Formulario Crear Usuario -->
-  <div id="createUserForm"
-       style="display:none; position:fixed; top:10vh; left:50%; transform:translateX(-50%); background:#fff;
-              padding:24px; border:1px solid #ccc; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.2); z-index:1001; width:360px;">
-    <h3>Crear nuevo usuario</h3>
-    <input id="newEmail"    type="email" placeholder="Email" style="width:100%;margin:8px 0;padding:8px;" />
-    <input id="newPassword" type="text"   placeholder="Contraseña" value="123456" style="width:100%;margin:8px 0;padding:8px;" />
-    <input id="newName"     type="text"   placeholder="Nombre"  style="width:100%;margin:8px 0;padding:8px;" />
-    <input id="newRut"      type="text"   placeholder="RUT"     style="width:100%;margin:8px 0;padding:8px;" />
-    <input id="newCustomId" type="text"   placeholder="CustomID" style="width:100%;margin:8px 0;padding:8px;" disabled />
-    <input id="newCompany"  type="text"   placeholder="Empresa" style="width:100%;margin:8px 0;padding:8px;" />
+        <div class="field">
+          <label for="scoreInput">Puntaje de Aprobación (puntajeAprobacion)</label>
+          <input id="scoreInput" type="text" placeholder="92">
+        </div>
 
-    <label style="margin:8px 0 0; display:block;">Evaluaciones:</label>
-    <div id="newEvalsContainer" class="evals-container"><!-- checkboxes + metas por evaluación --></div>
+        <div class="field">
+          <label for="nameInput">Nombre (name)</label>
+          <input id="nameInput" type="text" placeholder="Norma para el Mantenimiento de Equipos Eléctricos - NFPA 70B 2023">
+        </div>
 
-    <div style="text-align:right;margin-top:12px;">
-      <button id="cancelCreateUser" style="margin-right:8px;">Cancelar</button>
-      <button id="saveCreateUser"   style="background:#28a745;color:#fff;">Crear</button>
-    </div>
-  </div>
+        <div class="field">
+          <label for="titleInput">Título (title)</label>
+          <input id="titleInput" type="text" placeholder="Norma para el Mantenimiento de Equipos Eléctricos - NFPA 70B 2023">
+        </div>
 
-  <div id="logoutContainer"><button id="logoutButton">Cerrar Sesión</button></div>
+        <div class="field full">
+          <label for="descInput">Descripción (description)</label>
+          <textarea id="descInput" placeholder="Esta insignia verifica que la persona ha demostrado..."></textarea>
+          <div class="muted">Explica claramente qué certifica esta evaluación.</div>
+        </div>
+
+        <div class="field">
+          <label for="manualUrlInput">Manual URL (manualURL)</label>
+          <input id="manualUrlInput" type="text" placeholder="https://esysingenieria.github.io/.../manual_NFPA_70B.v2.pdf">
+        </div>
+
+        <div class="field">
+          <label for="certificateTmplInput">Plantilla Certificado (certificateTemplate)</label>
+          <input id="certificateTmplInput" type="text" placeholder="plantillaGuido.pdf">
+        </div>
+
+        <div class="field">
+          <label for="imageUrlInput">Imagen Portada (imageURL)</label>
+          <input id="imageUrlInput" type="text" placeholder="Portada_NFPA70B.jpg">
+        </div>
+
+        <div class="field">
+          <label for="imageBadgeInput">Imagen Insignia (imageURL_badge)</label>
+          <input id="imageBadgeInput" type="text" placeholder="NFPA70B_2023_badge.png">
+        </div>
+
+        <div class="field">
+          <label for="isLockedInput">¿Bloqueada? (isLocked)</label>
+          <div class="q-row">
+            <input id="isLockedInput" type="checkbox">
+            <span class="muted">Marcado = true</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="lastDateInput">Última Fecha (lastDate)</label>
+          <input id="lastDateInput" type="number" placeholder="36">
+        </div>
+
+        <div class="field">
+          <label for="timeEvalInput">Duración texto (timeEvaluation)</label>
+          <input id="timeEvalInput" type="text" placeholder="16 HRS.">
+        </div>
+
+        <div class="field">
+          <label for="timeLimitInput">Tiempo límite segundos (timelimit)</label>
+          <input id="timeLimitInput" type="number" placeholder="3600">
+        </div>
+
+        <div class="field full">
+          <label>Criterios (criteria)</label>
+          <div id="criteriaList"></div>
+          <button id="btnAddCriterion" class="small-btn small-add mt-8" type="button">+ Agregar criterio</button>
+        </div>
+
+        <div class="field full">
+          <label>Normas (standards)</label>
+          <div id="standardsList"></div>
+          <button id="btnAddStandard" class="small-btn small-add mt-8" type="button">+ Agregar norma</button>
+        </div>
+
+        <div class="field full">
+          <label>Preguntas (questions)</label>
+          <div id="questionsList"></div>
+          <button id="btnAddQuestion" class="small-btn small-add mt-8" type="button">+ Agregar pregunta</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="dashboard-admin_evals.js" defer></script>
 </body>
 </html>
