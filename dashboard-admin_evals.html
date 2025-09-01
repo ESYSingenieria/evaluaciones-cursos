@@ -32,57 +32,41 @@
     *{ box-sizing:border-box; }
     body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial; background:var(--bg); color:#111; }
 
-    /* Header con logo centrado */
     header{ background:#fff; border-bottom:1px solid #e5e7eb; padding:16px 20px; }
     .logo-wrap{ display:flex; justify-content:center; align-items:center; }
     .logo{ max-height:56px; }
-
-    /* Título centrado en franja aparte */
     .hero{ display:flex; justify-content:center; align-items:center; background:#fff; padding:18px 12px; border-bottom:1px solid #e5e7eb; }
     .hero h1{ margin:0; font-size:28px; font-weight:800; }
 
     .container{ max-width:1280px; margin:16px auto; padding:0 16px; }
-
-    /* Grid de dos columnas */
     .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
     @media (max-width:1024px){ .grid-2{ grid-template-columns:1fr; } }
 
-    /* Listados (cards como usuarios) */
     .panel-card{ background:var(--card); border:2px solid var(--border); border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); padding:12px; }
     .panel-card h2{ margin:0 0 10px 0; font-size:18px; }
 
     .course-card{
       position:relative; background:#fff; border:2px solid var(--border); border-radius:10px;
       box-shadow:0 2px 6px rgba(0,0,0,.05); padding:16px; margin:0 0 12px 0;
-      /* deja espacio para los botones a la derecha y evita que los pisen */
-      padding-right:168px;
-      min-height:64px;
+      padding-right:168px; min-height:64px;
     }
     .course-title{ font-weight:800; margin:0 0 6px 0; line-height:1.25; }
     .meta{ color:var(--muted); font-size:13px; display:flex; flex-wrap:wrap; gap:6px; }
     .tag{ display:inline-block; background:#eef2ff; color:#1e40af; padding:2px 8px; border-radius:999px; font-size:12px; }
+    .actions{ position:absolute; top:12px; right:12px; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; max-width:150px; }
 
-    .actions{
-      position:absolute; top:12px; right:12px; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;
-      max-width:150px; /* por si se angosta, evita solaparse */
-    }
     .btn{ border:none; border-radius:8px; padding:8px 12px; cursor:pointer; font-weight:600; }
     .btn-sm{ padding:6px 10px; border-radius:6px; font-size:13px; }
     .btn-primary{ background:var(--primary); color:#fff; }
     .btn-danger{ background:var(--danger); color:#fff; }
     .btn-neutral{ background:var(--neutral); color:#fff; }
     .btn-outline{ background:#e9ecef; }
-
-    /* Barra superior de acciones globales */
     .top-actions{ display:flex; gap:8px; justify-content:flex-end; margin:8px 0 0 0; }
     .hidden{ display:none !important; }
 
-    /* Editor lateral (overlay) */
-    .drawer{
-      position:fixed; top:0; right:0; width:720px; max-width:100%; height:100%; background:#fff;
-      border-left:2px solid var(--border); box-shadow:-4px 0 16px rgba(0,0,0,.1);
-      transform:translateX(100%); transition:transform .25s ease; z-index:1000; overflow:auto;
-    }
+    .drawer{ position:fixed; top:0; right:0; width:720px; max-width:100%; height:100%; background:#fff;
+      border-left:2px solid var(--border); box-shadow:-4px 0 16px rgba(0,0,0,.1); transform:translateX(100%); transition:transform .25s ease;
+      z-index:1000; overflow:auto; }
     .drawer.open{ transform:translateX(0); }
     .drawer header{ position:sticky; top:0; background:#fff; z-index:2; display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid #e5e7eb; }
     .drawer .content{ padding:16px; }
@@ -95,14 +79,12 @@
     }
     .field textarea{ min-height:120px; resize:vertical; }
 
-    /* Chips/filas simples */
     .chip-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
     .chip-row input[type="text"]{ flex:1 1 auto; }
     .small-btn{ padding:6px 10px; border:none; border-radius:6px; color:#fff; cursor:pointer; }
     .small-add{ background:#198754; }
     .small-del{ background:var(--danger); }
 
-    /* Preguntas */
     .q-card{ border:1px solid #e5e7eb; border-radius:10px; padding:12px; background:#f9fbff; margin:10px 0; }
     .q-row{ display:flex; gap:8px; align-items:center; margin:8px 0; }
     .q-row input[type="text"]{ flex:1 1 auto; }
@@ -110,13 +92,12 @@
     .q-add{ background:var(--primary); }
     .q-del{ background:#fd7e14; }
     .q-del-opt{ background:var(--danger); }
+    .meta-help{ color:var(--muted); font-size:12px; }
   </style>
 </head>
 <body>
-  <!-- Logo centrado -->
   <header>
     <div class="logo-wrap">
-      <!-- usa el mismo logo del panel de usuarios -->
       <img class="logo" src="logo.png" alt="ESYS">
     </div>
     <div class="top-actions">
@@ -125,14 +106,12 @@
     </div>
   </header>
 
-  <!-- Título centrado -->
   <section class="hero">
     <h1>Panel de Evaluaciones</h1>
   </section>
 
   <main class="container">
     <div class="grid-2">
-      <!-- Izquierda: Cursos creados (oferta) -->
       <section class="panel-card">
         <h2>Cursos creados</h2>
         <div style="display:flex; gap:8px; margin:8px 0 12px 0;">
@@ -142,7 +121,6 @@
         <div id="createdList"></div>
       </section>
 
-      <!-- Derecha: Cursos realizados (histórico) -->
       <section class="panel-card">
         <h2>Cursos realizados</h2>
         <div style="display:flex; gap:8px; margin:8px 0 12px 0;">
@@ -164,94 +142,79 @@
     </header>
     <div class="content">
       <div class="field full">
-        <label for="docIdInput">Nombre de documento (Firestore)</label>
+        <label for="docIdInput">Nombre de Documento</label>
         <input id="docIdInput" type="text" placeholder="nfpa_70b_2023_v1">
-        <div class="meta">Se sanitiza automáticamente: sin tildes, minúsculas, sin espacios (._- permitidos).</div>
+        <div class="meta-help">Se sanitiza automáticamente: sin tildes, minúsculas, sin espacios (._- permitidos).</div>
       </div>
 
       <div class="grid">
         <div class="field">
-          <label for="idInput">Identificador de Evaluación (ID)</label>
+          <label for="idInput">Identificador de Curso</label>
           <input id="idInput" type="text" placeholder="02, 03, ...">
         </div>
 
         <div class="field">
-          <label for="scoreInput">Puntaje de Aprobación (puntajeAprobacion)</label>
+          <label for="scoreInput">Puntaje de Aprobación</label>
           <input id="scoreInput" type="text" placeholder="92">
         </div>
 
         <div class="field">
-          <label for="nameInput">Nombre (name)</label>
+          <label for="nameInput">Nombre de Curso</label>
           <input id="nameInput" type="text" placeholder="Norma para el Mantenimiento de Equipos Eléctricos - NFPA 70B 2023">
         </div>
 
-        <div class="field">
-          <label for="titleInput">Título (title)</label>
-          <input id="titleInput" type="text" placeholder="Norma para el Mantenimiento de Equipos Eléctricos - NFPA 70B 2023">
-        </div>
+        <!-- title eliminado visualmente (se igualará a nombre) -->
 
         <div class="field full">
-          <label for="descInput">Descripción (description)</label>
+          <label for="descInput">Descripción de Conocimientos Adquiridos (Descripción para página de verificación, comienza con "Esta insignia verifica.....")</label>
           <textarea id="descInput" placeholder="Esta insignia verifica que la persona ha demostrado..."></textarea>
         </div>
 
         <div class="field">
-          <label for="manualUrlInput">Manual URL (manualURL)</label>
-          <input id="manualUrlInput" type="text" placeholder="https://esysingenieria.github.io/.../manual_NFPA_70B.v2.pdf">
+          <label for="manualUrlInput">Nombre de Archivo del Manual (PDF)</label>
+          <input id="manualUrlInput" type="text" placeholder="manual_NFPA_70B.v2">
+          <div class="meta-help">Se antepone internamente: https://esysingenieria.github.io/evaluaciones-cursos/manuales-cursos/ y se agrega .pdf</div>
         </div>
 
         <div class="field">
-          <label for="certificateTmplInput">Plantilla Certificado (certificateTemplate)</label>
-          <input id="certificateTmplInput" type="text" placeholder="plantillaGuido.pdf">
+          <label for="certificateTmplInput">Nombre de Archivo de Plantilla Certificado (PDF)</label>
+          <input id="certificateTmplInput" type="text" placeholder="plantillaGuido">
+          <div class="meta-help">Se agrega automáticamente .pdf</div>
         </div>
 
         <div class="field">
-          <label for="imageUrlInput">Imagen Portada (imageURL)</label>
-          <input id="imageUrlInput" type="text" placeholder="Portada_NFPA70B.jpg">
+          <label for="imageUrlInput">Nombre de Archivo de Portada Curso (JPG)</label>
+          <input id="imageUrlInput" type="text" placeholder="Portada_NFPA70B">
+          <div class="meta-help">Se agrega automáticamente .jpg</div>
         </div>
 
         <div class="field">
-          <label for="imageBadgeInput">Imagen Insignia (imageURL_badge)</label>
-          <input id="imageBadgeInput" type="text" placeholder="NFPA70B_2023_badge.png">
+          <label for="imageBadgeInput">Nombre de Archivo de Imagen Insignia (PNG, para página de verificación)</label>
+          <input id="imageBadgeInput" type="text" placeholder="NFPA70B_2023_badge">
+          <div class="meta-help">Se agrega automáticamente .png</div>
         </div>
 
-        <div class="field">
-          <label for="isLockedInput">¿Bloqueada? (isLocked)</label>
-          <div class="q-row">
-            <input id="isLockedInput" type="checkbox">
-            <span class="meta">Marcado = true</span>
-          </div>
-        </div>
+        <!-- isLocked quitado; lastDate y timelimit ocultos (se fijan internamente: 36 y 3600) -->
 
         <div class="field">
-          <label for="lastDateInput">Última Fecha (lastDate)</label>
-          <input id="lastDateInput" type="number" placeholder="36">
-        </div>
-
-        <div class="field">
-          <label for="timeEvalInput">Duración texto (timeEvaluation)</label>
-          <input id="timeEvalInput" type="text" placeholder="16 HRS.">
-        </div>
-
-        <div class="field">
-          <label for="timeLimitInput">Tiempo límite segundos (timelimit)</label>
-          <input id="timeLimitInput" type="number" placeholder="3600">
+          <label for="timeHoursInput">Duración Curso (Tiempo en hrs.)</label>
+          <input id="timeHoursInput" type="number" placeholder="16">
         </div>
 
         <div class="field full">
-          <label>Criterios (criteria)</label>
+          <label>Criterios de Aprobación (para página de verificación)</label>
           <div id="criteriaList"></div>
           <button id="btnAddCriterion" class="small-btn small-add" type="button">+ Agregar criterio</button>
         </div>
 
         <div class="field full">
-          <label>Normas (standards)</label>
+          <label>Normas Abordadas en el Curso (para página de verificación)</label>
           <div id="standardsList"></div>
           <button id="btnAddStandard" class="small-btn small-add" type="button">+ Agregar norma</button>
         </div>
 
         <div class="field full">
-          <label>Preguntas (questions)</label>
+          <label>Preguntas</label>
           <div id="questionsList"></div>
           <button id="btnAddQuestion" class="small-btn small-add" type="button">+ Agregar pregunta</button>
         </div>
