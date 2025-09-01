@@ -26,13 +26,27 @@ function versionFromDocId(docId){
 function stripPrefixAndExt(url, prefix, ext){
   if(!url) return '';
   let s = url;
-  if(prefix && s.startsWith(prefix)) s = s.slice(prefix.length);
+  if(prefix && s.startsWith(prefix)) s = s.slice(0+prefix.length);
   if(ext && s.toLowerCase().endsWith(ext.toLowerCase())) s = s.slice(0, -ext.length);
   return s;
 }
 function fmtDate(d){
   if(!d) return 's/f';
   try { return new Date(d).toLocaleDateString(); } catch { return 's/f'; }
+}
+function parseDateAny(v){
+  if(!v) return null;
+  if (v.toDate) return v.toDate();      // Firestore Timestamp
+  if (v instanceof Date) return v;
+  if (typeof v === 'number') return new Date(v);
+  if (typeof v === 'string') {
+    // "YYYY-MM-DD"
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.trim());
+    if (m) return new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00`);
+    const d = new Date(v);
+    if (!isNaN(d)) return d;
+  }
+  return null;
 }
 
 // ===== Render de tarjetas =====
@@ -89,7 +103,7 @@ async function loadCreatedCourses(){
       evalNameByKey[docId] = data.title || data.name || docId;
     });
     renderCreatedList();
-    await loadHistoryCourses(); // ahora que tenemos el mapa de nombres, traemos realizados
+    await loadHistoryCourses(); // ahora que tenemos el mapa, traemos realizados
   }catch(e){
     console.error(e); list.innerHTML = 'Error al cargar evaluaciones.';
   }
@@ -122,20 +136,28 @@ async function loadHistoryCourses(){
   const list = $('#doneList'); list.innerHTML = 'Cargando...';
   const items = [];
   try{
-    const snap = await firebase.firestore().collection('inscripciones').orderBy('date','desc').limit(300).get().catch(()=>null);
-    if(snap && !snap.empty){
+    // Trae de 'inscripciones' y también de 'inscriptions' si existiera
+    const colNames = ['inscripciones','inscriptions'];
+    for (const col of colNames){
+      /* eslint-disable no-await-in-loop */
+      const snap = await firebase.firestore().collection(col).get().catch(()=>null);
+      if(!snap || snap.empty) continue;
       snap.forEach(d=>{
         const r = d.data() || {};
+
+        // --- NOMBRES que maneja tu BD (ES) y fallback (EN) ---
         const courseKey = r.courseKey || r.courseId || r.course || '';
-        const date = r.date?.toDate?.() || r.date || null;
-        const forma = r.forma || 'abierto';
-        const empresa = r.empresa || '';
-        // distintos posibles nombres de arreglo de participantes
-        let participants = r.participants || r.inscritos || r.users || r.alumnos || [];
+        const date = parseDateAny(r.courseDate) || parseDateAny(r.date);
+        const forma = r.formaCurso || r.forma || r.mode || 'abierto';
+        const empresa = r.empresaSolicitante || r.empresa || r.company || '';
+
+        // participantes: 'inscriptions' (array) o variantes
+        let participants = r.inscriptions || r.participants || r.users || r.alumnos || [];
         if (participants && !Array.isArray(participants) && typeof participants === 'object') {
           participants = Object.values(participants);
         }
         const participantsCount = Array.isArray(participants) ? participants.length : 0;
+
         const courseName = evalNameByKey[courseKey] || '(Curso desconocido)';
 
         items.push({
@@ -143,6 +165,10 @@ async function loadHistoryCourses(){
         });
       });
     }
+
+    // Ordenar por fecha desc si la hubiera
+    items.sort((a,b)=> (b.date?.getTime?.()||0) - (a.date?.getTime?.()||0));
+
     allHistory = items;
     renderHistoryList();
   }catch(e){
@@ -164,7 +190,7 @@ function renderHistoryList(){
   list.innerHTML = rows || '<div class="meta">No hay cursos realizados aún.</div>';
 }
 
-// ===== Editor de cursos creados (igual que antes, preguntas con radios Correcta) =====
+// ===== Editor de cursos creados =====
 function makeQuestion(q={ text:'', options:[''], correct:'' }){
   const qid = 'q' + Math.random().toString(36).slice(2,9);
   const wrap = document.createElement('div');
@@ -391,6 +417,9 @@ async function saveEvaluation(){
 }
 
 // ===== Editor de REALIZADOS =====
+function openEditor(title='Nuevo curso'){ $('#editor').classList.add('open'); $('#editor').setAttribute('aria-hidden','false'); }
+function closeEditor(){ $('#editor').classList.remove('open'); $('#editor').setAttribute('aria-hidden','true'); clearForm(); }
+
 function openHistoryEditor(title='Nuevo realizado'){
   $('#historyTitle').textContent = title;
   $('#historyEditor').classList.add('open');
@@ -400,33 +429,26 @@ function closeHistoryEditor(){
   $('#historyEditor').classList.remove('open');
   $('#historyEditor').setAttribute('aria-hidden','true');
   editingHistoryId = null;
-  // limpia
-  setVal('historyCourseKey','');
-  setVal('historyDate','');
-  setVal('historyForma','abierto');
-  setVal('historyEmpresa','');
+  setVal('historyCourseKey',''); setVal('historyDate',''); setVal('historyForma','abierto'); setVal('historyEmpresa','');
   $('#historyParticipants').innerHTML = '<div class="meta">Sin participantes (se asignan en el Panel de Usuarios).</div>';
 }
-
-// llena el select con cursos creados
 function populateCourseSelect(selectedKey='', disabled=false){
-  const sel = $('#historyCourseKey');
-  sel.innerHTML = '';
+  const sel = $('#historyCourseKey'); sel.innerHTML = '';
   allEvaluations
     .sort((a,b)=> (a.data.title||a.data.name||a.docId).localeCompare(b.data.title||b.data.name||b.docId))
     .forEach(({docId, data})=>{
       const opt = document.createElement('option');
-      opt.value = docId;
-      opt.textContent = data.title || data.name || docId;
+      opt.value = docId; opt.textContent = data.title || data.name || docId;
       if (docId === selectedKey) opt.selected = true;
       sel.appendChild(opt);
     });
   sel.disabled = !!disabled;
 }
-
 function fillHistoryEditor(item, isEdit){
   populateCourseSelect(item.courseKey || '', isEdit);
-  setVal('historyDate', item.date ? new Date(item.date).toISOString().slice(0,10) : '');
+  // item.date puede ser Date, string o timestamp -> formateo a YYYY-MM-DD
+  const yyyyMMdd = item.date ? new Date(item.date).toISOString().slice(0,10) : '';
+  setVal('historyDate', yyyyMMdd);
   setVal('historyForma', item.forma || 'abierto');
   setVal('historyEmpresa', item.empresa || '');
   const box = $('#historyParticipants');
@@ -441,19 +463,19 @@ function fillHistoryEditor(item, isEdit){
     box.innerHTML = '<div class="meta">Sin participantes (se asignan en el Panel de Usuarios).</div>';
   }
 }
-
 async function saveHistory(){
   const courseKey = $('#historyCourseKey').value;
-  const dateStr   = $('#historyDate').value;
+  const dateStr   = $('#historyDate').value;         // YYYY-MM-DD
   const forma     = $('#historyForma').value;
   const empresa   = $('#historyEmpresa').value.trim();
   if (!courseKey || !dateStr){ alert('Selecciona curso y fecha.'); return; }
 
+  // Guardamos con tus nombres de campos
   const payload = {
     courseKey,
-    date: new Date(dateStr),
-    forma,
-    empresa
+    courseDate: dateStr,
+    formaCurso: forma,
+    empresaSolicitante: empresa
   };
 
   try{
@@ -502,20 +524,16 @@ document.addEventListener('click', async (e)=>{
 
 // ===== Wire-up =====
 document.addEventListener('DOMContentLoaded', ()=>{
-  // navegación
   $('#btnGoUsers')?.addEventListener('click', ()=>{ location.href='dashboard-admin.html'; });
   $('#btnSignOutFixed')?.addEventListener('click', async ()=>{
     try{ await firebase.auth().signOut(); location.href='index.html'; }catch(e){ alert(e.message); }
   });
 
-  // listados
-  loadCreatedCourses(); // Esto también carga realizados cuando termine
+  loadCreatedCourses(); // también carga realizados cuando termina
 
-  // buscadores
   $('#searchCreated')?.addEventListener('input', renderCreatedList);
   $('#searchDone')?.addEventListener('input', renderHistoryList);
 
-  // editor (creados)
   $('#btnNewCourse')?.addEventListener('click', ()=>{
     clearForm();
     $('#editorTitle').textContent = 'Nuevo curso';
@@ -524,7 +542,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('#btnSave')?.addEventListener('click', saveEvaluation);
   $('#btnClose')?.addEventListener('click', ()=>{ closeEditor(); });
 
-  // dinámicos (creados)
   $('#btnAddCriterion')?.addEventListener('click', ()=>{
     $('#criteriaList').appendChild(rowChip(''));
   });
@@ -536,7 +553,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
     renumberQuestions();
   });
 
-  // editor (realizados)
   $('#btnNewHistory')?.addEventListener('click', ()=>{
     editingHistoryId = null;
     populateCourseSelect('', false);
