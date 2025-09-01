@@ -1740,6 +1740,7 @@ function buildAttendanceSlots(baseDate, hours) {
     const label = `[${date}], ${ampm}`;
     out.push({ key, label });
   }
+  if (out.length) out[out.length - 1].label = "Evaluación";
   return out;
 }
 
@@ -1856,6 +1857,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
