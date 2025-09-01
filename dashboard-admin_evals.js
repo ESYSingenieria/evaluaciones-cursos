@@ -137,7 +137,7 @@ async function loadHistoryCourses(){
   const items = [];
   try{
     // Trae de 'inscripciones' y también de 'inscriptions' si existiera
-    const colNames = ['inscripciones','inscriptions'];
+    const colNames = ['inscripciones'];
     for (const col of colNames){
       /* eslint-disable no-await-in-loop */
       const snap = await firebase.firestore().collection(col).get().catch(()=>null);
@@ -562,3 +562,4 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('#btnHistorySave')?.addEventListener('click', saveHistory);
   $('#btnHistoryClose')?.addEventListener('click', closeHistoryEditor);
 });
+
