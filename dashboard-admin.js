@@ -210,31 +210,6 @@ async function refreshAllVariants($variant, $empresaDL, courseKey){
 // Extra: obtener fecha YYYY-MM-DD desde un sessionId
 const dateFromSessionId = (id = "") => (id.match(/\d{4}-\d{2}-\d{2}/) || [])[0] || "";
 
-// === ASISTENCIA: utils ===
-const parseHours = (s) => {
-  const m = String(s || "").match(/\d+/);
-  return m ? Math.max(0, parseInt(m[0], 10)) : 0; // "16 HRS." -> 16
-};
-// evitar problemas de zona horaria usando el mediodía
-const addDaysStr = (yyyyMMdd, days) => {
-  if (!yyyyMMdd) return "";
-  const d = new Date(yyyyMMdd + "T12:00:00");
-  d.setDate(d.getDate() + (days || 0));
-  return d.toISOString().slice(0, 10);
-};
-
-// Devuelve etiquetas de asistencia por tramos de 4h, máx. 8h por día.
-function buildAttendanceLabels(hours, startDate) {
-  const slots = Math.max(1, Math.ceil((hours || 0) / 4));
-  const labels = [];
-  for (let i = 0; i < slots; i++) {
-    const dayOffset = Math.floor(i / 2);      // 2 slots por día (AM/PM)
-    const ampm = (i % 2 === 0) ? "AM" : "PM";
-    labels.push(`${addDaysStr(startDate, dayOffset)}, ${ampm}`);
-  }
-  return labels;
-}
-
 // Helper para formatear RUT chileno: "11111111-1" → "11.111.111-1"
 function formatRut(rut) {
   // 1) Quitamos todo lo que no sea dígito ni 'K'/'k'
@@ -772,32 +747,6 @@ document.addEventListener('DOMContentLoaded', () => {
       inp.setSelectionRange(val.length, val.length);
     }
   });
-
-  // Toggle de asistencia (delegado)
-  document.body.addEventListener("change", async (e) => {
-    const inp = e.target;
-    if (!inp.matches("input.att-toggle")) return;
-
-    const row = inp.closest(".user-item");
-    const uid = row?.dataset?.uid;
-    const user = allUsers.find(x => x.id === uid);
-    const sessionId = inp.dataset.sessionId;
-    const label = inp.dataset.label;
-
-    if (!user || !sessionId || !label) {
-      alert("Asigna y guarda la sesión (fecha/forma) antes de marcar asistencia.");
-      inp.checked = false;
-      return;
-    }
-
-    try {
-      await setAttendanceSlot(sessionId, user, label, inp.checked);
-    } catch (err) {
-      console.error(err);
-      alert("No se pudo actualizar la asistencia.");
-      inp.checked = !inp.checked;
-    }
-  });
   
 });  // <-- aquí
 
@@ -1308,57 +1257,6 @@ function loadAllUsers() {
         btnC.textContent = "Certificado de Aprobación";
         btnC.onclick = () => generateCertificateForUser(u.id, ev, score, dateISO);
         evalDiv.appendChild(btnC);
-      }
-
-      // 5) Asistencia (casillas AM/PM por cada 4 hrs, máx 8h/día)
-      const meta = (u.assignedCoursesMeta || {})[ev] || {};
-      const courseDate = meta.date || "";        // YYYY-MM-DD
-      const sessionId  = meta.sessionId || "";   // para persistir asistencia
-      const hours      = parseHours((allEvaluations[ev] || {}).timeEvaluation);
-
-      // solo si hay fecha y duración
-      if (courseDate && hours) {
-        const labels = buildAttendanceLabels(hours, courseDate);
-
-        const attWrap = document.createElement("div");
-        attWrap.style.marginTop = "8px";
-        attWrap.innerHTML = `<div class="muted" style="margin-bottom:6px;">Asistencia</div>`;
-
-        labels.forEach(lbl => {
-          const holder = document.createElement("label");
-          holder.style.marginRight = "10px";
-          const chk = document.createElement("input");
-          chk.type = "checkbox";
-          chk.className = "att-toggle";
-          chk.dataset.uid = u.id;
-          chk.dataset.sessionId = sessionId;
-          chk.dataset.label = lbl;
-          holder.appendChild(chk);
-          holder.appendChild(document.createTextNode(" " + lbl));
-          attWrap.appendChild(holder);
-        });
-
-        // Estado inicial
-        if (sessionId) {
-          readAttendanceFromSession(sessionId, u).then(att => {
-            attWrap.querySelectorAll('input.att-toggle').forEach(inp => {
-              inp.checked = !!att[inp.dataset.label];
-            });
-          });
-        } else {
-          const warn = document.createElement("div");
-          warn.className = "muted";
-          warn.textContent = "(Guarda el usuario para activar las asistencias)";
-          attWrap.appendChild(warn);
-        }
-
-        evalDiv.appendChild(attWrap);
-      } else if (!courseDate) {
-        const warn = document.createElement("div");
-        warn.className = "muted";
-        warn.style.marginTop = "8px";
-        warn.textContent = "Asigne fecha del curso (en edición) para habilitar asistencia.";
-        evalDiv.appendChild(warn);
       }
 
       // === ASISTENCIA + BLOQUEO POR USUARIO-CURSO ===
@@ -1958,6 +1856,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
