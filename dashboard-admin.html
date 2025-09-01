@@ -141,6 +141,14 @@
   </header>
 
   <h1>Panel de Usuarios - Plataforma de Cursos</h1>
+  <button id="goEvalsPageBtn" style="margin-left:8px; padding:8px 12px; border:none; border-radius:8px; background:#6c757d; color:#fff; cursor:pointer;">
+    Ir al Panel de Evaluaciones
+  </button>
+  <script>
+    document.getElementById('goEvalsPageBtn')?.addEventListener('click', () => {
+      location.href = 'dashboard-admin_evals.html';
+    });
+  </script>
 
   <div class="dashboard-container">
     <!-- La barra de filtros se inyecta por JS aquí -->
