@@ -78,6 +78,7 @@
       border:1px solid #ccc; border-radius:8px; padding:10px 12px; font-size:14px; background:#f9fafb;
     }
     .field textarea{ min-height:120px; resize:vertical; }
+    .meta-help{ color:#6b7280; font-size:12px; }
 
     .chip-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
     .chip-row input[type="text"]{ flex:1 1 auto; }
@@ -86,13 +87,16 @@
     .small-del{ background:var(--danger); }
 
     .q-card{ border:1px solid #e5e7eb; border-radius:10px; padding:12px; background:#f9fbff; margin:10px 0; }
+    .q-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .q-title{ font-weight:700; }
+    .q-number{ font-weight:800; margin-right:6px; }
+    .q-sub{ font-weight:600; margin:10px 0 6px; }
     .q-row{ display:flex; gap:8px; align-items:center; margin:8px 0; }
     .q-row input[type="text"]{ flex:1 1 auto; }
     .q-actions{ display:flex; gap:8px; }
     .q-add{ background:var(--primary); }
     .q-del{ background:#fd7e14; }
     .q-del-opt{ background:var(--danger); }
-    .meta-help{ color:var(--muted); font-size:12px; }
   </style>
 </head>
 <body>
@@ -137,7 +141,7 @@
       <strong id="editorTitle">Nuevo curso</strong>
       <div style="display:flex; gap:8px;">
         <button id="btnSave" class="btn btn-primary">Guardar</button>
-        <button id="btnClose" class="btn btn-outline">Cerrar</button>
+        <button id="btnClose" class="btn btn-outline">Cancelar</button>
       </div>
     </header>
     <div class="content">
@@ -151,6 +155,7 @@
         <div class="field">
           <label for="idInput">Identificador de Curso</label>
           <input id="idInput" type="text" placeholder="02, 03, ...">
+          <div class="meta-help">Identificador de curso para el código único de cada certificado</div>
         </div>
 
         <div class="field">
@@ -158,43 +163,38 @@
           <input id="scoreInput" type="text" placeholder="92">
         </div>
 
-        <div class="field">
+        <div class="field full">
           <label for="nameInput">Nombre de Curso</label>
           <input id="nameInput" type="text" placeholder="Norma para el Mantenimiento de Equipos Eléctricos - NFPA 70B 2023">
+          <div class="meta-help">Nombre de curso se muestra en la plataforma y en los certificados.</div>
         </div>
 
-        <!-- title eliminado visualmente (se igualará a nombre) -->
-
         <div class="field full">
-          <label for="descInput">Descripción de Conocimientos Adquiridos (Descripción para página de verificación, comienza con "Esta insignia verifica.....")</label>
-          <textarea id="descInput" placeholder="Esta insignia verifica que la persona ha demostrado..."></textarea>
+          <label for="descInput">Descripción de Conocimientos Adquiridos</label>
+          <textarea id="descInput" placeholder='Esta insignia verifica que la persona ha demostrado...'></textarea>
+          <div class="meta-help">Para página de verificación, comienza con "Esta insignia verifica..."</div>
         </div>
 
         <div class="field">
           <label for="manualUrlInput">Nombre de Archivo del Manual (PDF)</label>
           <input id="manualUrlInput" type="text" placeholder="manual_NFPA_70B.v2">
-          <div class="meta-help">Se antepone internamente: https://esysingenieria.github.io/evaluaciones-cursos/manuales-cursos/ y se agrega .pdf</div>
         </div>
 
         <div class="field">
           <label for="certificateTmplInput">Nombre de Archivo de Plantilla Certificado (PDF)</label>
           <input id="certificateTmplInput" type="text" placeholder="plantillaGuido">
-          <div class="meta-help">Se agrega automáticamente .pdf</div>
         </div>
 
         <div class="field">
           <label for="imageUrlInput">Nombre de Archivo de Portada Curso (JPG)</label>
           <input id="imageUrlInput" type="text" placeholder="Portada_NFPA70B">
-          <div class="meta-help">Se agrega automáticamente .jpg</div>
         </div>
 
         <div class="field">
-          <label for="imageBadgeInput">Nombre de Archivo de Imagen Insignia (PNG, para página de verificación)</label>
+          <label for="imageBadgeInput">Nombre de Archivo de Imagen Insignia (PNG)</label>
           <input id="imageBadgeInput" type="text" placeholder="NFPA70B_2023_badge">
-          <div class="meta-help">Se agrega automáticamente .png</div>
+          <div class="meta-help">Para página de verificación.</div>
         </div>
-
-        <!-- isLocked quitado; lastDate y timelimit ocultos (se fijan internamente: 36 y 3600) -->
 
         <div class="field">
           <label for="timeHoursInput">Duración Curso (Tiempo en hrs.)</label>
