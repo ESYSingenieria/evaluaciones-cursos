@@ -55,6 +55,13 @@
       .dashboard-container{ width:100%; padding:0 10px; }
       #logoutContainer{ width:100%; }
     }
+
+    .user-item .edit-user-btn,
+    .user-item .save-user-btn,
+    .user-item .cancel-user-btn{
+      position: static !important; /* que se queden en el flujo, no arriba a la derecha */
+    }
+
   </style>
 
   <!-- Firebase SDKs (v8 compat) -->
@@ -75,7 +82,7 @@
     <a href="https://esys.cl/"><img src="logo.png" alt="Logo de la Empresa" class="logo" /></a>
   </header>
 
-  <h1>Panel de Administración - Plataforma de Cursos</h1>
+  <h1>Panel de Usuarios - Plataforma de Cursos</h1>
 
   <div class="dashboard-container">
     <!-- La barra de filtros se inyecta por JS aquí -->
