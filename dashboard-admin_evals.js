@@ -2,7 +2,7 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-// Sanitiza docId a lo permitido (minúsculas, sin tildes, solo [a-z0-9._-]) para CREAR/EDITAR manualmente.
+// Sanitiza docId (para creación manual)
 function sanitizeDocId(s='') {
   return s
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -12,17 +12,13 @@ function sanitizeDocId(s='') {
     .replace(/^_+|_+$/g, '');
 }
 
-// Dado un docId EXACTO, calcula el siguiente docId con versión (.vN).
-// Ej: "NFPA_70B" -> "NFPA_70B.v2"; "NFPA_70B.v2" -> "NFPA_70B.v3", etc.
-// Si el nuevo existe, sigue incrementando.
+// Siguiente versión desde un docId exacto (preserva mayúsculas/minúsculas del base)
 async function nextVersionFromExact(docIdExact) {
   const m = /\.v(\d+)$/i.exec(docIdExact);
   const base = m ? docIdExact.replace(/\.v\d+$/i, '') : docIdExact;
   let current = m ? parseInt(m[1], 10) : 1;
-  let candidate;
-  // busca el primer disponible
   while (true) {
-    candidate = `${base}.v${current + 1}`;
+    const candidate = `${base}.v${current + 1}`;
     /* eslint-disable no-await-in-loop */
     const snap = await firebase.firestore().collection('evaluations').doc(candidate).get();
     if (!snap.exists) return candidate;
@@ -30,13 +26,13 @@ async function nextVersionFromExact(docIdExact) {
   }
 }
 
-// Devuelve número de versión desde docId (1 si no hay sufijo .vN)
+// Versión desde docId (1 si no hay sufijo .vN)
 function versionFromDocId(docId) {
   const m = /\.v(\d+)$/i.exec(docId || '');
   return m ? parseInt(m[1], 10) : 1;
 }
 
-// Render de tarjetas
+// Tarjeta de curso
 function courseCardHTML({ docId, id, name, title, puntajeAprobacion, version }) {
   return `
     <div class="course-card" data-doc="${docId}" data-id="${id || ''}">
@@ -67,9 +63,8 @@ function doneCardHTML({ course, dateStr, empresa }) {
   `;
 }
 
-// Estado simple
-let allEvaluations = [];  // [{docId, data}]
-let editingDocId = null;  // id actual en edición
+// Estado
+let allEvaluations = []; // [{docId, data}]
 
 // Cargar listados
 async function loadCreatedCourses() {
@@ -117,9 +112,7 @@ async function loadDoneCourses() {
   const list = $('#doneList');
   list.innerHTML = 'Cargando...';
   const items = [];
-
   try {
-    // 1) responses (si existe)
     const resSnap = await firebase.firestore().collection('responses').limit(100).get().catch(() => null);
     if (resSnap && !resSnap.empty) {
       resSnap.forEach(d => {
@@ -130,8 +123,6 @@ async function loadDoneCourses() {
         items.push({ course, date: ts, empresa });
       });
     }
-
-    // 2) inscripciones / inscriptions (si existen)
     const tryCol = async (name) => {
       const snap = await firebase.firestore().collection(name).limit(100).get().catch(() => null);
       if (!snap || snap.empty) return;
@@ -146,7 +137,6 @@ async function loadDoneCourses() {
     await tryCol('inscripciones');
     await tryCol('inscriptions');
 
-    // Ordenar por fecha desc y pintar
     items.sort((a,b)=> (b.date?.getTime?.()||0) - (a.date?.getTime?.()||0));
     const q = ($('#searchDone')?.value || '').toLowerCase().trim();
     const html = items
@@ -171,17 +161,15 @@ async function loadDoneCourses() {
   }
 }
 
-// Editor (abrir, cerrar, rellenar, recolectar)
+// Editor helpers
 function openEditor(title='Nuevo curso') {
   $('#editorTitle').textContent = title;
   $('#editor').classList.add('open');
   $('#editor').setAttribute('aria-hidden', 'false');
 }
-
 function closeEditor() {
   $('#editor').classList.remove('open');
   $('#editor').setAttribute('aria-hidden', 'true');
-  editingDocId = null;
   clearForm();
 }
 
@@ -239,31 +227,36 @@ function makeQuestion(q = { text:'', options:[''], correct:'' }) {
 }
 
 function clearForm() {
-  ['docIdInput','idInput','nameInput','titleInput','descInput','manualUrlInput',
-   'certificateTmplInput','imageUrlInput','imageBadgeInput','lastDateInput',
-   'timeEvalInput','timeLimitInput','scoreInput']
+  ['docIdInput','idInput','nameInput','descInput','manualUrlInput',
+   'certificateTmplInput','imageUrlInput','imageBadgeInput','timeHoursInput','scoreInput']
    .forEach(id => { const el = document.getElementById(id); if (el) el.value=''; });
-  $('#isLockedInput').checked = false;
   $('#criteriaList').innerHTML = '';
   $('#standardsList').innerHTML = '';
   $('#questionsList').innerHTML = '';
+}
+
+function stripPrefixAndExt(url, prefix, ext) {
+  if (!url) return '';
+  let s = url;
+  if (prefix && s.startsWith(prefix)) s = s.slice(prefix.length);
+  if (ext && s.toLowerCase().endsWith(ext.toLowerCase())) s = s.slice(0, -ext.length);
+  return s;
 }
 
 function fillForm(docId, data) {
   $('#docIdInput').value = docId || '';
   $('#idInput').value = data.ID ?? '';
   $('#nameInput').value = data.name ?? '';
-  $('#titleInput').value = data.title ?? '';
   $('#descInput').value = data.description ?? '';
-  $('#manualUrlInput').value = data.manualURL ?? '';
-  $('#certificateTmplInput').value = data.certificateTemplate ?? '';
-  $('#imageUrlInput').value = data.imageURL ?? '';
-  $('#imageBadgeInput').value = data.imageURL_badge ?? '';
-  $('#isLockedInput').checked = !!data.isLocked;
-  $('#lastDateInput').value = data.lastDate ?? '';
-  $('#timeEvalInput').value = data.timeEvaluation ?? '';
-  $('#timeLimitInput').value = data.timelimit ?? '';
-  $('#scoreInput').value = data.puntajeAprobacion ?? '';
+
+  const manualPrefix = 'https://esysingenieria.github.io/evaluaciones-cursos/manuales-cursos/';
+  $('#manualUrlInput').value = stripPrefixAndExt(data.manualURL || '', manualPrefix, '.pdf');
+  $('#certificateTmplInput').value = stripPrefixAndExt(data.certificateTemplate || '', '', '.pdf');
+  $('#imageUrlInput').value = stripPrefixAndExt(data.imageURL || '', '', '.jpg');
+  $('#imageBadgeInput').value = stripPrefixAndExt(data.imageURL_badge || '', '', '.png');
+
+  const hrs = /(\d+)\s*hrs?\.?/i.exec(data.timeEvaluation || '');
+  $('#timeHoursInput').value = hrs ? parseInt(hrs[1],10) : '';
 
   const cL = $('#criteriaList'); cL.innerHTML = '';
   (data.criteria || []).forEach(s => cL.appendChild(rowChip(s)));
@@ -300,7 +293,7 @@ function collectQuestions() {
   return out;
 }
 
-// Acciones de tarjetas: editar / copiar / eliminar
+// Acciones de tarjetas
 document.addEventListener('click', async (e) => {
   const btnEdit = e.target.closest('.act-edit');
   const btnCopy = e.target.closest('.act-copy');
@@ -310,7 +303,6 @@ document.addEventListener('click', async (e) => {
     const card = btnEdit.closest('.course-card');
     const docId = card.getAttribute('data-doc');
     const found = allEvaluations.find(x => x.docId === docId);
-    editingDocId = docId;
     fillForm(docId, found?.data || {});
     $('#editorTitle').textContent = 'Editar curso';
     openEditor('Editar curso');
@@ -318,15 +310,12 @@ document.addEventListener('click', async (e) => {
 
   if (btnCopy) {
     const card = btnCopy.closest('.course-card');
-    const originalId = card.getAttribute('data-doc'); // EXACTO, sin sanitizar ni cambiar case
+    const originalId = card.getAttribute('data-doc'); // EXACTO
     try {
       const snap = await firebase.firestore().collection('evaluations').doc(originalId).get();
       if (!snap.exists) { alert('No se encontró el curso a copiar.'); return; }
       const data = snap.data();
-
-      // genera siguiente versión a partir del docId exacto original
       const newId = await nextVersionFromExact(originalId);
-
       await firebase.firestore().collection('evaluations').doc(newId).set(data, { merge:false });
       alert('✅ Copiado como ' + newId);
       await loadCreatedCourses();
@@ -355,10 +344,10 @@ document.addEventListener('click', async (e) => {
 
 // Guardar (crear/actualizar)
 async function saveEvaluation() {
-  // Recolectar y sanear docId SOLO si el usuario escribe uno nuevo
+  // docId desde input (sanitizado); si está vacío, se deriva del nombre
   let docId = $('#docIdInput').value.trim();
   if (!docId) {
-    const baseFrom = $('#titleInput').value || $('#nameInput').value || 'curso';
+    const baseFrom = $('#nameInput').value || 'curso';
     docId = sanitizeDocId(baseFrom);
   } else {
     docId = sanitizeDocId(docId);
@@ -366,28 +355,37 @@ async function saveEvaluation() {
 
   const ID = $('#idInput').value.trim();
   const name = $('#nameInput').value.trim();
-  const title = $('#titleInput').value.trim();
+  const title = name; // title = name (no editable)
   const description = $('#descInput').value.trim();
-  const manualURL = $('#manualUrlInput').value.trim();
-  const certificateTemplate = $('#certificateTmplInput').value.trim();
-  const imageURL = $('#imageUrlInput').value.trim();
-  const imageURL_badge = $('#imageBadgeInput').value.trim();
-  const isLocked = $('#isLockedInput').checked;
-  const lastDateRaw = $('#lastDateInput').value.trim();
-  const timeEvaluation = $('#timeEvalInput').value.trim();
-  const timelimitRaw = $('#timeLimitInput').value.trim();
-  const puntajeAprobacion = $('#scoreInput').value.trim();
 
-  if (!ID || !name || !title || !certificateTemplate) {
-    alert('Faltan campos obligatorios: ID / Nombre / Título / Plantilla de Certificado');
+  // archivos
+  const manualPrefix = 'https://esysingenieria.github.io/evaluaciones-cursos/manuales-cursos/';
+  const manualBase = $('#manualUrlInput').value.trim().replace(/\.pdf$/i,'');
+  const certificateBase = $('#certificateTmplInput').value.trim().replace(/\.pdf$/i,'');
+  const coverBase = $('#imageUrlInput').value.trim().replace(/\.jpg$/i,'');
+  const badgeBase = $('#imageBadgeInput').value.trim().replace(/\.png$/i,'');
+
+  const manualURL = manualBase ? `${manualPrefix}${manualBase}.pdf` : '';
+  const certificateTemplate = certificateBase ? `${certificateBase}.pdf` : '';
+  const imageURL = coverBase ? `${coverBase}.jpg` : '';
+  const imageURL_badge = badgeBase ? `${badgeBase}.png` : '';
+
+  // fijos / derivados
+  const puntajeAprobacion = $('#scoreInput').value.trim();
+  const timeHours = $('#timeHoursInput').value.trim();
+  const timeEvaluation = timeHours ? `${timeHours} HRS.` : '';
+  const isLocked = false;
+  const lastDate = 36;
+  const timelimit = 3600;
+
+  if (!ID || !name || !certificateTemplate) {
+    alert('Faltan campos obligatorios: Identificador de Curso / Nombre de Curso / Plantilla Certificado');
     return;
   }
 
   const criteria = collectArrayFrom('#criteriaList');
   const standards = collectArrayFrom('#standardsList');
   const questions = collectQuestions();
-  const lastDate = lastDateRaw ? Number(lastDateRaw) : 0;
-  const timelimit = timelimitRaw ? Number(timelimitRaw) : 0;
 
   const payload = {
     ID,
@@ -400,7 +398,7 @@ async function saveEvaluation() {
     lastDate,
     manualURL,
     name,
-    puntajeAprobacion, // string, como pediste
+    puntajeAprobacion,
     questions,
     standards,
     timeEvaluation,
@@ -419,25 +417,20 @@ async function saveEvaluation() {
   }
 }
 
-// Wire-up UI
+// Wire-up
 document.addEventListener('DOMContentLoaded', () => {
-  // navegación
   $('#btnGoUsers')?.addEventListener('click', () => { location.href = 'dashboard-admin.html'; });
   $('#btnSignOut')?.addEventListener('click', async () => {
     try { await firebase.auth().signOut(); location.href = 'index.html'; } catch (e) { alert(e.message); }
   });
 
-  // listados
   loadCreatedCourses();
   loadDoneCourses();
 
-  // buscadores
   $('#searchCreated')?.addEventListener('input', renderCreatedList);
   $('#searchDone')?.addEventListener('input', loadDoneCourses);
 
-  // editor
   $('#btnNewCourse')?.addEventListener('click', () => {
-    editingDocId = null;
     clearForm();
     $('#editorTitle').textContent = 'Nuevo curso';
     openEditor('Nuevo curso');
@@ -445,7 +438,6 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#btnSave')?.addEventListener('click', saveEvaluation);
   $('#btnClose')?.addEventListener('click', closeEditor);
 
-  // agregar filas dinámicas en editor
   $('#btnAddCriterion')?.addEventListener('click', () => {
     $('#criteriaList').appendChild(rowChip(''));
   });
