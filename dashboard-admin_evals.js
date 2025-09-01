@@ -2,7 +2,7 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-// Sanitiza docId a lo permitido (minúsculas, sin tildes, solo [a-z0-9._-])
+// Sanitiza docId a lo permitido (minúsculas, sin tildes, solo [a-z0-9._-]) para CREAR/EDITAR manualmente.
 function sanitizeDocId(s='') {
   return s
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -12,33 +12,44 @@ function sanitizeDocId(s='') {
     .replace(/^_+|_+$/g, '');
 }
 
-// Genera id de copia con .v2, .v3, ...
-async function nextVersionId(baseId) {
-  let candidate = baseId, n = 2;
-  const doc = await firebase.firestore().collection('evaluations').doc(candidate).get();
-  if (!doc.exists) return candidate;
+// Dado un docId EXACTO, calcula el siguiente docId con versión (.vN).
+// Ej: "NFPA_70B" -> "NFPA_70B.v2"; "NFPA_70B.v2" -> "NFPA_70B.v3", etc.
+// Si el nuevo existe, sigue incrementando.
+async function nextVersionFromExact(docIdExact) {
+  const m = /\.v(\d+)$/i.exec(docIdExact);
+  const base = m ? docIdExact.replace(/\.v\d+$/i, '') : docIdExact;
+  let current = m ? parseInt(m[1], 10) : 1;
+  let candidate;
+  // busca el primer disponible
   while (true) {
-    candidate = `${baseId}.v${n}`;
-    // Firestore permite puntos en docId
+    candidate = `${base}.v${current + 1}`;
     /* eslint-disable no-await-in-loop */
     const snap = await firebase.firestore().collection('evaluations').doc(candidate).get();
     if (!snap.exists) return candidate;
-    n++;
+    current++;
   }
 }
 
+// Devuelve número de versión desde docId (1 si no hay sufijo .vN)
+function versionFromDocId(docId) {
+  const m = /\.v(\d+)$/i.exec(docId || '');
+  return m ? parseInt(m[1], 10) : 1;
+}
+
 // Render de tarjetas
-function courseCardHTML({ id, name, title, puntajeAprobacion }) {
+function courseCardHTML({ docId, id, name, title, puntajeAprobacion, version }) {
   return `
-    <div class="course-card" data-id="${id}">
+    <div class="course-card" data-doc="${docId}" data-id="${id || ''}">
       <div class="actions">
         <button class="btn btn-sm btn-primary act-edit">Editar</button>
         <button class="btn btn-sm btn-neutral act-copy">Copiar</button>
+        <button class="btn btn-sm btn-danger act-delete">Eliminar</button>
       </div>
       <div class="course-title">${title || name || '(Sin título)'}</div>
       <div class="meta">
         <span class="tag">ID: ${id || '-'}</span>
         <span class="tag">Aprobación: ${puntajeAprobacion || '-'}</span>
+        <span class="tag">Versión: ${version}</span>
       </div>
     </div>
   `;
@@ -58,7 +69,7 @@ function doneCardHTML({ course, dateStr, empresa }) {
 
 // Estado simple
 let allEvaluations = [];  // [{docId, data}]
-let editingDocId = null;  // id actual en edición (para detectar cambios)
+let editingDocId = null;  // id actual en edición
 
 // Cargar listados
 async function loadCreatedCourses() {
@@ -89,12 +100,14 @@ function renderCreatedList() {
     })
     .map(({ docId, data }) => {
       const payload = {
-        id: data.ID || docId,
-        name: data.name,
-        title: data.title || data.name,
-        puntajeAprobacion: data.puntajeAprobacion
+        docId,
+        id: data.ID || '',
+        name: data.name || '',
+        title: data.title || data.name || '',
+        puntajeAprobacion: data.puntajeAprobacion || '',
+        version: versionFromDocId(docId)
       };
-      return courseCardHTML(payload).replace('data-id="', `data-doc="${docId}" data-id="`);
+      return courseCardHTML(payload);
     })
     .join('');
   list.innerHTML = rows || '<div class="meta">No hay cursos creados.</div>';
@@ -287,10 +300,11 @@ function collectQuestions() {
   return out;
 }
 
-// Acciones: editar / copiar
+// Acciones de tarjetas: editar / copiar / eliminar
 document.addEventListener('click', async (e) => {
   const btnEdit = e.target.closest('.act-edit');
   const btnCopy = e.target.closest('.act-copy');
+  const btnDel  = e.target.closest('.act-delete');
 
   if (btnEdit) {
     const card = btnEdit.closest('.course-card');
@@ -304,14 +318,14 @@ document.addEventListener('click', async (e) => {
 
   if (btnCopy) {
     const card = btnCopy.closest('.course-card');
-    const docId = card.getAttribute('data-doc');
+    const originalId = card.getAttribute('data-doc'); // EXACTO, sin sanitizar ni cambiar case
     try {
-      const snap = await firebase.firestore().collection('evaluations').doc(docId).get();
+      const snap = await firebase.firestore().collection('evaluations').doc(originalId).get();
       if (!snap.exists) { alert('No se encontró el curso a copiar.'); return; }
       const data = snap.data();
 
-      const base = sanitizeDocId(docId || data.title || data.name || 'curso');
-      const newId = await nextVersionId(base);
+      // genera siguiente versión a partir del docId exacto original
+      const newId = await nextVersionFromExact(originalId);
 
       await firebase.firestore().collection('evaluations').doc(newId).set(data, { merge:false });
       alert('✅ Copiado como ' + newId);
@@ -321,16 +335,33 @@ document.addEventListener('click', async (e) => {
       alert('❌ Error al copiar: ' + err.message);
     }
   }
+
+  if (btnDel) {
+    const card = btnDel.closest('.course-card');
+    const docId = card.getAttribute('data-doc');
+    const found = allEvaluations.find(x => x.docId === docId);
+    const name  = found?.data?.title || found?.data?.name || docId;
+    if (!confirm(`Vas a eliminar el curso:\n\n${name}\n(ID de documento: ${docId})\n\nEsta acción no se puede deshacer. ¿Continuar?`)) return;
+    try {
+      await firebase.firestore().collection('evaluations').doc(docId).delete();
+      alert('🗑️ Curso eliminado.');
+      await loadCreatedCourses();
+    } catch (err) {
+      console.error(err);
+      alert('❌ Error al eliminar: ' + err.message);
+    }
+  }
 });
 
 // Guardar (crear/actualizar)
 async function saveEvaluation() {
-  // Recolectar y sanear docId
-  let docId = sanitizeDocId($('#docIdInput').value.trim());
+  // Recolectar y sanear docId SOLO si el usuario escribe uno nuevo
+  let docId = $('#docIdInput').value.trim();
   if (!docId) {
-    // si no escribieron docId, generarlo desde title o name
     const baseFrom = $('#titleInput').value || $('#nameInput').value || 'curso';
     docId = sanitizeDocId(baseFrom);
+  } else {
+    docId = sanitizeDocId(docId);
   }
 
   const ID = $('#idInput').value.trim();
@@ -378,10 +409,8 @@ async function saveEvaluation() {
   };
 
   try {
-    // Si es edición y cambió el docId, creamos el nuevo y NO borramos el viejo (lo puedes borrar luego)
-    const targetId = docId;
-    await firebase.firestore().collection('evaluations').doc(targetId).set(payload, { merge:false });
-    alert('✅ Guardado en evaluations/' + targetId);
+    await firebase.firestore().collection('evaluations').doc(docId).set(payload, { merge:false });
+    alert('✅ Guardado en evaluations/' + docId);
     closeEditor();
     await loadCreatedCourses();
   } catch (err) {
