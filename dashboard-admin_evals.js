@@ -1,9 +1,12 @@
+// =======================
 // Utilitarios
-const $ = (sel) => document.querySelector(sel);
+// =======================
+const $  = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
 
-// Sanitiza docId (para creación manual)
-function sanitizeDocId(s='') {
+// Sanitiza docId (para creación/edición manual)
+function sanitizeDocId(s = '') {
   return s
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
@@ -12,7 +15,7 @@ function sanitizeDocId(s='') {
     .replace(/^_+|_+$/g, '');
 }
 
-// Siguiente versión desde un docId exacto (preserva mayúsculas/minúsculas del base)
+// Siguiente versión desde un docId EXACTO (preserva mayúsculas/minúsculas del base)
 async function nextVersionFromExact(docIdExact) {
   const m = /\.v(\d+)$/i.exec(docIdExact);
   const base = m ? docIdExact.replace(/\.v\d+$/i, '') : docIdExact;
@@ -32,7 +35,18 @@ function versionFromDocId(docId) {
   return m ? parseInt(m[1], 10) : 1;
 }
 
-// Tarjeta de curso
+// Quita prefijo/sufijo de archivo para mostrar solo el "nombre base"
+function stripPrefixAndExt(url, prefix, ext) {
+  if (!url) return '';
+  let s = url;
+  if (prefix && s.startsWith(prefix)) s = s.slice(prefix.length);
+  if (ext && s.toLowerCase().endsWith(ext.toLowerCase())) s = s.slice(0, -ext.length);
+  return s;
+}
+
+// =======================
+// Render de tarjetas
+// =======================
 function courseCardHTML({ docId, id, name, title, puntajeAprobacion, version }) {
   return `
     <div class="course-card" data-doc="${docId}" data-id="${id || ''}">
@@ -63,10 +77,14 @@ function doneCardHTML({ course, dateStr, empresa }) {
   `;
 }
 
+// =======================
 // Estado
+// =======================
 let allEvaluations = []; // [{docId, data}]
 
+// =======================
 // Cargar listados
+// =======================
 async function loadCreatedCourses() {
   const list = $('#createdList');
   list.innerHTML = 'Cargando...';
@@ -113,23 +131,25 @@ async function loadDoneCourses() {
   list.innerHTML = 'Cargando...';
   const items = [];
   try {
+    // responses
     const resSnap = await firebase.firestore().collection('responses').limit(100).get().catch(() => null);
     if (resSnap && !resSnap.empty) {
       resSnap.forEach(d => {
         const r = d.data() || {};
         const course = r.title || r.evaluationTitle || r.course || r.evaluationName || r.evalTitle;
-        const ts = r.createdAt?.toDate?.() || (r.createdAt? new Date(r.createdAt): null) || (r.date? new Date(r.date): null);
+        const ts = r.createdAt?.toDate?.() || (r.createdAt ? new Date(r.createdAt) : null) || (r.date ? new Date(r.date) : null);
         const empresa = r.empresa || r.company;
         items.push({ course, date: ts, empresa });
       });
     }
+    // inscripciones / inscriptions
     const tryCol = async (name) => {
       const snap = await firebase.firestore().collection(name).limit(100).get().catch(() => null);
       if (!snap || snap.empty) return;
       snap.forEach(d => {
         const r = d.data() || {};
         const course = r.courseName || r.course || r.title || r.evaluationTitle;
-        const ts = r.date?.toDate?.() || (r.date? new Date(r.date): null) || r.createdAt?.toDate?.();
+        const ts = r.date?.toDate?.() || (r.date ? new Date(r.date) : null) || r.createdAt?.toDate?.();
         const empresa = (r.forma === 'cerrado' ? (r.empresa || r.company) : null);
         items.push({ course, date: ts, empresa });
       });
@@ -161,7 +181,9 @@ async function loadDoneCourses() {
   }
 }
 
-// Editor helpers
+// =======================
+// Editor (abrir/cerrar)
+// =======================
 function openEditor(title='Nuevo curso') {
   $('#editorTitle').textContent = title;
   $('#editor').classList.add('open');
@@ -173,6 +195,9 @@ function closeEditor() {
   clearForm();
 }
 
+// =======================
+// Controles dinámicos
+// =======================
 function rowChip(value = '') {
   const wrap = document.createElement('div');
   wrap.className = 'chip-row';
@@ -226,37 +251,32 @@ function makeQuestion(q = { text:'', options:[''], correct:'' }) {
   return wrap;
 }
 
+// =======================
+// Form helpers
+// =======================
 function clearForm() {
   ['docIdInput','idInput','nameInput','descInput','manualUrlInput',
    'certificateTmplInput','imageUrlInput','imageBadgeInput','timeHoursInput','scoreInput']
-   .forEach(id => { const el = document.getElementById(id); if (el) el.value=''; });
+   .forEach(id => setVal(id, ''));
   $('#criteriaList').innerHTML = '';
   $('#standardsList').innerHTML = '';
   $('#questionsList').innerHTML = '';
 }
 
-function stripPrefixAndExt(url, prefix, ext) {
-  if (!url) return '';
-  let s = url;
-  if (prefix && s.startsWith(prefix)) s = s.slice(prefix.length);
-  if (ext && s.toLowerCase().endsWith(ext.toLowerCase())) s = s.slice(0, -ext.length);
-  return s;
-}
-
 function fillForm(docId, data) {
-  $('#docIdInput').value = docId || '';
-  $('#idInput').value = data.ID ?? '';
-  $('#nameInput').value = data.name ?? '';
-  $('#descInput').value = data.description ?? '';
+  setVal('docIdInput', docId || '');
+  setVal('idInput', data.ID ?? '');
+  setVal('nameInput', data.name ?? '');
+  setVal('descInput', data.description ?? '');
 
   const manualPrefix = 'https://esysingenieria.github.io/evaluaciones-cursos/manuales-cursos/';
-  $('#manualUrlInput').value = stripPrefixAndExt(data.manualURL || '', manualPrefix, '.pdf');
-  $('#certificateTmplInput').value = stripPrefixAndExt(data.certificateTemplate || '', '', '.pdf');
-  $('#imageUrlInput').value = stripPrefixAndExt(data.imageURL || '', '', '.jpg');
-  $('#imageBadgeInput').value = stripPrefixAndExt(data.imageURL_badge || '', '', '.png');
+  setVal('manualUrlInput', stripPrefixAndExt(data.manualURL || '', manualPrefix, '.pdf'));
+  setVal('certificateTmplInput', stripPrefixAndExt(data.certificateTemplate || '', '', '.pdf'));
+  setVal('imageUrlInput', stripPrefixAndExt(data.imageURL || '', '', '.jpg'));
+  setVal('imageBadgeInput', stripPrefixAndExt(data.imageURL_badge || '', '', '.png'));
 
   const hrs = /(\d+)\s*hrs?\.?/i.exec(data.timeEvaluation || '');
-  $('#timeHoursInput').value = hrs ? parseInt(hrs[1],10) : '';
+  setVal('timeHoursInput', hrs ? parseInt(hrs[1],10) : '');
 
   const cL = $('#criteriaList'); cL.innerHTML = '';
   (data.criteria || []).forEach(s => cL.appendChild(rowChip(s)));
@@ -293,7 +313,9 @@ function collectQuestions() {
   return out;
 }
 
+// =======================
 // Acciones de tarjetas
+// =======================
 document.addEventListener('click', async (e) => {
   const btnEdit = e.target.closest('.act-edit');
   const btnCopy = e.target.closest('.act-copy');
@@ -342,7 +364,9 @@ document.addEventListener('click', async (e) => {
   }
 });
 
+// =======================
 // Guardar (crear/actualizar)
+// =======================
 async function saveEvaluation() {
   // docId desde input (sanitizado); si está vacío, se deriva del nombre
   let docId = $('#docIdInput').value.trim();
@@ -358,7 +382,7 @@ async function saveEvaluation() {
   const title = name; // title = name (no editable)
   const description = $('#descInput').value.trim();
 
-  // archivos
+  // archivos (solo nombre base, agregamos prefijo/extensión)
   const manualPrefix = 'https://esysingenieria.github.io/evaluaciones-cursos/manuales-cursos/';
   const manualBase = $('#manualUrlInput').value.trim().replace(/\.pdf$/i,'');
   const certificateBase = $('#certificateTmplInput').value.trim().replace(/\.pdf$/i,'');
@@ -417,19 +441,25 @@ async function saveEvaluation() {
   }
 }
 
+// =======================
 // Wire-up
+// =======================
 document.addEventListener('DOMContentLoaded', () => {
+  // navegación
   $('#btnGoUsers')?.addEventListener('click', () => { location.href = 'dashboard-admin.html'; });
   $('#btnSignOut')?.addEventListener('click', async () => {
     try { await firebase.auth().signOut(); location.href = 'index.html'; } catch (e) { alert(e.message); }
   });
 
+  // listados
   loadCreatedCourses();
   loadDoneCourses();
 
+  // buscadores
   $('#searchCreated')?.addEventListener('input', renderCreatedList);
   $('#searchDone')?.addEventListener('input', loadDoneCourses);
 
+  // editor
   $('#btnNewCourse')?.addEventListener('click', () => {
     clearForm();
     $('#editorTitle').textContent = 'Nuevo curso';
@@ -438,6 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#btnSave')?.addEventListener('click', saveEvaluation);
   $('#btnClose')?.addEventListener('click', closeEditor);
 
+  // agregar filas dinámicas en editor
   $('#btnAddCriterion')?.addEventListener('click', () => {
     $('#criteriaList').appendChild(rowChip(''));
   });
