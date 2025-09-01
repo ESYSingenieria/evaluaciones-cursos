@@ -432,17 +432,23 @@ function closeHistoryEditor(){
   setVal('historyCourseKey',''); setVal('historyDate',''); setVal('historyForma','abierto'); setVal('historyEmpresa','');
   $('#historyParticipants').innerHTML = '<div class="meta">Sin participantes (se asignan en el Panel de Usuarios).</div>';
 }
-function populateCourseSelect(selectedKey='', disabled=false){
-  const sel = $('#historyCourseKey'); sel.innerHTML = '';
+function populateCourseSelect(selectedKey = '', disabled = false){
+  const sel = $('#historyCourseKey');
+  sel.innerHTML = '';
+
+  // mostramos y ordenamos por NOMBRE DE DOCUMENTO (docId)
   allEvaluations
-    .sort((a,b)=> (a.data.title||a.data.name||a.docId).localeCompare(b.data.title||b.data.name||b.docId))
-    .forEach(({docId, data})=>{
+    .map(x => x.docId)
+    .sort((a,b) => a.localeCompare(b))
+    .forEach(docId => {
       const opt = document.createElement('option');
-      opt.value = docId; opt.textContent = data.title || data.name || docId;
+      opt.value = docId;        // value = docId (clave real del curso)
+      opt.textContent = docId;  // visible = docId (NFPA_70E.v2, NFPA_70B, ...)
       if (docId === selectedKey) opt.selected = true;
       sel.appendChild(opt);
     });
-  sel.disabled = !!disabled;
+
+  sel.disabled = !!disabled;     // al editar: deshabilitado
 }
 function fillHistoryEditor(item, isEdit){
   populateCourseSelect(item.courseKey || '', isEdit);
@@ -464,32 +470,44 @@ function fillHistoryEditor(item, isEdit){
   }
 }
 async function saveHistory(){
-  const courseKey = $('#historyCourseKey').value;
-  const dateStr   = $('#historyDate').value;         // YYYY-MM-DD
-  const forma     = $('#historyForma').value;
+  const courseKey = $('#historyCourseKey').value;     // docId elegido (NFPA_70E.v3, etc.)
+  const dateStr   = $('#historyDate').value;          // YYYY-MM-DD
+  const forma     = $('#historyForma').value;         // 'abierto' | 'cerrado'
   const empresa   = $('#historyEmpresa').value.trim();
-  if (!courseKey || !dateStr){ alert('Selecciona curso y fecha.'); return; }
 
-  // Guardamos con tus nombres de campos
+  if (!courseKey || !dateStr){
+    alert('Selecciona curso y fecha.');
+    return;
+  }
+
+  // Construye el ID del documento en inscripciones
+  const empresaSlug = (forma === 'cerrado' && empresa) ? '_' + sanitizeDocId(empresa) : '';
+  const histDocId   = `${courseKey}_${dateStr}_${forma}${empresaSlug}`;
+
   const payload = {
-    courseKey,
-    courseDate: dateStr,
+    courseKey,                 // relación con evaluations/{courseKey}
+    courseDate: dateStr,       // guardamos como string YYYY-MM-DD
     formaCurso: forma,
     empresaSolicitante: empresa
   };
 
   try{
     if (editingHistoryId){
-      await firebase.firestore().collection('inscripciones').doc(editingHistoryId).set(payload, { merge:true });
+      // EDITAR (no se cambia el ID del doc)
+      await firebase.firestore().collection('inscripciones')
+        .doc(editingHistoryId).set(payload, { merge:true });
       alert('✅ Realizado actualizado.');
     }else{
-      const ref = await firebase.firestore().collection('inscripciones').add(payload);
-      alert('✅ Realizado creado: ' + ref.id);
+      // CREAR con ID personalizado
+      await firebase.firestore().collection('inscripciones')
+        .doc(histDocId).set(payload, { merge:false });
+      alert('✅ Realizado creado: ' + histDocId);
     }
     closeHistoryEditor();
     await loadHistoryCourses();
   }catch(err){
-    console.error(err); alert('❌ Error al guardar: '+err.message);
+    console.error(err);
+    alert('❌ Error al guardar: ' + err.message);
   }
 }
 
@@ -562,4 +580,5 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('#btnHistorySave')?.addEventListener('click', saveHistory);
   $('#btnHistoryClose')?.addEventListener('click', closeHistoryEditor);
 });
+
 
