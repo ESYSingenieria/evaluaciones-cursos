@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Panel de Cursos y Encuestas - Plataforma de Cursos</title>
+  <title>Panel de Evaluaciones - Plataforma de Cursos</title>
 
-  <!-- Firebase SDKs v8 (mismos que usas en el panel de usuarios) -->
+  <!-- Firebase SDKs v8 -->
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
 
-  <!-- Conexión a TU proyecto (misma config que ya usas) -->
+  <!-- Conexión a tu proyecto -->
   <script>
     const firebaseConfig = {
       apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
@@ -54,12 +54,18 @@
     .course-card{
       position:relative; background:#fff; border:2px solid var(--border); border-radius:10px;
       box-shadow:0 2px 6px rgba(0,0,0,.05); padding:16px; margin:0 0 12px 0;
+      /* deja espacio para los botones a la derecha y evita que los pisen */
+      padding-right:168px;
+      min-height:64px;
     }
-    .course-title{ font-weight:800; margin:0 0 6px 0; }
-    .meta{ color:var(--muted); font-size:13px; }
-    .tag{ display:inline-block; background:#eef2ff; color:#1e40af; padding:2px 8px; border-radius:999px; font-size:12px; margin-right:6px; }
+    .course-title{ font-weight:800; margin:0 0 6px 0; line-height:1.25; }
+    .meta{ color:var(--muted); font-size:13px; display:flex; flex-wrap:wrap; gap:6px; }
+    .tag{ display:inline-block; background:#eef2ff; color:#1e40af; padding:2px 8px; border-radius:999px; font-size:12px; }
 
-    .actions{ position:absolute; top:12px; right:12px; display:flex; gap:6px; }
+    .actions{
+      position:absolute; top:12px; right:12px; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;
+      max-width:150px; /* por si se angosta, evita solaparse */
+    }
     .btn{ border:none; border-radius:8px; padding:8px 12px; cursor:pointer; font-weight:600; }
     .btn-sm{ padding:6px 10px; border-radius:6px; font-size:13px; }
     .btn-primary{ background:var(--primary); color:#fff; }
@@ -94,7 +100,7 @@
     .chip-row input[type="text"]{ flex:1 1 auto; }
     .small-btn{ padding:6px 10px; border:none; border-radius:6px; color:#fff; cursor:pointer; }
     .small-add{ background:#198754; }
-    .small-del{ background:#dc3545; }
+    .small-del{ background:var(--danger); }
 
     /* Preguntas */
     .q-card{ border:1px solid #e5e7eb; border-radius:10px; padding:12px; background:#f9fbff; margin:10px 0; }
@@ -110,8 +116,8 @@
   <!-- Logo centrado -->
   <header>
     <div class="logo-wrap">
-      <!-- Ajusta el src para que apunte al mismo logo que usas en el panel de usuarios -->
-      <a href="https://esys.cl/"><img src="logo.png" alt="Logo de la Empresa" class="logo" /></a>
+      <!-- usa el mismo logo del panel de usuarios -->
+      <img class="logo" src="logo.png" alt="ESYS">
     </div>
     <div class="top-actions">
       <button class="btn btn-outline" id="btnGoUsers">Ir al Panel de Usuarios</button>
