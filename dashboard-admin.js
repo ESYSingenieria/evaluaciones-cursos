@@ -1005,7 +1005,7 @@ function loadAllUsers() {
       <div class="field-container"><strong>CustomID:</strong><span class="field">${u.customID}</span></div>
       <div class="field-container"><strong>Empresa:</strong> <span class="field">${u.company}</span></div>
 
-      <div class="buttons" style="margin:8px 0; display:flex; flex-direction:column; gap:6px; max-width:220px;">
+      <div class="user-actions" style="margin:8px 0; display:flex; flex-direction:column; gap:6px; max-width:220px;">
         <button class="edit-user-btn">Editar Usuario</button>
 
         <div>
@@ -1860,6 +1860,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
