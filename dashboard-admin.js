@@ -1100,7 +1100,10 @@ function loadAllUsers() {
     `;
     
     // 5.3) Placeholder para el resumen de evaluaciones (modo “view”)
-    const summaryHtml = `<div class="eval-summary" style="margin-top:12px;"></div>`;
+    const summaryHtml = `
+      <div class="eval-title">Evaluaciones Asignadas:</div>
+      <div class="eval-summary" style="margin-top:8px;"></div>
+    `;
 
     // Juntamos todo e inyectamos
     row.innerHTML = staticHtml + editHtml + summaryHtml;
@@ -1860,6 +1863,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
