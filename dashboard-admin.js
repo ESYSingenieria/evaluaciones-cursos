@@ -1014,7 +1014,6 @@ function loadAllUsers() {
         </div>
 
         <button class="delete-user-btn" data-name="${u.name}" style="background:#dc3545;">Eliminar Usuario</button>
-        <button class="logout-btn" style="background:#6c757d;">Cerrar Sesión</button>
       </div>
     `;
 
@@ -1861,6 +1860,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
