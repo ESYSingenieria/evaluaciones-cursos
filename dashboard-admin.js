@@ -1005,12 +1005,16 @@ function loadAllUsers() {
       <div class="field-container"><strong>CustomID:</strong><span class="field">${u.customID}</span></div>
       <div class="field-container"><strong>Empresa:</strong> <span class="field">${u.company}</span></div>
 
-      <div class="buttons" style="margin:8px 0;">
-        <button class="edit-user-btn">✏️</button>
-        <button class="delete-user-btn" data-name="${u.name}"
-                style="margin-left:8px;background:#dc3545;">🗑️ Eliminar</button>
-        <button class="save-user-btn" style="display:none;">✔️</button>
-        <button class="cancel-user-btn" style="display:none;">✖️</button>
+      <div class="buttons" style="margin:8px 0; display:flex; flex-direction:column; gap:6px; max-width:220px;">
+        <button class="edit-user-btn">Editar Usuario</button>
+
+        <div>
+          <button class="save-user-btn" style="display:none;">Guardar</button>
+          <button class="cancel-user-btn" style="display:none; margin-left:6px;">Cancelar</button>
+        </div>
+
+        <button class="delete-user-btn" data-name="${u.name}" style="background:#dc3545;">Eliminar Usuario</button>
+        <button class="logout-btn" style="background:#6c757d;">Cerrar Sesión</button>
       </div>
     `;
 
@@ -1857,6 +1861,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
