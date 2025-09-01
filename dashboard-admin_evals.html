@@ -27,23 +27,29 @@
 
   <style>
     :root{
-      --bg:#f4f6f8; --card:#fff; --border:#dfe3e8; --muted:#6b7280; --primary:#0d6efd; --danger:#dc3545; --neutral:#6c757d;
+      --bg:#f4f6f8; --card:#fff; --border:#dfe3e8; --muted:#6b7280;
+      --primary:#0d6efd; --danger:#dc3545; --neutral:#6c757d;
     }
     *{ box-sizing:border-box; }
     body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial; background:var(--bg); color:#111; }
 
     header{ background:#fff; border-bottom:1px solid #e5e7eb; padding:16px 20px; }
     .logo-wrap{ display:flex; justify-content:center; align-items:center; }
-    .logo{ max-height:56px; }
-    .hero{ display:flex; justify-content:center; align-items:center; background:#fff; padding:18px 12px; border-bottom:1px solid #e5e7eb; }
-    .hero h1{ margin:0; font-size:28px; font-weight:800; }
+    .logo{ width:200px; height:auto; }
+
+    .hero{ position:relative; background:#fff; padding:18px 12px; border-bottom:1px solid #e5e7eb; }
+    .hero h1{ margin:0; font-size:28px; font-weight:800; text-align:center; }
+    .hero-actions{
+      position:absolute; right:16px; top:50%; transform:translateY(-50%);
+      display:flex; gap:8px; align-items:center;
+    }
 
     .container{ max-width:1280px; margin:16px auto; padding:0 16px; }
     .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
     @media (max-width:1024px){ .grid-2{ grid-template-columns:1fr; } }
 
     .panel-card{ background:var(--card); border:2px solid var(--border); border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); padding:12px; }
-    .panel-card h2{ margin:0 0 10px 0; font-size:18px; }
+    .panel-card h2{ margin:0 0 10px 0; font-size:18px; display:flex; align-items:center; gap:8px; }
 
     .course-card{
       position:relative; background:#fff; border:2px solid var(--border); border-radius:10px;
@@ -61,8 +67,14 @@
     .btn-danger{ background:var(--danger); color:#fff; }
     .btn-neutral{ background:var(--neutral); color:#fff; }
     .btn-outline{ background:#e9ecef; }
-    .top-actions{ display:flex; gap:8px; justify-content:flex-end; margin:8px 0 0 0; }
     .hidden{ display:none !important; }
+
+    /* Botón de Cerrar Sesión fijo abajo-derecha */
+    #btnSignOutFixed{
+      position:fixed; right:18px; bottom:18px; z-index:1100;
+      background:var(--danger); color:#fff; border:none; border-radius:10px; padding:12px 14px; font-weight:700;
+      box-shadow:0 8px 18px rgba(220,53,69,0.35);
+    }
 
     .drawer{ position:fixed; top:0; right:0; width:720px; max-width:100%; height:100%; background:#fff;
       border-left:2px solid var(--border); box-shadow:-4px 0 16px rgba(0,0,0,.1); transform:translateX(100%); transition:transform .25s ease;
@@ -74,10 +86,9 @@
     .full{ grid-column:1 / -1; }
     .field{ display:flex; flex-direction:column; gap:6px; }
     .field label{ font-weight:700; font-size:14px; }
-    .field input[type="text"], .field input[type="number"], .field textarea{
+    .field input[type="text"], .field input[type="date"], .field input[type="number"], .field textarea, .field select{
       border:1px solid #ccc; border-radius:8px; padding:10px 12px; font-size:14px; background:#f9fafb;
     }
-    .field textarea{ min-height:120px; resize:vertical; }
     .meta-help{ color:#6b7280; font-size:12px; }
 
     .chip-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
@@ -93,7 +104,6 @@
     .q-sub{ font-weight:600; margin:10px 0 6px; }
     .q-row{ display:flex; gap:8px; align-items:center; margin:8px 0; }
     .q-row input[type="text"]{ flex:1 1 auto; }
-    .q-actions{ display:flex; gap:8px; }
     .q-add{ background:var(--primary); }
     .q-del{ background:#fd7e14; }
     .q-del-opt{ background:var(--danger); }
@@ -102,16 +112,17 @@
 <body>
   <header>
     <div class="logo-wrap">
-      <img class="logo" src="logo.png" alt="ESYS">
-    </div>
-    <div class="top-actions">
-      <button class="btn btn-outline" id="btnGoUsers">Ir al Panel de Usuarios</button>
-      <button class="btn btn-neutral" id="btnSignOut">Cerrar Sesión</button>
+      <a href="https://esys.cl" target="_blank" rel="noopener">
+        <img class="logo" src="logo.png" alt="ESYS">
+      </a>
     </div>
   </header>
 
   <section class="hero">
     <h1>Panel de Evaluaciones</h1>
+    <div class="hero-actions">
+      <button class="btn btn-outline" id="btnGoUsers">Ir al Panel de Usuarios</button>
+    </div>
   </section>
 
   <main class="container">
@@ -126,7 +137,10 @@
       </section>
 
       <section class="panel-card">
-        <h2>Cursos realizados</h2>
+        <h2>
+          Cursos realizados
+          <button id="btnNewHistory" class="btn btn-primary" style="margin-left:auto;">Crear realizado</button>
+        </h2>
         <div style="display:flex; gap:8px; margin:8px 0 12px 0;">
           <input id="searchDone" type="text" placeholder="Buscar por nombre, empresa o fecha..." style="flex:1; border:1px solid #ccc; border-radius:8px; padding:8px 12px; background:#f9fafb;">
         </div>
@@ -135,7 +149,10 @@
     </div>
   </main>
 
-  <!-- Editor lateral -->
+  <!-- Botón fijo de Cerrar Sesión -->
+  <button id="btnSignOutFixed">Cerrar Sesión</button>
+
+  <!-- Editor de cursos creados (igual que antes) -->
   <aside id="editor" class="drawer" aria-hidden="true">
     <header>
       <strong id="editorTitle">Nuevo curso</strong>
@@ -217,6 +234,51 @@
           <label>Preguntas</label>
           <div id="questionsList"></div>
           <button id="btnAddQuestion" class="small-btn small-add" type="button">+ Agregar pregunta</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Editor de CURSOS REALIZADOS -->
+  <aside id="historyEditor" class="drawer" aria-hidden="true">
+    <header>
+      <strong id="historyTitle">Nuevo realizado</strong>
+      <div style="display:flex; gap:8px;">
+        <button id="btnHistorySave" class="btn btn-primary">Guardar</button>
+        <button id="btnHistoryClose" class="btn btn-outline">Cancelar</button>
+      </div>
+    </header>
+    <div class="content">
+      <div class="grid">
+        <div class="field full">
+          <label for="historyCourseKey">Curso (de lista de cursos creados)</label>
+          <select id="historyCourseKey"></select>
+          <div class="meta-help">Se guarda el courseKey y se muestra el nombre real del curso.</div>
+        </div>
+
+        <div class="field">
+          <label for="historyDate">Fecha</label>
+          <input id="historyDate" type="date">
+        </div>
+
+        <div class="field">
+          <label for="historyForma">Forma</label>
+          <select id="historyForma">
+            <option value="abierto">abierto</option>
+            <option value="cerrado">cerrado</option>
+          </select>
+        </div>
+
+        <div class="field full">
+          <label for="historyEmpresa">Empresa (solo cursos cerrados)</label>
+          <input id="historyEmpresa" type="text" placeholder="Nombre de la empresa">
+        </div>
+
+        <div class="field full">
+          <label>Participantes</label>
+          <div id="historyParticipants" class="panel-card" style="padding:8px;">
+            <div class="meta">Sin participantes (se asignan en el Panel de Usuarios).</div>
+          </div>
         </div>
       </div>
     </div>
