@@ -155,21 +155,13 @@ function closeEditor(){
   clearForm();
 }
 
-// ===== Controles dinámicos =====
-function rowChip(value=''){
-  const wrap = document.createElement('div');
-  wrap.className = 'chip-row';
-  wrap.innerHTML = `
-    <input type="text" placeholder="Escribe aquí..." value="${(value||'').replace(/"/g,'&quot;')}">
-    <button type="button" class="small-btn small-del">Eliminar</button>
-  `;
-  wrap.querySelector('button').addEventListener('click', ()=>wrap.remove());
-  return wrap;
-}
-
+// ===== Controles dinámicos (preguntas) =====
 function makeQuestion(q={ text:'', options:[''], correct:'' }){
+  const qid = 'q' + Math.random().toString(36).slice(2,9); // agrupa radios
   const wrap = document.createElement('div');
   wrap.className = 'q-card';
+  wrap.dataset.qid = qid;
+
   wrap.innerHTML = `
     <div class="q-head">
       <div class="q-title"><span class="q-number">#</span> Enunciado de Pregunta</div>
@@ -182,38 +174,43 @@ function makeQuestion(q={ text:'', options:[''], correct:'' }){
 
     <div class="q-sub">Alternativas:</div>
     <div class="q-options"></div>
-
-    <div class="field" style="margin-top:8px">
-      <label>Respuesta correcta</label>
-      <input class="q-correct" type="text" placeholder="Debe coincidir con una opción" value="${(q.correct||'').replace(/"/g,'&quot;')}">
-    </div>
+    <div class="q-add-wrap" style="margin-top:8px"></div>
   `;
-  const optBox = wrap.querySelector('.q-options');
 
-  function addOption(val=''){
+  const optBox = wrap.querySelector('.q-options');
+  const addWrap = wrap.querySelector('.q-add-wrap');
+
+  function addOption(val='', isCorrect=false){
     const r = document.createElement('div');
     r.className = 'q-row';
     r.innerHTML = `
       <input class="opt-text" type="text" placeholder="Texto de la opción" value="${(val||'').replace(/"/g,'&quot;')}">
+      <label class="correct-wrap" style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+        <input type="radio" class="opt-correct" name="correct-${qid}">
+        Correcta
+      </label>
       <button type="button" class="small-btn q-del-opt">Quitar</button>
     `;
-    r.querySelector('.q-del-opt').addEventListener('click', ()=>r.remove());
+    const radio = r.querySelector('.opt-correct');
+    radio.checked = !!isCorrect;
+    r.querySelector('.q-del-opt').addEventListener('click', ()=> r.remove());
     optBox.appendChild(r);
   }
-  const opts = Array.isArray(q.options) && q.options.length ? q.options : [''];
-  opts.forEach(addOption);
 
-  wrap.querySelector('.q-del').addEventListener('click', ()=>{
-    wrap.remove();
-    renumberQuestions();
-  });
+  const opts = Array.isArray(q.options) && q.options.length ? q.options : [''];
+  opts.forEach(v => addOption(v, v === q.correct));
 
   const addBtn = document.createElement('button');
   addBtn.type = 'button';
   addBtn.className = 'small-btn q-add';
   addBtn.textContent = '+ Opción';
-  addBtn.addEventListener('click', ()=>addOption(''));
-  wrap.appendChild(addBtn);
+  addBtn.addEventListener('click', ()=> addOption('', false));
+  addWrap.appendChild(addBtn);
+
+  wrap.querySelector('.q-del').addEventListener('click', ()=>{
+    wrap.remove();
+    renumberQuestions();
+  });
 
   return wrap;
 }
@@ -258,6 +255,16 @@ function fillForm(docId, data){
   (data.questions || []).forEach(q => qL.appendChild(makeQuestion(q)));
   renumberQuestions();
 }
+function rowChip(value=''){
+  const wrap = document.createElement('div');
+  wrap.className = 'chip-row';
+  wrap.innerHTML = `
+    <input type="text" placeholder="Escribe aquí..." value="${(value||'').replace(/"/g,'&quot;')}">
+    <button type="button" class="small-btn small-del">Eliminar</button>
+  `;
+  wrap.querySelector('button').addEventListener('click', ()=>wrap.remove());
+  return wrap;
+}
 function collectArrayFrom(sel){
   const out = [];
   $$(sel+' input[type="text"]').forEach(i=>{ const v=i.value.trim(); if(v) out.push(v); });
@@ -267,9 +274,16 @@ function collectQuestions(){
   const out = [];
   $$('#questionsList .q-card').forEach(card=>{
     const text = card.querySelector('.q-text').value.trim();
-    const correct = card.querySelector('.q-correct').value.trim();
     const options = [];
-    card.querySelectorAll('.opt-text').forEach(o=>{ const v=o.value.trim(); if(v) options.push(v); });
+    let correct = '';
+    card.querySelectorAll('.q-row').forEach(r=>{
+      const txt = r.querySelector('.opt-text')?.value.trim() || '';
+      if (txt) {
+        options.push(txt);
+        const picked = r.querySelector('.opt-correct')?.checked;
+        if (picked) correct = txt;
+      }
+    });
     if(!text || !options.length) return;
     out.push({ text, options, correct });
   });
@@ -366,7 +380,7 @@ async function saveEvaluation(){
   try{
     await firebase.firestore().collection('evaluations').doc(docId).set(payload, { merge:false });
     alert('✅ Guardado en evaluations/'+docId);
-    closeEditor();
+    closeEditor();            // Cancelar/Guardar cierran
     await loadCreatedCourses();
   }catch(err){ console.error(err); alert('❌ Error al guardar: '+err.message); }
 }
