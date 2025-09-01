@@ -24,7 +24,7 @@
       outline:none; border-color:#007bff; box-shadow:0 0 0 2px rgba(0,123,255,.2);
     }
 
-    /* TARJETA DE USUARIO (más marcada y espacio superior para acciones) */
+    /* TARJETA DE USUARIO: borde marcado y SIN hueco arriba */
     .user-item{
       width:100%;
       margin:0 0 16px 0;
@@ -34,10 +34,15 @@
       border:2px solid #dfe3e8;
       box-shadow:0 2px 8px rgba(0,0,0,.06);
       position:relative;
-      padding-top:92px;
+      padding-top:16px; /* ← antes 92px */
     }
 
-    /* NO toques los botones internos (respuestas/encuesta/certificado) */
+    /* Reserva espacio a la DERECHA para no chocar con la columna de acciones */
+    .user-item > :not(.user-actions){
+      padding-right:200px;
+    }
+
+    /* Botonería normal (Respuestas/Encuesta/Certificado, etc.) */
     .user-item button{
       margin:4px 8px 4px 0;
       padding:8px 12px;
@@ -52,7 +57,7 @@
     .user-item .delete-user-btn{ background:#dc3545; color:#fff; }
     .user-item .delete-user-btn:hover{ background:#c82333; }
 
-    /* === SOLO para los 4 botones de acciones del usuario (arriba-derecha) === */
+    /* === SOLO los 4 botones de acciones (arriba-derecha) === */
     .user-actions{
       position:absolute;
       top:12px;
@@ -65,7 +70,7 @@
     }
     .user-actions .inline-edit-cta{
       display:flex;
-      gap:6px;
+      gap:6px; /* Guardar | Cancelar en línea */
     }
     .user-actions button{
       background:#0d6efd;
@@ -76,7 +81,7 @@
     .user-actions .delete-user-btn{ background:#dc3545; }
     .user-actions .logout-btn{ background:#6c757d; }
 
-    /* Desactiva cualquier posicionamiento absoluto viejo de estos botones */
+    /* Desactiva posicionamientos absolutos viejos de estos tres */
     .user-item .edit-user-btn,
     .user-item .save-user-btn,
     .user-item .cancel-user-btn{
@@ -99,7 +104,7 @@
       margin:8px 0 4px;
     }
 
-    /* (obsoleto) botón flotante global de logout */
+    /* (obsoleto) botón flotante global de logout, por si quedó */
     #logoutContainer{ position:fixed; bottom:20px; right:20px; z-index:1000; }
     #logoutButton{ padding:10px 20px; background:#ff4d4d; color:#fff; border:none; border-radius:5px; cursor:pointer; }
 
@@ -110,7 +115,10 @@
     @media (max-width:768px){
       header{ padding:8px 12px; }
       .dashboard-container{ width:100%; padding:0 10px; }
-      #logoutContainer{ width:100%; }
+      /* en móvil no reservamos 200px porque el ancho es chico */
+      .user-item > :not(.user-actions){ padding-right:0; }
+      /* si quieres, puedes bajar la columna en móvil:
+         .user-actions{ position:static; flex-direction:row; align-items:flex-start; } */
     }
   </style>
 
