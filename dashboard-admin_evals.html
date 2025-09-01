@@ -10,7 +10,7 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
 
-  <!-- Conexión a TU proyecto (mismo config que ya usas) -->
+  <!-- Conexión a TU proyecto (misma config que ya usas) -->
   <script>
     const firebaseConfig = {
       apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
@@ -20,79 +20,147 @@
       messagingSenderId: "950684050808",
       appId: "1:950684050808:web:33d2ef70f2343642f4548d"
     };
-    if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
-    }
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db   = firebase.firestore();
   </script>
 
   <style>
-    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial; background:#f4f6f8; color:#111; }
-    header{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px; background:#fff; border-bottom:1px solid #e5e7eb; }
-    .title{ font-size:22px; font-weight:800; }
-    .nav-actions{ display:flex; gap:10px; }
-    .btn{ border:none; border-radius:8px; padding:10px 14px; cursor:pointer; font-weight:600; }
-    .btn-primary{ background:#0d6efd; color:#fff; }
-    .btn-secondary{ background:#6c757d; color:#fff; }
-    .btn-danger{ background:#dc3545; color:#fff; }
-    .btn-outline{ background:#e9ecef; color:#111; }
-    .container{ max-width:1200px; margin:18px auto; padding:0 16px; }
+    :root{
+      --bg:#f4f6f8; --card:#fff; --border:#dfe3e8; --muted:#6b7280; --primary:#0d6efd; --danger:#dc3545; --neutral:#6c757d;
+    }
+    *{ box-sizing:border-box; }
+    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial; background:var(--bg); color:#111; }
 
-    .card{ background:#fff; border:2px solid #dfe3e8; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); padding:16px; }
-    .card h2{ margin:0 0 12px 0; }
+    /* Header con logo centrado */
+    header{ background:#fff; border-bottom:1px solid #e5e7eb; padding:16px 20px; }
+    .logo-wrap{ display:flex; justify-content:center; align-items:center; }
+    .logo{ max-height:56px; }
 
-    .docbar{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
-    .docbar input[type="text"]{ border:1px solid #ccc; border-radius:8px; padding:10px 12px; min-width:260px; background:#f9fafb; }
+    /* Título centrado en franja aparte */
+    .hero{ display:flex; justify-content:center; align-items:center; background:#fff; padding:18px 12px; border-bottom:1px solid #e5e7eb; }
+    .hero h1{ margin:0; font-size:28px; font-weight:800; }
 
+    .container{ max-width:1280px; margin:16px auto; padding:0 16px; }
+
+    /* Grid de dos columnas */
+    .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    @media (max-width:1024px){ .grid-2{ grid-template-columns:1fr; } }
+
+    /* Listados (cards como usuarios) */
+    .panel-card{ background:var(--card); border:2px solid var(--border); border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); padding:12px; }
+    .panel-card h2{ margin:0 0 10px 0; font-size:18px; }
+
+    .course-card{
+      position:relative; background:#fff; border:2px solid var(--border); border-radius:10px;
+      box-shadow:0 2px 6px rgba(0,0,0,.05); padding:16px; margin:0 0 12px 0;
+    }
+    .course-title{ font-weight:800; margin:0 0 6px 0; }
+    .meta{ color:var(--muted); font-size:13px; }
+    .tag{ display:inline-block; background:#eef2ff; color:#1e40af; padding:2px 8px; border-radius:999px; font-size:12px; margin-right:6px; }
+
+    .actions{ position:absolute; top:12px; right:12px; display:flex; gap:6px; }
+    .btn{ border:none; border-radius:8px; padding:8px 12px; cursor:pointer; font-weight:600; }
+    .btn-sm{ padding:6px 10px; border-radius:6px; font-size:13px; }
+    .btn-primary{ background:var(--primary); color:#fff; }
+    .btn-danger{ background:var(--danger); color:#fff; }
+    .btn-neutral{ background:var(--neutral); color:#fff; }
+    .btn-outline{ background:#e9ecef; }
+
+    /* Barra superior de acciones globales */
+    .top-actions{ display:flex; gap:8px; justify-content:flex-end; margin:8px 0 0 0; }
+    .hidden{ display:none !important; }
+
+    /* Editor lateral (overlay) */
+    .drawer{
+      position:fixed; top:0; right:0; width:720px; max-width:100%; height:100%; background:#fff;
+      border-left:2px solid var(--border); box-shadow:-4px 0 16px rgba(0,0,0,.1);
+      transform:translateX(100%); transition:transform .25s ease; z-index:1000; overflow:auto;
+    }
+    .drawer.open{ transform:translateX(0); }
+    .drawer header{ position:sticky; top:0; background:#fff; z-index:2; display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid #e5e7eb; }
+    .drawer .content{ padding:16px; }
     .grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
     .full{ grid-column:1 / -1; }
     .field{ display:flex; flex-direction:column; gap:6px; }
     .field label{ font-weight:700; font-size:14px; }
-    .field input[type="text"],
-    .field input[type="number"],
-    .field textarea{ border:1px solid #ccc; border-radius:8px; padding:10px 12px; font-size:14px; background:#f9fafb; }
+    .field input[type="text"], .field input[type="number"], .field textarea{
+      border:1px solid #ccc; border-radius:8px; padding:10px 12px; font-size:14px; background:#f9fafb;
+    }
     .field textarea{ min-height:120px; resize:vertical; }
-    .muted{ color:#6b7280; font-size:12px; }
 
+    /* Chips/filas simples */
     .chip-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
     .chip-row input[type="text"]{ flex:1 1 auto; }
     .small-btn{ padding:6px 10px; border:none; border-radius:6px; color:#fff; cursor:pointer; }
     .small-add{ background:#198754; }
     .small-del{ background:#dc3545; }
 
+    /* Preguntas */
     .q-card{ border:1px solid #e5e7eb; border-radius:10px; padding:12px; background:#f9fbff; margin:10px 0; }
     .q-row{ display:flex; gap:8px; align-items:center; margin:8px 0; }
     .q-row input[type="text"]{ flex:1 1 auto; }
     .q-actions{ display:flex; gap:8px; }
-    .q-add{ background:#0d6efd; }
+    .q-add{ background:var(--primary); }
     .q-del{ background:#fd7e14; }
-    .q-del-opt{ background:#dc3545; }
-
-    .mt-8{ margin-top:8px; }
-    .mt-12{ margin-top:12px; }
-    .mt-16{ margin-top:16px; }
-    .hidden{ display:none !important; }
+    .q-del-opt{ background:var(--danger); }
   </style>
 </head>
 <body>
+  <!-- Logo centrado -->
   <header>
-    <div class="title">Panel de Evaluaciones</div>
-    <div class="nav-actions">
+    <div class="logo-wrap">
+      <!-- Ajusta el src para que apunte al mismo logo que usas en el panel de usuarios -->
+      <img class="logo" src="logo.png" alt="ESYS">
+    </div>
+    <div class="top-actions">
       <button class="btn btn-outline" id="btnGoUsers">Ir al Panel de Usuarios</button>
-      <button class="btn btn-secondary" id="btnSignOut">Cerrar Sesión</button>
+      <button class="btn btn-neutral" id="btnSignOut">Cerrar Sesión</button>
     </div>
   </header>
 
-  <main class="container">
-    <section class="card">
-      <h2>Crear / Editar Evaluación</h2>
+  <!-- Título centrado -->
+  <section class="hero">
+    <h1>Panel de Evaluaciones</h1>
+  </section>
 
-      <div class="docbar">
-        <input id="docIdInput" type="text" placeholder="Nombre de documento (Firestore), ej: nfpa_70b_2023_v1" />
-        <button id="btnLoad" class="btn btn-outline">Cargar evaluación</button>
-        <button id="btnNew" class="btn btn-outline">Nueva</button>
+  <main class="container">
+    <div class="grid-2">
+      <!-- Izquierda: Cursos creados (oferta) -->
+      <section class="panel-card">
+        <h2>Cursos creados</h2>
+        <div style="display:flex; gap:8px; margin:8px 0 12px 0;">
+          <button id="btnNewCourse" class="btn btn-primary">Crear nuevo curso</button>
+          <input id="searchCreated" type="text" placeholder="Buscar por nombre o ID..." style="flex:1; border:1px solid #ccc; border-radius:8px; padding:8px 12px; background:#f9fafb;">
+        </div>
+        <div id="createdList"></div>
+      </section>
+
+      <!-- Derecha: Cursos realizados (histórico) -->
+      <section class="panel-card">
+        <h2>Cursos realizados</h2>
+        <div style="display:flex; gap:8px; margin:8px 0 12px 0;">
+          <input id="searchDone" type="text" placeholder="Buscar por nombre, empresa o fecha..." style="flex:1; border:1px solid #ccc; border-radius:8px; padding:8px 12px; background:#f9fafb;">
+        </div>
+        <div id="doneList"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Editor lateral -->
+  <aside id="editor" class="drawer" aria-hidden="true">
+    <header>
+      <strong id="editorTitle">Nuevo curso</strong>
+      <div style="display:flex; gap:8px;">
         <button id="btnSave" class="btn btn-primary">Guardar</button>
+        <button id="btnClose" class="btn btn-outline">Cerrar</button>
+      </div>
+    </header>
+    <div class="content">
+      <div class="field full">
+        <label for="docIdInput">Nombre de documento (Firestore)</label>
+        <input id="docIdInput" type="text" placeholder="nfpa_70b_2023_v1">
+        <div class="meta">Se sanitiza automáticamente: sin tildes, minúsculas, sin espacios (._- permitidos).</div>
       </div>
 
       <div class="grid">
@@ -119,7 +187,6 @@
         <div class="field full">
           <label for="descInput">Descripción (description)</label>
           <textarea id="descInput" placeholder="Esta insignia verifica que la persona ha demostrado..."></textarea>
-          <div class="muted">Explica claramente qué certifica esta evaluación.</div>
         </div>
 
         <div class="field">
@@ -146,7 +213,7 @@
           <label for="isLockedInput">¿Bloqueada? (isLocked)</label>
           <div class="q-row">
             <input id="isLockedInput" type="checkbox">
-            <span class="muted">Marcado = true</span>
+            <span class="meta">Marcado = true</span>
           </div>
         </div>
 
@@ -168,23 +235,23 @@
         <div class="field full">
           <label>Criterios (criteria)</label>
           <div id="criteriaList"></div>
-          <button id="btnAddCriterion" class="small-btn small-add mt-8" type="button">+ Agregar criterio</button>
+          <button id="btnAddCriterion" class="small-btn small-add" type="button">+ Agregar criterio</button>
         </div>
 
         <div class="field full">
           <label>Normas (standards)</label>
           <div id="standardsList"></div>
-          <button id="btnAddStandard" class="small-btn small-add mt-8" type="button">+ Agregar norma</button>
+          <button id="btnAddStandard" class="small-btn small-add" type="button">+ Agregar norma</button>
         </div>
 
         <div class="field full">
           <label>Preguntas (questions)</label>
           <div id="questionsList"></div>
-          <button id="btnAddQuestion" class="small-btn small-add mt-8" type="button">+ Agregar pregunta</button>
+          <button id="btnAddQuestion" class="small-btn small-add" type="button">+ Agregar pregunta</button>
         </div>
       </div>
-    </section>
-  </main>
+    </div>
+  </aside>
 
   <script src="dashboard-admin_evals.js" defer></script>
 </body>
