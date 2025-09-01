@@ -30,6 +30,10 @@ function stripPrefixAndExt(url, prefix, ext){
   if(ext && s.toLowerCase().endsWith(ext.toLowerCase())) s = s.slice(0, -ext.length);
   return s;
 }
+function fmtDate(d){
+  if(!d) return 's/f';
+  try { return new Date(d).toLocaleDateString(); } catch { return 's/f'; }
+}
 
 // ===== Render de tarjetas =====
 function courseCardHTML({ docId, id, name, title, puntajeAprobacion, version }){
@@ -49,28 +53,43 @@ function courseCardHTML({ docId, id, name, title, puntajeAprobacion, version }){
     </div>
   `;
 }
-function doneCardHTML({ course, dateStr, empresa }){
+
+function historyCardHTML(item){
   return `
-    <div class="course-card">
-      <div class="course-title">${course || '(Curso desconocido)'}</div>
+    <div class="course-card" data-hdoc="${item.docId}">
+      <div class="actions">
+        <button class="btn btn-sm btn-primary act-h-edit">Editar</button>
+        <button class="btn btn-sm btn-danger act-h-del">Eliminar</button>
+      </div>
+      <div class="course-title">${item.courseName || '(Curso desconocido)'}</div>
       <div class="meta">
-        <span class="tag">${dateStr || '-'}</span>
-        ${empresa ? `<span class="tag">Empresa: ${empresa}</span>` : ''}
+        <span class="tag">${fmtDate(item.date)}</span>
+        <span class="tag">Forma: ${item.forma || 'abierto'}</span>
+        ${item.empresa ? `<span class="tag">Empresa: ${item.empresa}</span>` : ''}
+        <span class="tag">Participantes: ${item.participantsCount ?? 0}</span>
       </div>
     </div>
   `;
 }
 
 // ===== Estado =====
-let allEvaluations = [];
+let allEvaluations = [];     // [{docId, data}]
+let evalNameByKey = {};      // { courseKey: name }
+let allHistory = [];         // realizados (inscripciones)
+let editingHistoryId = null; // id doc edicion o null si nuevo
 
-// ===== Cargar listados =====
+// ===== Cargar cursos creados =====
 async function loadCreatedCourses(){
   const list = $('#createdList'); list.innerHTML = 'Cargando...';
   try{
     const snap = await firebase.firestore().collection('evaluations').get();
     allEvaluations = snap.docs.map(d => ({ docId: d.id, data: d.data() }));
+    evalNameByKey = {};
+    allEvaluations.forEach(({docId, data})=>{
+      evalNameByKey[docId] = data.title || data.name || docId;
+    });
     renderCreatedList();
+    await loadHistoryCourses(); // ahora que tenemos el mapa de nombres, traemos realizados
   }catch(e){
     console.error(e); list.innerHTML = 'Error al cargar evaluaciones.';
   }
@@ -97,67 +116,57 @@ function renderCreatedList(){
     .join('');
   list.innerHTML = rows || '<div class="meta">No hay cursos creados.</div>';
 }
-async function loadDoneCourses(){
+
+// ===== Cargar CURSOS REALIZADOS (inscripciones) =====
+async function loadHistoryCourses(){
   const list = $('#doneList'); list.innerHTML = 'Cargando...';
   const items = [];
   try{
-    const resSnap = await firebase.firestore().collection('responses').limit(100).get().catch(()=>null);
-    if(resSnap && !resSnap.empty){
-      resSnap.forEach(d=>{
-        const r = d.data() || {};
-        const course = r.title || r.evaluationTitle || r.course || r.evaluationName || r.evalTitle;
-        const ts = r.createdAt?.toDate?.() || (r.createdAt? new Date(r.createdAt): null) || (r.date? new Date(r.date): null);
-        const empresa = r.empresa || r.company;
-        items.push({ course, date: ts, empresa });
-      });
-    }
-    const tryCol = async (name)=>{
-      const snap = await firebase.firestore().collection(name).limit(100).get().catch(()=>null);
-      if(!snap || snap.empty) return;
+    const snap = await firebase.firestore().collection('inscripciones').orderBy('date','desc').limit(300).get().catch(()=>null);
+    if(snap && !snap.empty){
       snap.forEach(d=>{
         const r = d.data() || {};
-        const course = r.courseName || r.course || r.title || r.evaluationTitle;
-        const ts = r.date?.toDate?.() || (r.date? new Date(r.date): null) || r.createdAt?.toDate?.();
-        const empresa = (r.forma === 'cerrado' ? (r.empresa || r.company) : null);
-        items.push({ course, date: ts, empresa });
-      });
-    };
-    await tryCol('inscripciones'); await tryCol('inscriptions');
+        const courseKey = r.courseKey || r.courseId || r.course || '';
+        const date = r.date?.toDate?.() || r.date || null;
+        const forma = r.forma || 'abierto';
+        const empresa = r.empresa || '';
+        // distintos posibles nombres de arreglo de participantes
+        let participants = r.participants || r.inscritos || r.users || r.alumnos || [];
+        if (participants && !Array.isArray(participants) && typeof participants === 'object') {
+          participants = Object.values(participants);
+        }
+        const participantsCount = Array.isArray(participants) ? participants.length : 0;
+        const courseName = evalNameByKey[courseKey] || '(Curso desconocido)';
 
-    items.sort((a,b)=> (b.date?.getTime?.()||0)-(a.date?.getTime?.()||0));
-    const q = ($('#searchDone')?.value || '').toLowerCase().trim();
-    const html = items.filter(it=>{
-        if(!q) return true;
-        return (it.course||'').toLowerCase().includes(q) ||
-               (it.empresa||'').toLowerCase().includes(q) ||
-               (it.date? it.date.toLocaleDateString(): '').toLowerCase().includes(q);
-      })
-      .map(it => doneCardHTML({
-        course: it.course,
-        dateStr: it.date ? it.date.toLocaleDateString() : 's/f',
-        empresa: it.empresa
-      })).join('');
-    list.innerHTML = html || '<div class="meta">No hay cursos realizados aún.</div>';
+        items.push({
+          docId: d.id, courseKey, courseName, date, forma, empresa, participants, participantsCount
+        });
+      });
+    }
+    allHistory = items;
+    renderHistoryList();
   }catch(e){
     console.error(e); list.innerHTML = 'Error al cargar cursos realizados.';
   }
 }
-
-// ===== Editor =====
-function openEditor(title='Nuevo curso'){
-  $('#editorTitle').textContent = title;
-  $('#editor').classList.add('open');
-  $('#editor').setAttribute('aria-hidden','false');
+function renderHistoryList(){
+  const q = ($('#searchDone')?.value || '').toLowerCase().trim();
+  const list = $('#doneList');
+  const rows = allHistory
+    .filter(it=>{
+      if(!q) return true;
+      return (it.courseName||'').toLowerCase().includes(q) ||
+             (it.empresa||'').toLowerCase().includes(q) ||
+             fmtDate(it.date).toLowerCase().includes(q);
+    })
+    .map(historyCardHTML)
+    .join('');
+  list.innerHTML = rows || '<div class="meta">No hay cursos realizados aún.</div>';
 }
-function closeEditor(){
-  $('#editor').classList.remove('open');
-  $('#editor').setAttribute('aria-hidden','true');
-  clearForm();
-}
 
-// ===== Controles dinámicos (preguntas) =====
+// ===== Editor de cursos creados (igual que antes, preguntas con radios Correcta) =====
 function makeQuestion(q={ text:'', options:[''], correct:'' }){
-  const qid = 'q' + Math.random().toString(36).slice(2,9); // agrupa radios
+  const qid = 'q' + Math.random().toString(36).slice(2,9);
   const wrap = document.createElement('div');
   wrap.className = 'q-card';
   wrap.dataset.qid = qid;
@@ -186,8 +195,7 @@ function makeQuestion(q={ text:'', options:[''], correct:'' }){
     r.innerHTML = `
       <input class="opt-text" type="text" placeholder="Texto de la opción" value="${(val||'').replace(/"/g,'&quot;')}">
       <label class="correct-wrap" style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
-        <input type="radio" class="opt-correct" name="correct-${qid}">
-        Correcta
+        <input type="radio" class="opt-correct" name="correct-${qid}"> Correcta
       </label>
       <button type="button" class="small-btn q-del-opt">Quitar</button>
     `;
@@ -196,7 +204,6 @@ function makeQuestion(q={ text:'', options:[''], correct:'' }){
     r.querySelector('.q-del-opt').addEventListener('click', ()=> r.remove());
     optBox.appendChild(r);
   }
-
   const opts = Array.isArray(q.options) && q.options.length ? q.options : [''];
   opts.forEach(v => addOption(v, v === q.correct));
 
@@ -220,8 +227,16 @@ function renumberQuestions(){
     if(n) n.textContent = (idx+1)+'.';
   });
 }
-
-// ===== Form helpers =====
+function rowChip(value=''){
+  const wrap = document.createElement('div');
+  wrap.className = 'chip-row';
+  wrap.innerHTML = `
+    <input type="text" placeholder="Escribe aquí..." value="${(value||'').replace(/"/g,'&quot;')}">
+    <button type="button" class="small-btn small-del">Eliminar</button>
+  `;
+  wrap.querySelector('button').addEventListener('click', ()=>wrap.remove());
+  return wrap;
+}
 function clearForm(){
   ['docIdInput','idInput','nameInput','descInput','manualUrlInput',
    'certificateTmplInput','imageUrlInput','imageBadgeInput','timeHoursInput','scoreInput']
@@ -255,16 +270,6 @@ function fillForm(docId, data){
   (data.questions || []).forEach(q => qL.appendChild(makeQuestion(q)));
   renumberQuestions();
 }
-function rowChip(value=''){
-  const wrap = document.createElement('div');
-  wrap.className = 'chip-row';
-  wrap.innerHTML = `
-    <input type="text" placeholder="Escribe aquí..." value="${(value||'').replace(/"/g,'&quot;')}">
-    <button type="button" class="small-btn small-del">Eliminar</button>
-  `;
-  wrap.querySelector('button').addEventListener('click', ()=>wrap.remove());
-  return wrap;
-}
 function collectArrayFrom(sel){
   const out = [];
   $$(sel+' input[type="text"]').forEach(i=>{ const v=i.value.trim(); if(v) out.push(v); });
@@ -290,7 +295,7 @@ function collectQuestions(){
   return out;
 }
 
-// ===== Acciones de tarjetas =====
+// ===== Acciones (creados) =====
 document.addEventListener('click', async (e)=>{
   const btnEdit = e.target.closest('.act-edit');
   const btnCopy = e.target.closest('.act-copy');
@@ -331,7 +336,7 @@ document.addEventListener('click', async (e)=>{
   }
 });
 
-// ===== Guardar =====
+// ===== Guardar (creados) =====
 async function saveEvaluation(){
   let docId = $('#docIdInput').value.trim();
   if(!docId){
@@ -380,30 +385,146 @@ async function saveEvaluation(){
   try{
     await firebase.firestore().collection('evaluations').doc(docId).set(payload, { merge:false });
     alert('✅ Guardado en evaluations/'+docId);
-    closeEditor();            // Cancelar/Guardar cierran
+    closeEditor();
     await loadCreatedCourses();
   }catch(err){ console.error(err); alert('❌ Error al guardar: '+err.message); }
 }
 
+// ===== Editor de REALIZADOS =====
+function openHistoryEditor(title='Nuevo realizado'){
+  $('#historyTitle').textContent = title;
+  $('#historyEditor').classList.add('open');
+  $('#historyEditor').setAttribute('aria-hidden','false');
+}
+function closeHistoryEditor(){
+  $('#historyEditor').classList.remove('open');
+  $('#historyEditor').setAttribute('aria-hidden','true');
+  editingHistoryId = null;
+  // limpia
+  setVal('historyCourseKey','');
+  setVal('historyDate','');
+  setVal('historyForma','abierto');
+  setVal('historyEmpresa','');
+  $('#historyParticipants').innerHTML = '<div class="meta">Sin participantes (se asignan en el Panel de Usuarios).</div>';
+}
+
+// llena el select con cursos creados
+function populateCourseSelect(selectedKey='', disabled=false){
+  const sel = $('#historyCourseKey');
+  sel.innerHTML = '';
+  allEvaluations
+    .sort((a,b)=> (a.data.title||a.data.name||a.docId).localeCompare(b.data.title||b.data.name||b.docId))
+    .forEach(({docId, data})=>{
+      const opt = document.createElement('option');
+      opt.value = docId;
+      opt.textContent = data.title || data.name || docId;
+      if (docId === selectedKey) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  sel.disabled = !!disabled;
+}
+
+function fillHistoryEditor(item, isEdit){
+  populateCourseSelect(item.courseKey || '', isEdit);
+  setVal('historyDate', item.date ? new Date(item.date).toISOString().slice(0,10) : '');
+  setVal('historyForma', item.forma || 'abierto');
+  setVal('historyEmpresa', item.empresa || '');
+  const box = $('#historyParticipants');
+  if (item.participants && item.participants.length){
+    box.innerHTML = item.participants.map(p=>{
+      const name = p.name || p.nombre || p.fullname || 'Sin nombre';
+      const cid  = p.customID || p.customId || p.customid || p.cid || '';
+      const ok = (p.aprobado ?? p.aprobo ?? p.passed ?? p.approved);
+      return `<div class="meta" style="display:flex;gap:8px;"><span>${name}</span><span>(${cid})</span>${(ok!==undefined)?`<span>• ${ok? 'Aprobó' : 'No aprobó'}</span>`:''}</div>`;
+    }).join('');
+  }else{
+    box.innerHTML = '<div class="meta">Sin participantes (se asignan en el Panel de Usuarios).</div>';
+  }
+}
+
+async function saveHistory(){
+  const courseKey = $('#historyCourseKey').value;
+  const dateStr   = $('#historyDate').value;
+  const forma     = $('#historyForma').value;
+  const empresa   = $('#historyEmpresa').value.trim();
+  if (!courseKey || !dateStr){ alert('Selecciona curso y fecha.'); return; }
+
+  const payload = {
+    courseKey,
+    date: new Date(dateStr),
+    forma,
+    empresa
+  };
+
+  try{
+    if (editingHistoryId){
+      await firebase.firestore().collection('inscripciones').doc(editingHistoryId).set(payload, { merge:true });
+      alert('✅ Realizado actualizado.');
+    }else{
+      const ref = await firebase.firestore().collection('inscripciones').add(payload);
+      alert('✅ Realizado creado: ' + ref.id);
+    }
+    closeHistoryEditor();
+    await loadHistoryCourses();
+  }catch(err){
+    console.error(err); alert('❌ Error al guardar: '+err.message);
+  }
+}
+
+// ===== Acciones (realizados) =====
+document.addEventListener('click', async (e)=>{
+  const btnHEdit = e.target.closest('.act-h-edit');
+  const btnHDel  = e.target.closest('.act-h-del');
+
+  if (btnHEdit){
+    const card = btnHEdit.closest('.course-card');
+    const id   = card.getAttribute('data-hdoc');
+    const item = allHistory.find(h=>h.docId===id);
+    if (!item){ alert('No se encontró el realizado.'); return; }
+    editingHistoryId = id;
+    fillHistoryEditor(item, true);
+    openHistoryEditor('Editar realizado');
+  }
+
+  if (btnHDel){
+    const card = btnHDel.closest('.course-card');
+    const id   = card.getAttribute('data-hdoc');
+    const item = allHistory.find(h=>h.docId===id);
+    const name = item?.courseName || id;
+    if(!confirm(`Vas a eliminar este curso realizado:\n\n${name}\n(ID: ${id})\n\n¿Continuar?`)) return;
+    try{
+      await firebase.firestore().collection('inscripciones').doc(id).delete();
+      alert('🗑️ Realizado eliminado.');
+      await loadHistoryCourses();
+    }catch(err){ console.error(err); alert('❌ Error al eliminar: '+err.message); }
+  }
+});
+
 // ===== Wire-up =====
 document.addEventListener('DOMContentLoaded', ()=>{
+  // navegación
   $('#btnGoUsers')?.addEventListener('click', ()=>{ location.href='dashboard-admin.html'; });
-  $('#btnSignOut')?.addEventListener('click', async ()=>{ try{ await firebase.auth().signOut(); location.href='index.html'; }catch(e){ alert(e.message); }});
+  $('#btnSignOutFixed')?.addEventListener('click', async ()=>{
+    try{ await firebase.auth().signOut(); location.href='index.html'; }catch(e){ alert(e.message); }
+  });
 
-  loadCreatedCourses();
-  loadDoneCourses();
+  // listados
+  loadCreatedCourses(); // Esto también carga realizados cuando termine
 
+  // buscadores
   $('#searchCreated')?.addEventListener('input', renderCreatedList);
-  $('#searchDone')?.addEventListener('input', loadDoneCourses);
+  $('#searchDone')?.addEventListener('input', renderHistoryList);
 
+  // editor (creados)
   $('#btnNewCourse')?.addEventListener('click', ()=>{
     clearForm();
     $('#editorTitle').textContent = 'Nuevo curso';
     openEditor('Nuevo curso');
   });
   $('#btnSave')?.addEventListener('click', saveEvaluation);
-  $('#btnClose')?.addEventListener('click', closeEditor); // Cancelar = cerrar sin guardar
+  $('#btnClose')?.addEventListener('click', ()=>{ closeEditor(); });
 
+  // dinámicos (creados)
   $('#btnAddCriterion')?.addEventListener('click', ()=>{
     $('#criteriaList').appendChild(rowChip(''));
   });
@@ -414,4 +535,14 @@ document.addEventListener('DOMContentLoaded', ()=>{
     $('#questionsList').appendChild(makeQuestion({ text:'', options:[''], correct:'' }));
     renumberQuestions();
   });
+
+  // editor (realizados)
+  $('#btnNewHistory')?.addEventListener('click', ()=>{
+    editingHistoryId = null;
+    populateCourseSelect('', false);
+    fillHistoryEditor({ participants:[] }, false);
+    openHistoryEditor('Nuevo realizado');
+  });
+  $('#btnHistorySave')?.addEventListener('click', saveHistory);
+  $('#btnHistoryClose')?.addEventListener('click', closeHistoryEditor);
 });
