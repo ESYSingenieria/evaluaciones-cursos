@@ -21,25 +21,21 @@
     .title-row{
       position:relative;
       padding:0 12px;
-
-      /* ✅ Fix: usar flex para centrar el título */
-      display:flex;
-      justify-content:center;
-      align-items:flex-start;
     }
     .title-row h1{
       margin:0;
       font-size:28px;
       font-weight:800;
       text-align:center;
-      padding-right:0 !important;   /* ✅ fix: quitar padding que lo corría */
+      /* reserva espacio para que el botón a la derecha no tape el título */
+      padding-right:160px;
     }
-    /* Botón a la derecha en la misma fila */
+    /* ⬇️ Botón anclado ARRIBA (no centrado al alto total) */
     .title-row .btn-ghost{
       position:absolute;
       right:16px;
-      top:0;
-      transform:none;
+      top: 0;              /* ← fija a la parte superior de la fila del título */
+      transform:none;      /* ← sin translateY */
       border:none;
       border-radius:8px;
       padding:8px 12px;
@@ -51,7 +47,7 @@
       text-decoration:none;
     }
 
-    /* ===== Tu layout existente ===== */
+    /* ===== Tu layout existente (sin tocar lógica) ===== */
     .dashboard-container { width:100%; margin:0; padding:0 16px; box-sizing:border-box; }
     #usersList { width:100%; margin:0; padding:0; box-sizing:border-box; }
 
@@ -66,7 +62,7 @@
       outline:none; border-color:#007bff; box-shadow:0 0 0 2px rgba(0,123,255,.2);
     }
 
-    /* TARJETA DE USUARIO */
+    /* TARJETA DE USUARIO (sin cambios funcionales) */
     .user-item{
       width:100%;
       margin:0 0 16px 0;
@@ -124,15 +120,8 @@
     .hidden{ display:none !important; }
     .eval-title{ font-weight:600; margin:8px 0 4px; }
 
-    /* ✅ Fix: Cerrar Sesión fijo en esquina inferior derecha */
-    #logoutContainer{
-      position:fixed !important;
-      right:18px !important;
-      bottom:18px !important;
-      left:auto !important;
-      transform:none !important;
-      z-index:1100;
-    }
+    /* Cerrar Sesión fijo (mismos IDs que tu JS) */
+    #logoutContainer{ position:fixed !important; bottom:18px !important; right:18px !important; z-index:1100; }
     #logoutButton{
       background:#dc3545; color:#fff; border:none; border-radius:10px;
       padding:10px 12px; font-weight:700; font-size:14px;
@@ -171,7 +160,7 @@
     </a>
   </header>
 
-  <!-- Título + botón -->
+  <!-- Título + botón a la derecha (misma altura del título) -->
   <section class="hero-bar">
     <div class="title-row">
       <h1>Panel de Usuarios</h1>
@@ -180,7 +169,7 @@
   </section>
 
   <div class="dashboard-container">
-    <!-- Lista de usuarios -->
+    <!-- La barra de filtros la inyecta tu JS justo DESPUÉS del H1 -->
     <div id="usersList">Cargando usuarios…</div>
   </div>
 
