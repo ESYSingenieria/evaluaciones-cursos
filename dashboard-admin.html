@@ -128,6 +128,54 @@
     body.dark .user-item{ background:#1e1e1e; box-shadow:0 2px 8px rgba(0,0,0,.5); }
     body.dark header{ background:#222; }
 
+    /* Banda de título y botón a la derecha (no toca filtros) */
+    .title-row{
+      position:relative;
+      background:#fff;
+      border-bottom:1px solid #e5e7eb;
+      padding:18px 12px;
+    }
+    .title-row h1{
+      margin:0;
+      font-size:28px;
+      font-weight:800;
+      text-align:center;
+    }
+    .title-row .btn-ghost{
+      position:absolute;
+      right:16px;
+      top:50%;
+      transform:translateY(-50%);
+      border:none;
+      border-radius:8px;
+      padding:8px 12px;
+      background:#e9ecef;
+      color:#111;
+      cursor:pointer;
+      font-weight:600;
+      font-size:14px;
+      text-decoration:none;
+    }
+
+    /* Cerrar sesión fijo en la esquina inferior derecha */
+    #logoutContainer{
+      position:fixed !important;
+      right:18px !important;
+      bottom:18px !important;
+      z-index:1100;
+    }
+    #logoutButton{
+      background:#dc3545;
+      color:#fff;
+      border:none;
+      border-radius:10px;
+      padding:10px 12px;
+      font-weight:700;
+      font-size:14px;
+      box-shadow:0 8px 18px rgba(220,53,69,.35);
+      cursor:pointer;
+    }
+
     @media (max-width:768px){
       header{ padding:12px; }
       .dashboard-container{ width:100%; padding:0 10px; }
@@ -158,18 +206,11 @@
 
   <!-- Título + botón a la derecha (como Evaluaciones) -->
   <section class="hero-bar">
-    <h1>Panel de Usuarios</h1>
-    <div class="hero-actions">
-      <button id="goEvalsPageBtn" class="btn-ghost">Ir al Panel de Evaluaciones</button>
+    <div class="title-row">
+      <h1>Panel de Usuarios</h1>
+      <a id="goEvalsPageBtn" class="btn-ghost" href="dashboard-admin_evals.html">Panel de Cursos</a>
     </div>
   </section>
-
-  <!-- Navegación a Evaluaciones (sin tocar tu JS global) -->
-  <script>
-    document.getElementById('goEvalsPageBtn')?.addEventListener('click', () => {
-      location.href = 'dashboard-admin_evals.html';
-    });
-  </script>
 
   <div class="dashboard-container">
     <!-- La barra de filtros se inyecta por JS aquí -->
