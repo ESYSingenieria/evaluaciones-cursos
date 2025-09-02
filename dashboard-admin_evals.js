@@ -456,7 +456,7 @@ function populateCourseSelect(selectedKey = '', disabled = false){
   sel.disabled = !!disabled;     // al editar: deshabilitado
 }
 function fillHistoryEditor(item, isEdit){
-  populateCourseSelect(item.courseKey || '', isEdit);
+  populateCourseSelect(item.courseKey || '', false);
   // item.date puede ser Date, string o timestamp -> formateo a YYYY-MM-DD
   const yyyyMMdd = item.date ? new Date(item.date).toISOString().slice(0,10) : '';
   setVal('historyDate', yyyyMMdd);
@@ -486,84 +486,106 @@ async function saveHistory(){
     return;
   }
 
-  const empresaSlug = (forma === 'cerrado' && empresa) ? '_' + sanitizeDocId(empresa) : '';
-  const newDocId    = `${courseKey}_${dateStr}_${forma}${empresaSlug}`;
-  const col         = firebase.firestore().collection('inscripciones');
+  const newDocId = buildHistoryDocId(courseKey, dateStr, forma, empresa);
+  const col      = firebase.firestore().collection('inscripciones');
 
   try {
-    if (editingHistoryId && editingHistoryId !== newDocId) {
-      // === RENOMBRAR: copiar -> borrar -> propagar a usuarios ===
-      const oldSnap = await col.doc(editingHistoryId).get();
-      if (!oldSnap.exists) throw new Error('No se encontró el curso a editar.');
+    // --- crear NUEVO ---
+    if (!editingHistoryId){
+      // base mínima del documento
+      await col.doc(newDocId).set({
+        courseKey,
+        courseDate: dateStr,
+        formaCurso: forma,
+        empresaSolicitante: (forma === 'cerrado') ? empresa : '',
+        inscriptions: [],            // se irán llenando desde Panel de Usuarios
+        totalInscritos: 0,
+        totalPagado: 0
+      }, { merge:false });
 
-      const oldData = oldSnap.data() || {};
-      // normalizamos array de participantes
-      let participants = oldData.inscriptions || [];
-      if (participants && !Array.isArray(participants) && typeof participants === 'object') {
-        participants = Object.values(participants);
-      }
+      alert('✅ Realizado creado: ' + newDocId);
+      closeHistoryEditor();
+      await loadHistoryCourses();
+      return;
+    }
 
-      // base del nuevo documento
+    // --- EDITAR existente ---
+    const oldRef  = col.doc(editingHistoryId);
+    const oldSnap = await oldRef.get();
+    if (!oldSnap.exists) throw new Error('No se encontró el curso a editar.');
+
+    const oldData = oldSnap.data() || {};
+    // Fecha anterior (preferir campo; si falta, parsear del ID)
+    let oldDate = oldData.courseDate || '';
+    if (!oldDate) {
+      const m = /_(\d{4}-\d{2}-\d{2})_/.exec(editingHistoryId);
+      if (m) oldDate = m[1];
+    }
+
+    // Normalizar participantes
+    let participants = oldData.inscriptions || oldData.participants || oldData.users || [];
+    if (participants && !Array.isArray(participants) && typeof participants === 'object') {
+      participants = Object.values(participants);
+    }
+    if (!Array.isArray(participants)) participants = [];
+
+    // Si cambió el ID (fecha/forma/empresa/curso), copiamos -> remapeamos asistencia -> borramos viejo
+    if (newDocId !== editingHistoryId){
+      const remappedParticipants = participants.map(p=>{
+        const att = p.attendance || {};
+        return { ...p, attendance: remapAttendance(att, oldDate, dateStr) };
+      });
+
       const base = {
         courseKey,
         courseDate: dateStr,
         formaCurso: forma,
         empresaSolicitante: (forma === 'cerrado') ? empresa : '',
-        inscriptions: participants,
-        totalInscritos: Array.isArray(participants) ? participants.length : 0,
+        inscriptions: remappedParticipants,
+        totalInscritos: remappedParticipants.length,
         totalPagado: (forma === 'cerrado')
           ? (oldData.totalPagado || 0)
-          : (Array.isArray(participants) ? participants.reduce((s,p)=> s + (Number(p.price)||0), 0) : 0)
+          : remappedParticipants.reduce((s,p)=> s + (Number(p.price)||0), 0)
       };
 
-      // crear nuevo doc con el ID correcto
       await col.doc(newDocId).set(base, { merge:false });
-      // borrar el antiguo
-      await col.doc(editingHistoryId).delete();
+      await oldRef.delete();
 
-      // actualizar metas de usuarios
-      await propagateCourseMetaToUsers(participants, {
-        courseKey,
-        date: dateStr,
-        sessionId: newDocId,
-        forma,
-        empresa
+      // sincronizar metas de usuarios con nueva fecha + nuevo sessionId
+      await propagateCourseMetaToUsers(remappedParticipants, {
+        courseKey, date: dateStr, sessionId: newDocId, forma, empresa
       });
 
-      alert('✅ Realizado actualizado (renombrado) y usuarios sincronizados.');
+      alert('✅ Realizado actualizado (renombrado) y asistencias migradas.');
     } else {
-      // === MISMO ID: actualizar y propagar cambios de meta a usuarios ===
+      // Mismo ID: solo actualizamos campos principales y (por si acaso) remapeamos si cambió fecha interna
       const payload = {
         courseKey,
         courseDate: dateStr,
         formaCurso: forma,
         empresaSolicitante: (forma === 'cerrado') ? empresa : ''
       };
-      const targetId = editingHistoryId || newDocId;
+      await oldRef.set(payload, { merge:true });
 
-      await col.doc(targetId).set(payload, { merge:true });
-
-      // leer participantes actuales para propagar sus metas
-      const snap = await col.doc(targetId).get();
-      const data = snap.data() || {};
-      let participants = data.inscriptions || [];
-      if (participants && !Array.isArray(participants) && typeof participants === 'object') {
-        participants = Object.values(participants);
+      // si por algún motivo oldDate != dateStr con el mismo ID, remapear en sitio
+      if (oldDate && oldDate !== dateStr && participants.length){
+        const remappedParticipants = participants.map(p=>{
+          const att = p.attendance || {};
+          return { ...p, attendance: remapAttendance(att, oldDate, dateStr) };
+        });
+        await oldRef.update({ inscriptions: remappedParticipants });
       }
 
       await propagateCourseMetaToUsers(participants, {
-        courseKey,
-        date: dateStr,
-        sessionId: targetId,
-        forma,
-        empresa
+        courseKey, date: dateStr, sessionId: editingHistoryId, forma, empresa
       });
 
-      alert(editingHistoryId ? '✅ Realizado actualizado.' : ('✅ Realizado creado: ' + targetId));
+      alert('✅ Realizado actualizado.');
     }
 
     closeHistoryEditor();
     await loadHistoryCourses();
+
   } catch (err) {
     console.error(err);
     alert('❌ Error al guardar: ' + err.message);
@@ -571,6 +593,20 @@ async function saveHistory(){
 }
 
 // ===== Agregar debajo (helper para actualizar usuarios) =====
+function remapAttendance(att = {}, oldDate, newDate){
+  if (!att || typeof att !== 'object' || oldDate === newDate) return att;
+  const out = {};
+  Object.entries(att).forEach(([k, v])=>{
+    if (typeof k === 'string' && k.startsWith(oldDate)) {
+      const newKey = k.replace(oldDate, newDate); // 2025-07-24_AM -> 2025-07-27_AM
+      out[newKey] = v;
+    } else {
+      out[k] = v; // conserva cualquier otra clave
+    }
+  });
+  return out;
+}
+
 async function propagateCourseMetaToUsers(participants, { courseKey, date, sessionId, forma, empresa }) {
   if (!Array.isArray(participants)) return;
 
@@ -578,7 +614,6 @@ async function propagateCourseMetaToUsers(participants, { courseKey, date, sessi
     const customID = p.customID || p.customId || p.cid || '';
     const rut      = p.rut || '';
 
-    // Buscamos al usuario por customID (preferido) o por RUT
     let q = null;
     if (customID) {
       q = await firebase.firestore().collection('users')
@@ -600,7 +635,7 @@ async function propagateCourseMetaToUsers(participants, { courseKey, date, sessi
       evaluationId: courseKey,
       courseKey,
       sessionId,
-      date,                               // <- clave para que el Panel de Usuarios cambie fecha
+      date,                               // <- usado por Panel de Usuarios y asistencia
       formaCurso: forma,
       empresaSolicitante: (forma === 'cerrado') ? (empresa || '') : ''
     };
@@ -677,6 +712,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('#btnHistorySave')?.addEventListener('click', saveHistory);
   $('#btnHistoryClose')?.addEventListener('click', closeHistoryEditor);
 });
+
 
 
 
