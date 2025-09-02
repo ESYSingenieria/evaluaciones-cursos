@@ -476,6 +476,52 @@ document.addEventListener('click', async (e)=>{
   }
 });
 
+document.addEventListener('click', async (e)=>{
+  // === Cursos (YA LO TIENES) ===
+  const btnEdit = e.target.closest('.act-edit');
+  const btnCopy = e.target.closest('.act-copy');
+  const btnDel  = e.target.closest('.act-delete');
+  // ...tus handlers de cursos...
+
+  // ⬇⬇⬇ PÉGALO AQUÍ ⬇⬇⬇
+  // === Encuestas: acciones en lista ===
+  const btnSEdit = e.target.closest('.act-survey-edit');
+  const btnSCopy = e.target.closest('.act-survey-copy');
+  const btnSDel  = e.target.closest('.act-survey-delete');
+
+  if (btnSEdit){
+    const card = btnSEdit.closest('.course-card');
+    const id   = card.getAttribute('data-survey');
+    const s    = (allSurveys || []).find(x => x.docId === id);
+    if (!s){ alert('No se encontró la encuesta.'); return; }
+    fillSurveyForm(id, s);
+    openSurveyEditor('Editar encuesta');
+  }
+
+  if (btnSCopy){
+    const card = btnSCopy.closest('.course-card');
+    const id   = card.getAttribute('data-survey');
+    await copySurvey(id);
+  }
+
+  if (btnSDel){
+    const card = btnSDel.closest('.course-card');
+    const id   = card.getAttribute('data-survey');
+    const s    = (allSurveys || []).find(x => x.docId === id);
+    const name = s?.title || id;
+    if(!confirm(`Vas a eliminar esta encuesta:\n\n${name}\n(ID: ${id})\n\n¿Continuar?`)) return;
+    await firebase.firestore().collection('surveyQuestions').doc(id).delete();
+    await loadSurveys();
+    renderSurveyList();
+  }
+  // ⬆⬆⬆ AQUÍ TERMINA EL BLOQUE DE ENCUESTAS ⬆⬆⬆
+
+  // === Historial (YA LO TIENES) ===
+  const btnHEdit = e.target.closest('.act-h-edit');
+  const btnHDel  = e.target.closest('.act-h-del');
+  // ...tus handlers de historial...
+});
+
 // ===== Guardar (creados) =====
 async function saveEvaluation(){
   let docId = $('#docIdInput').value.trim();
@@ -816,7 +862,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
   loadCreatedCourses(); // también carga realizados cuando termina
 
-  $('#searchCreated')?.addEventListener('input', renderCreatedList);
+  $('#searchCreated')?.addEventListener('input', ()=>{
+    if (isSurveyMode) renderSurveyList(); else renderCreatedList();
+  });
   $('#searchDone')?.addEventListener('input', renderHistoryList);
 
   $('#btnNewCourse')?.addEventListener('click', ()=>{
@@ -846,6 +894,30 @@ document.addEventListener('DOMContentLoaded', ()=>{
   });
   $('#btnHistorySave')?.addEventListener('click', saveHistory);
   $('#btnHistoryClose')?.addEventListener('click', closeHistoryEditor);
+
+  // Toggle: Cursos ↔ Encuestas
+  $('#btnToggleSurveys')?.addEventListener('click', ()=> toggleSurveyMode());
+
+  // (si ya agregaste el botón y modal de encuestas)
+  $('#btnNewSurvey')?.addEventListener('click', ()=>{
+    editingSurveyId = null;
+    setVal('surveyNameInput','');
+    populateSurveyEvalDefault('default');
+    $('#surveyQuestionsList').innerHTML = '';
+    openSurveyEditor('Nueva encuesta');
+  });
+  $('#btnSurveyAddQuestion')?.addEventListener('click', ()=>{
+    $('#surveyQuestionsList').appendChild(
+      surveyQuestionCard({
+        text:'',
+        type:'select',
+        options:['Muy satisfecho','Satisfecho','Neutral','Insatisfecho','Muy insatisfecho']
+      })
+    );
+    renumberSurveyQuestions();
+  });
+  $('#btnSurveySave')?.addEventListener('click', saveSurvey);
+  $('#btnSurveyClose')?.addEventListener('click', closeSurveyEditor);
 });
 
 function openSurveyEditor(title='Nueva encuesta'){
@@ -969,3 +1041,4 @@ async function copySurvey(docId){
   await col.doc(target).set(data, { merge:false });
   await loadSurveys(); renderSurveyList();
 }
+
