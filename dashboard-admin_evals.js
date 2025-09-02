@@ -176,6 +176,7 @@ function historyCardHTML(item){
     <div class="course-card" data-hdoc="${item.docId}">
       <div class="actions">
         <button class="btn btn-sm btn-primary act-h-edit">Editar</button>
+        <button class="btn btn-sm btn-outline act-h-stats">Estadísticas</button> <!-- NUEVO -->
         <button class="btn btn-sm btn-danger act-h-del">Eliminar</button>
       </div>
       <div class="course-title">${item.courseName || '(Curso desconocido)'}</div>
@@ -839,6 +840,13 @@ document.addEventListener('click', async (e)=>{
     openHistoryEditor('Editar realizado');
   }
 
+  const btnHStats = e.target.closest('.act-h-stats'); // NUEVO
+  if (btnHStats){
+    const card = btnHStats.closest('.course-card');
+    const sessionId = card.getAttribute('data-hdoc'); // id del doc en "inscripciones"
+    openSurveyStats(sessionId);                       // << llama a la función de abajo
+  }
+
   if (btnHDel){
     const card = btnHDel.closest('.course-card');
     const id   = card.getAttribute('data-hdoc');
@@ -1042,3 +1050,100 @@ async function copySurvey(docId){
   await loadSurveys(); renderSurveyList();
 }
 
+async function openSurveyStats(sessionId){
+  try{
+    // 1) Traer el realizado
+    const insRef = firebase.firestore().collection('inscripciones').doc(sessionId);
+    const insSnap = await insRef.get();
+    if(!insSnap.exists){ alert('No se encontró este curso del historial.'); return; }
+    const ins = insSnap.data() || {};
+    const courseKey = ins.courseKey || '';
+    const surveyId  = ins.surveyId || ''; // puede venir vacío si usa default
+
+    // 2) Traer el cuestionario (para textos de preguntas)
+    let qSnap = null;
+    if (surveyId) {
+      qSnap = await firebase.firestore().collection('surveyQuestions').doc(surveyId).get();
+    } 
+    if (!qSnap || !qSnap.exists) {
+      // fallback: busca por evaluationId o default
+      const alt = await firebase.firestore().collection('surveyQuestions')
+        .where('evaluationId','in',[courseKey,'default'])
+        .limit(1).get();
+      if (!alt.empty) qSnap = alt.docs[0];
+    }
+    if (!qSnap || !qSnap.exists){ alert('No hay encuesta asociada.'); return; }
+    const survey = qSnap.data();
+    const questions = Array.isArray(survey.questions) ? survey.questions : [];
+
+    // 3) Traer todas las respuestas de "surveys" para ESTE realizado
+    //    (evaluationId = courseKey) AND (sessionId = el del historial)
+    let q = firebase.firestore().collection('surveys')
+      .where('evaluationId','==', courseKey)
+      .where('sessionId','==', sessionId);
+
+    const respSnap = await q.get();
+    const responses = respSnap.docs.map(d => d.data().surveyData || {});
+
+    // 4) Calcular promedios y distribuciones (escala 1..7)
+    const stats = questions.map((qObj, idx) => {
+      const key = `question${idx}`;
+      const vals = responses
+        .map(r => parseInt(r[key], 10))
+        .filter(n => Number.isFinite(n) && n>=1 && n<=7);
+
+      const counts = Array(7).fill(0);
+      vals.forEach(n => counts[n-1]++);
+      const avg = vals.length ? (vals.reduce((a,b)=>a+b,0) / vals.length) : 0;
+
+      return { text: qObj.text || `Pregunta ${idx+1}`, counts, avg: avg.toFixed(2) };
+    });
+
+    // 5) Renderizar modal con gráficos
+    const box = document.getElementById('statsContent');
+    box.innerHTML = stats.map((s,i)=>`
+      <div class="stat-card" style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin:10px 0;">
+        <div class="stat-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <strong>${i+1}. ${s.text}</strong>
+          <span class="tag" style="background:#eef2ff;color:#1e40af;padding:2px 8px;border-radius:999px;">Promedio: ${s.avg}</span>
+        </div>
+        <canvas id="chartQ${i}" height="120"></canvas>
+      </div>
+    `).join('');
+
+    stats.forEach((s,i)=>{
+      const ctx = document.getElementById('chartQ'+i).getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['1','2','3','4','5','6','7'],
+          datasets: [{ data: s.counts, backgroundColor: '#3b82f6' }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display:false } },
+          scales: { y: { beginAtZero:true, ticks: { precision:0 } } }
+        }
+      });
+    });
+
+    // título
+    document.getElementById('statsTitle').textContent =
+      `Estadísticas • ${ins.courseKey || ''} • ${ins.courseDate || ''}`;
+
+    // abrir modal
+    document.getElementById('surveyStatsModal').classList.add('open');
+    document.getElementById('surveyStatsModal').setAttribute('aria-hidden','false');
+
+  }catch(err){
+    console.error(err);
+    alert('No fue posible cargar las estadísticas.');
+  }
+}
+
+// Cerrar modal
+document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
+  const m = document.getElementById('surveyStatsModal');
+  m.classList.remove('open');
+  m.setAttribute('aria-hidden','true');
+});
