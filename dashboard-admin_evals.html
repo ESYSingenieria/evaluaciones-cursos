@@ -1,262 +1,289 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <title>Panel de Cursos</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Panel de Evaluaciones - Plataforma de Cursos</title>
 
-  <link rel="stylesheet" href="styles.css" />
-
-  <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;background:#f3f4f6;color:#111;}
-    header{display:flex;justify-content:center;align-items:center;padding:16px 0;background:#fff;border-bottom:1px solid #e5e7eb;}
-    .logo{max-width:200px;height:auto;}
-    .container{max-width:1180px;margin:24px auto;padding:0 16px;}
-    h1{font-size:32px;font-weight:800;text-align:center;margin:10px 0 20px;}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-    .panel-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.04);}
-    .panel-card h2{margin:0 0 8px 0;font-size:22px}
-    .btn{border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer}
-    .btn-primary{background:#0d6efd;color:#fff}
-    .btn-danger{background:#dc3545;color:#fff}
-    .btn-neutral{background:#e9ecef;color:#111}
-    .btn-sm{padding:6px 10px;font-size:13px}
-    .course-card{position:relative;border:1px solid #e5e7eb;border-radius:12px;padding:14px 14px;margin:10px 0;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.05)}
-    .course-title{font-weight:800;font-size:18px;margin-bottom:6px}
-    .meta{display:flex;gap:8px;flex-wrap:wrap;color:#555;font-size:13px}
-    .tag{background:#f1f5f9;border:1px solid #e2e8f0;padding:2px 8px;border-radius:999px}
-    .actions{position:absolute;top:10px;right:10px;display:flex;gap:6px}
-    input[type="text"], input[type="date"], input[type="number"], select, textarea{
-      border:1px solid #d1d5db;border-radius:8px;padding:8px 10px;background:#f9fafb;outline:none;width:100%
-    }
-    textarea{min-height:80px}
-    .row{display:flex;gap:10px;align-items:center}
-    .row > *{flex:1}
-    .list{max-height:65vh;overflow:auto}
-    .help{color:#666;font-size:12px}
-
-    /* Modales */
-    .modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:flex-start;justify-content:center;z-index:50}
-    .modal.open{display:flex}
-    .modal-card{margin-top:6vh;background:#fff;border-radius:12px;border:1px solid #e5e7eb;box-shadow:0 10px 30px rgba(0,0,0,.2);width:min(920px,96vw);padding:16px}
-    .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-    .chip-row{display:flex;gap:8px;margin:6px 0}
-    .small-btn{border:1px solid #e5e7eb;background:#f8fafc;border-radius:8px;padding:6px 8px;cursor:pointer}
-    .q-card{border:1px dashed #e2e8f0;border-radius:10px;padding:12px;margin:10px 0}
-    .q-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-    .q-row{display:flex;gap:8px;margin:6px 0;align-items:center}
-    .q-sub{font-size:12px;color:#555;margin:6px 0}
-  </style>
-
-  <!-- Firebase SDK (compat v8) -->
+  <!-- Firebase SDKs v8 -->
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
 
-  <script defer src="dashboard-admin_evals.js"></script>
+  <!-- Conexión a tu proyecto -->
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
+      authDomain: "plataforma-de-cursos-esys.firebaseapp.com",
+      projectId: "plataforma-de-cursos-esys",
+      storageBucket: "plataforma-de-cursos-esys.firebasestorage.app",
+      messagingSenderId: "950684050808",
+      appId: "1:950684050808:web:33d2ef70f2343642f4548d"
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+  </script>
+
+  <style>
+    :root{
+      --bg:#f4f6f8; --card:#fff; --border:#dfe3e8; --muted:#6b7280;
+      --primary:#0d6efd; --danger:#dc3545; --neutral:#6c757d;
+    }
+    *{ box-sizing:border-box; }
+    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial; background:var(--bg); color:#111; }
+
+    header{ background:#fff; border-bottom:1px solid #e5e7eb; padding:16px 20px; }
+    .logo-wrap{ display:flex; justify-content:center; align-items:center; }
+    .logo{ width:200px; height:auto; }
+
+    .hero{ position:relative; background:#fff; padding:18px 12px; border-bottom:1px solid #e5e7eb; }
+    .hero h1{ margin:0; font-size:28px; font-weight:800; text-align:center; }
+    .hero-actions{
+      position:absolute; right:16px; top:50%; transform:translateY(-50%);
+      display:flex; gap:8px; align-items:center;
+    }
+
+    .container{ max-width:1280px; margin:16px auto; padding:0 16px; }
+    .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    @media (max-width:1024px){ .grid-2{ grid-template-columns:1fr; } }
+
+    .panel-card{ background:var(--card); border:2px solid var(--border); border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); padding:12px; }
+    .panel-card h2{ margin:0 0 10px 0; font-size:18px; display:flex; align-items:center; gap:8px; }
+
+    .course-card{
+      position:relative; background:#fff; border:2px solid var(--border); border-radius:10px;
+      box-shadow:0 2px 6px rgba(0,0,0,.05); padding:16px; margin:0 0 12px 0;
+      padding-right:168px; min-height:64px;
+    }
+    .course-title{ font-weight:800; margin:0 0 6px 0; line-height:1.25; }
+    .meta{ color:var(--muted); font-size:13px; display:flex; flex-wrap:wrap; gap:6px; }
+    .tag{ display:inline-block; background:#eef2ff; color:#1e40af; padding:2px 8px; border-radius:999px; font-size:12px; }
+    .actions{ position:absolute; top:12px; right:12px; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; max-width:150px; }
+
+    .btn{ border:none; border-radius:8px; padding:8px 12px; cursor:pointer; font-weight:600; }
+    .btn-sm{ padding:6px 10px; border-radius:6px; font-size:13px; }
+    .btn-primary{ background:var(--primary); color:#fff; }
+    .btn-danger{ background:var(--danger); color:#fff; }
+    .btn-neutral{ background:var(--neutral); color:#fff; }
+    .btn-outline{ background:#e9ecef; }
+    .hidden{ display:none !important; }
+
+    /* Botón de Cerrar Sesión fijo abajo-derecha */
+    #btnSignOutFixed{
+      position:fixed; right:18px; bottom:18px; z-index:1100;
+      background:var(--danger); color:#fff; border:none; border-radius:10px; padding:12px 14px; font-weight:700;
+      box-shadow:0 8px 18px rgba(220,53,69,0.35);
+    }
+
+    .drawer{ position:fixed; top:0; right:0; width:720px; max-width:100%; height:100%; background:#fff;
+      border-left:2px solid var(--border); box-shadow:-4px 0 16px rgba(0,0,0,.1); transform:translateX(100%); transition:transform .25s ease;
+      z-index:1000; overflow:auto; }
+    .drawer.open{ transform:translateX(0); }
+    .drawer header{ position:sticky; top:0; background:#fff; z-index:2; display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid #e5e7eb; }
+    .drawer .content{ padding:16px; }
+    .grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    .full{ grid-column:1 / -1; }
+    .field{ display:flex; flex-direction:column; gap:6px; }
+    .field label{ font-weight:700; font-size:14px; }
+    .field input[type="text"], .field input[type="date"], .field input[type="number"], .field textarea, .field select{
+      border:1px solid #ccc; border-radius:8px; padding:10px 12px; font-size:14px; background:#f9fafb;
+    }
+    .meta-help{ color:#6b7280; font-size:12px; }
+
+    .chip-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+    .chip-row input[type="text"]{ flex:1 1 auto; }
+    .small-btn{ padding:6px 10px; border:none; border-radius:6px; color:#fff; cursor:pointer; }
+    .small-add{ background:#198754; }
+    .small-del{ background:var(--danger); }
+
+    .q-card{ border:1px solid #e5e7eb; border-radius:10px; padding:12px; background:#f9fbff; margin:10px 0; }
+    .q-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .q-title{ font-weight:700; }
+    .q-number{ font-weight:800; margin-right:6px; }
+    .q-sub{ font-weight:600; margin:10px 0 6px; }
+    .q-row{ display:flex; gap:8px; align-items:center; margin:8px 0; }
+    .q-row input[type="text"]{ flex:1 1 auto; }
+    .q-add{ background:var(--primary); }
+    .q-del{ background:#fd7e14; }
+    .q-del-opt{ background:var(--danger); }
+  </style>
 </head>
 <body>
   <header>
-    <img src="logo.png" class="logo" alt="Logo ESYS">
+    <div class="logo-wrap">
+      <a href="https://esys.cl" target="_blank" rel="noopener">
+        <img class="logo" src="logo.png" alt="ESYS">
+      </a>
+    </div>
   </header>
 
-  <div class="container">
+  <section class="hero">
     <h1>Panel de Cursos</h1>
+    <div class="hero-actions">
+      <button class="btn btn-outline" id="btnGoUsers">Panel de Usuarios</button>
+    </div>
+  </section>
 
-    <div class="grid">
-      <!-- IZQUIERDA: Cursos Ofertados / Encuestas -->
+  <main class="container">
+    <div class="grid-2">
       <section class="panel-card">
-        <h2 id="createdTitle">Cursos Ofertados</h2>
-        <div class="row" style="margin:8px 0 12px">
+        <h2>Cursos Ofertados</h2>
+        <div style="display:flex; gap:8px; margin:8px 0 12px 0;">
           <button id="btnNewCourse" class="btn btn-primary">Crear Nuevo Curso</button>
-          <button id="btnNewSurvey" class="btn btn-primary" style="display:none">Crear Nueva Encuesta</button>
-          <button id="btnToggleSurveys" class="btn btn-neutral">Encuestas de Satisfacción</button>
-          <input id="searchCreated" type="text" placeholder="Buscar por nombre o ID..."/>
+          <input id="searchCreated" type="text" placeholder="Buscar por nombre o ID..." style="flex:1; border:1px solid #ccc; border-radius:8px; padding:8px 12px; background:#f9fafb;">
         </div>
-        <div id="createdList" class="list"></div>
+        <div id="createdList"></div>
       </section>
 
-      <!-- DERECHA: Historial -->
       <section class="panel-card">
-        <h2>Historial de Cursos</h2>
-        <div class="row" style="margin:8px 0 12px">
-          <input id="searchDone" type="text" placeholder="Buscar por nombre, empresa o fecha..."/>
-          <button id="btnNewHistory" class="btn btn-neutral">Agregar Curso</button>
+        <h2>
+          Historial de Cursos
+          <button id="btnNewHistory" class="btn btn-primary" style="margin-left:auto;">Agregar Curso</button>
+        </h2>
+        <div style="display:flex; gap:8px; margin:8px 0 12px 0;">
+          <input id="searchDone" type="text" placeholder="Buscar por nombre, empresa o fecha..." style="flex:1; border:1px solid #ccc; border-radius:8px; padding:8px 12px; background:#f9fafb;">
         </div>
-        <div id="doneList" class="list"></div>
+        <div id="doneList"></div>
       </section>
     </div>
-  </div>
+  </main>
 
-  <!-- Editor de CURSOS (existente) -->
-  <div id="editor" class="modal" aria-hidden="true">
-    <div class="modal-card">
-      <div class="modal-head">
-        <h3 id="editorTitle">Nuevo curso</h3>
-        <div>
-          <button id="btnSave" class="btn btn-primary btn-sm">Guardar</button>
-          <button id="btnClose" class="btn btn-neutral btn-sm">Cerrar</button>
-        </div>
+  <!-- Botón fijo de Cerrar Sesión -->
+  <button id="btnSignOutFixed">Cerrar Sesión</button>
+
+  <!-- Editor de cursos creados (igual que antes) -->
+  <aside id="editor" class="drawer" aria-hidden="true">
+    <header>
+      <strong id="editorTitle">Nuevo curso</strong>
+      <div style="display:flex; gap:8px;">
+        <button id="btnSave" class="btn btn-primary">Guardar</button>
+        <button id="btnClose" class="btn btn-outline">Cancelar</button>
+      </div>
+    </header>
+    <div class="content">
+      <div class="field full">
+        <label for="docIdInput">Nombre de Documento</label>
+        <input id="docIdInput" type="text" placeholder="nfpa_70b_2023_v1">
+        <div class="meta-help">Se sanitiza automáticamente: sin tildes, minúsculas, sin espacios (._- permitidos).</div>
       </div>
 
-      <!-- Contenido del editor de cursos (igual que tenías) -->
-      <div class="row">
-        <div>
-          <label>Identificador del Curso</label>
-          <input id="docIdInput" type="text" placeholder="NFPA_70E.v3 (se autogenera si lo dejas vacío)"/>
+      <div class="grid">
+        <div class="field">
+          <label for="idInput">Identificador de Curso</label>
+          <input id="idInput" type="text" placeholder="02, 03, ...">
+          <div class="meta-help">Identificador de curso para el código único de cada certificado</div>
         </div>
-        <div>
-          <label>Código (ID corto)</label>
-          <input id="idInput" type="text" placeholder="03"/>
-        </div>
-      </div>
 
-      <div class="row">
-        <div>
-          <label>Nombre del Curso</label>
-          <input id="nameInput" type="text" placeholder="Norma ... NFPA 70E 2024"/>
+        <div class="field">
+          <label for="scoreInput">Puntaje de Aprobación</label>
+          <input id="scoreInput" type="text" placeholder="92">
         </div>
-        <div>
-          <label>Puntaje de Aprobación</label>
-          <input id="scoreInput" type="number" placeholder="92"/>
+
+        <div class="field full">
+          <label for="nameInput">Nombre de Curso</label>
+          <input id="nameInput" type="text" placeholder="Norma para el Mantenimiento de Equipos Eléctricos - NFPA 70B 2023">
+          <div class="meta-help">Nombre de curso se muestra en la plataforma y en los certificados.</div>
         </div>
-      </div>
 
-      <div>
-        <label>Descripción</label>
-        <textarea id="descInput" placeholder="Resumen del curso..."></textarea>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>URL Manual (sin .pdf)</label>
-          <input id="manualUrlInput" type="text" placeholder="carpeta/archivo"/>
+        <div class="field full">
+          <label for="descInput">Descripción de Conocimientos Adquiridos</label>
+          <textarea id="descInput" placeholder='Esta insignia verifica que la persona ha demostrado...'></textarea>
+          <div class="meta-help">Para página de verificación, comienza con "Esta insignia verifica..."</div>
         </div>
-        <div>
-          <label>Plantilla Certificado (sin .pdf)</label>
-          <input id="certificateTmplInput" type="text" placeholder="plantillas/certificado_base"/>
+
+        <div class="field">
+          <label for="manualUrlInput">Nombre de Archivo del Manual (PDF)</label>
+          <input id="manualUrlInput" type="text" placeholder="manual_NFPA_70B.v2">
         </div>
-      </div>
 
-      <div class="row">
-        <div>
-          <label>Imagen portada (sin .jpg)</label>
-          <input id="imageUrlInput" type="text" placeholder="portadas/img01"/>
+        <div class="field">
+          <label for="certificateTmplInput">Nombre de Archivo de Plantilla Certificado (PDF)</label>
+          <input id="certificateTmplInput" type="text" placeholder="plantillaGuido">
         </div>
-        <div>
-          <label>Imagen insignia (sin .png)</label>
-          <input id="imageBadgeInput" type="text" placeholder="badges/badge01"/>
+
+        <div class="field">
+          <label for="imageUrlInput">Nombre de Archivo de Portada Curso (JPG)</label>
+          <input id="imageUrlInput" type="text" placeholder="Portada_NFPA70B">
         </div>
-      </div>
 
-      <div class="row">
-        <div>
-          <label>Horas del curso</label>
-          <input id="timeHoursInput" type="number" placeholder="16"/>
+        <div class="field">
+          <label for="imageBadgeInput">Nombre de Archivo de Imagen Insignia (PNG)</label>
+          <input id="imageBadgeInput" type="text" placeholder="NFPA70B_2023_badge">
+          <div class="meta-help">Para página de verificación.</div>
         </div>
-      </div>
 
-      <div>
-        <label>Criterios</label>
-        <div id="criteriaList"></div>
-        <button id="btnAddCriterion" class="small-btn">+ Criterio</button>
-      </div>
+        <div class="field">
+          <label for="timeHoursInput">Duración Curso (Tiempo en hrs.)</label>
+          <input id="timeHoursInput" type="number" placeholder="16">
+        </div>
 
-      <div>
-        <label>Normas</label>
-        <div id="standardsList"></div>
-        <button id="btnAddStandard" class="small-btn">+ Norma</button>
-      </div>
+        <div class="field full">
+          <label>Criterios de Aprobación (para página de verificación)</label>
+          <div id="criteriaList"></div>
+          <button id="btnAddCriterion" class="small-btn small-add" type="button">+ Agregar criterio</button>
+        </div>
 
-      <div>
-        <label>Preguntas</label>
-        <div id="questionsList"></div>
-        <button id="btnAddQuestion" class="small-btn">+ Pregunta</button>
+        <div class="field full">
+          <label>Normas Abordadas en el Curso (para página de verificación)</label>
+          <div id="standardsList"></div>
+          <button id="btnAddStandard" class="small-btn small-add" type="button">+ Agregar norma</button>
+        </div>
+
+        <div class="field full">
+          <label>Preguntas</label>
+          <div id="questionsList"></div>
+          <button id="btnAddQuestion" class="small-btn small-add" type="button">+ Agregar pregunta</button>
+        </div>
       </div>
     </div>
-  </div>
+  </aside>
 
-  <!-- Editor de REALIZADOS -->
-  <div id="historyEditor" class="modal" aria-hidden="true">
-    <div class="modal-card">
-      <div class="modal-head">
-        <h3 id="historyTitle">Nuevo realizado</h3>
-        <div>
-          <button id="btnHistorySave" class="btn btn-primary btn-sm">Guardar</button>
-          <button id="btnHistoryClose" class="btn btn-neutral btn-sm">Cerrar</button>
-        </div>
+  <!-- Editor de CURSOS REALIZADOS -->
+  <aside id="historyEditor" class="drawer" aria-hidden="true">
+    <header>
+      <strong id="historyTitle">Nuevo realizado</strong>
+      <div style="display:flex; gap:8px;">
+        <button id="btnHistorySave" class="btn btn-primary">Guardar</button>
+        <button id="btnHistoryClose" class="btn btn-outline">Cancelar</button>
       </div>
-
-      <div class="row">
-        <div>
-          <label>Curso base (documento)</label>
+    </header>
+    <div class="content">
+      <div class="grid">
+        <div class="field full">
+          <label for="historyCourseKey">Curso (de lista de cursos creados)</label>
           <select id="historyCourseKey"></select>
-          <div class="help">Selecciona el curso al que pertenece este realizado.</div>
+          <div class="meta-help">Se guarda el courseKey y se muestra el nombre real del curso.</div>
         </div>
-        <div>
-          <label>Fecha de inicio</label>
-          <input id="historyDate" type="date"/>
-        </div>
-      </div>
 
-      <div class="row">
-        <div>
-          <label>Forma</label>
+        <div class="field">
+          <label for="historyDate">Fecha</label>
+          <input id="historyDate" type="date">
+        </div>
+
+        <div class="field">
+          <label for="historyForma">Forma</label>
           <select id="historyForma">
             <option value="abierto">abierto</option>
             <option value="cerrado">cerrado</option>
           </select>
         </div>
-        <div>
-          <label>Empresa (si es cerrado)</label>
-          <input id="historyEmpresa" type="text" placeholder="Empresa"/>
-        </div>
-      </div>
 
-      <div class="row">
-        <div>
-          <label>Encuesta de satisfacción</label>
-          <select id="historySurveySelect">
-            <!-- se llena dinámicamente -->
-          </select>
-          <div class="help">Si no eliges, se usará la predeterminada.</div>
+        <div class="field full">
+          <label for="historyEmpresa">Empresa (solo cursos cerrados)</label>
+          <input id="historyEmpresa" type="text" placeholder="Nombre de la empresa">
         </div>
-      </div>
 
-      <div id="historyParticipants" style="margin-top:10px"></div>
-    </div>
-  </div>
-
-  <!-- Editor de ENCUESTAS -->
-  <div id="surveyEditor" class="modal" aria-hidden="true">
-    <div class="modal-card">
-      <div class="modal-head">
-        <h3 id="surveyTitle">Nueva encuesta</h3>
-        <div>
-          <button id="btnSurveySave" class="btn btn-primary btn-sm">Guardar</button>
-          <button id="btnSurveyClose" class="btn btn-neutral btn-sm">Cerrar</button>
+        <div class="field full">
+          <label>Participantes</label>
+          <div id="historyParticipants" class="panel-card" style="padding:8px;">
+            <div class="meta">Sin participantes (se asignan en el Panel de Usuarios).</div>
+          </div>
         </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>Nombre de la encuesta</label>
-          <input id="surveyNameInput" type="text" placeholder="Encuesta general de satisfacción"/>
-          <div class="help">El identificador se generará desde este nombre.</div>
-        </div>
-        <div>
-          <label>Asociación por defecto (opcional)</label>
-          <select id="surveyEvalDefault"></select>
-          <div class="help">Déjalo en “default” para usarla de forma general.</div>
-        </div>
-      </div>
-
-      <div>
-        <label>Preguntas</label>
-        <div id="surveyQuestionsList"></div>
-        <button id="btnSurveyAddQuestion" class="small-btn">+ Pregunta</button>
       </div>
     </div>
-  </div>
+  </aside>
+
+  <script src="dashboard-admin_evals.js" defer></script>
 </body>
 </html>
