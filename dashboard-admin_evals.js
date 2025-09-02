@@ -86,6 +86,11 @@ function historyCardHTML(item){
   `;
 }
 
+function buildHistoryDocId(courseKey, dateStr, forma, empresa){
+  const empresaSlug = (forma === 'cerrado' && empresa) ? '_' + sanitizeDocId(empresa) : '';
+  return `${courseKey}_${dateStr}_${forma}${empresaSlug}`;
+}
+
 // ===== Estado =====
 let allEvaluations = [];     // [{docId, data}]
 let evalNameByKey = {};      // { courseKey: name }
@@ -480,10 +485,7 @@ async function saveHistory(){
     return;
   }
 
-  // Construye el ID del documento en inscripciones
-  const empresaSlug = (forma === 'cerrado' && empresa) ? '_' + sanitizeDocId(empresa) : '';
-  const histDocId   = `${courseKey}_${dateStr}_${forma}${empresaSlug}`;
-
+  // Payload con los campos editables
   const payload = {
     courseKey,                 // relación con evaluations/{courseKey}
     courseDate: dateStr,       // guardamos como string YYYY-MM-DD
@@ -491,18 +493,37 @@ async function saveHistory(){
     empresaSolicitante: empresa
   };
 
+  // Nuevo ID deseado según los cambios
+  const newDocId = buildHistoryDocId(courseKey, dateStr, forma, empresa);
+
   try{
-    if (editingHistoryId){
-      // EDITAR (no se cambia el ID del doc)
-      await firebase.firestore().collection('inscripciones')
-        .doc(editingHistoryId).set(payload, { merge:true });
-      alert('✅ Realizado actualizado.');
+    const colRef = firebase.firestore().collection('inscripciones');
+
+    if (!editingHistoryId){
+      // ---- CREAR ----
+      await colRef.doc(newDocId).set(payload, { merge:false });
+      alert('✅ Realizado creado: ' + newDocId);
     }else{
-      // CREAR con ID personalizado
-      await firebase.firestore().collection('inscripciones')
-        .doc(histDocId).set(payload, { merge:false });
-      alert('✅ Realizado creado: ' + histDocId);
+      // ---- EDITAR ----
+      const oldRef  = colRef.doc(editingHistoryId);
+      const oldSnap = await oldRef.get();
+      const oldData = oldSnap.exists ? (oldSnap.data() || {}) : {};
+
+      // Preserva TODO lo que ya tenía el documento (participantes, etc.)
+      const merged = { ...oldData, ...payload };
+
+      if (newDocId === editingHistoryId){
+        // Mismo ID: solo actualizamos (sobrescritura explícita para limpiar campos obsoletos)
+        await oldRef.set(merged, { merge:false });
+        alert('✅ Realizado actualizado.');
+      }else{
+        // ID cambió: crear NUEVO doc con todo preservado + borrar el antiguo
+        await colRef.doc(newDocId).set(merged, { merge:false });
+        await oldRef.delete();
+        alert('✅ Realizado renombrado a: ' + newDocId);
+      }
     }
+
     closeHistoryEditor();
     await loadHistoryCourses();
   }catch(err){
@@ -510,7 +531,6 @@ async function saveHistory(){
     alert('❌ Error al guardar: ' + err.message);
   }
 }
-
 // ===== Acciones (realizados) =====
 document.addEventListener('click', async (e)=>{
   const btnHEdit = e.target.closest('.act-h-edit');
@@ -580,5 +600,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('#btnHistorySave')?.addEventListener('click', saveHistory);
   $('#btnHistoryClose')?.addEventListener('click', closeHistoryEditor);
 });
+
 
 
