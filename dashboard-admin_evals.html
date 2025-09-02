@@ -360,6 +360,22 @@
     </div>
   </aside>
 
+  <!-- Chart.js para los gráficos -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Modal de estadísticas -->
+  <div id="surveyStatsModal" class="drawer" aria-hidden="true">
+    <header>
+      <strong id="statsTitle">Estadísticas de satisfacción</strong>
+      <div style="display:flex; gap:8px;">
+        <button id="btnStatsClose" class="btn btn-outline">Cerrar</button>
+      </div>
+    </header>
+    <div class="content">
+      <div id="statsContent"></div>
+    </div>
+  </div>
+
   <script src="dashboard-admin_evals.js" defer></script>
 
   <script>
