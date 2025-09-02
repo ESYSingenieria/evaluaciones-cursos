@@ -7,9 +7,9 @@
   <link rel="stylesheet" href="styles.css" />
 
   <style>
-    /* ===== Reset pequeño para evitar desbordes ===== */
+    /* Evitar scroll horizontal de toda la página */
     * { box-sizing: border-box; }
-    html, body { max-width: 100%; overflow-x: hidden; }
+    html, body { max-width:100%; overflow-x:hidden; }
 
     /* ===== Encabezado con logo ===== */
     header{
@@ -18,20 +18,17 @@
     }
     .logo{ max-width:200px; height:auto; }
 
-    /* ===== Faja del título + botón a la derecha ===== */
-    .hero-row{
-      background:#fff; border-bottom:1px solid #e5e7eb; padding:18px 12px;
-    }
+    /* ===== Título + botón (el título no se mueve) ===== */
+    .hero-row{ background:#fff; border-bottom:1px solid #e5e7eb; padding:18px 12px; }
     .hero-row-inner{
-      max-width:1200px; margin:0 auto;
-      display:grid; grid-template-columns:1fr auto 1fr; align-items:center;
-      gap:12px; position:relative;
+      max-width:1200px; margin:0 auto; position:relative;
+      display:flex; align-items:center; justify-content:center;
     }
     .hero-title{
-      grid-column:2; margin:0; text-align:center; font-size:28px; font-weight:800;
+      margin:0; text-align:center; font-size:28px; font-weight:800;
     }
     .hero-action{
-      grid-column:3; justify-self:end;
+      position:absolute; right:0; top:50%; transform:translateY(-50%);
       border:none; border-radius:8px; padding:8px 12px;
       background:#e9ecef; color:#111; cursor:pointer; font-weight:600; font-size:14px;
       text-decoration:none;
@@ -40,40 +37,37 @@
     /* ===== Contenedor principal ===== */
     .dashboard-container{ width:100%; margin:0; padding:0 16px; }
 
-    /* ===== Barra de filtros (la crea tu JS) =====
-       Evitamos desbordes dando ancho limitado y centrado.
-       Nota: el JS añade estilos inline; esto NO interfiere con estas reglas. */
+    /* ===== Barra de filtros (la inyecta tu JS) =====
+       No limitamos ancho para que ocupe todo; si no cabe, solo la barra hace scroll-x. */
     #filtersBar{
-      width:100%; max-width:1200px;
-      margin-left:auto; margin-right:auto;
-      padding-left:16px; padding-right:16px;
+      width:100%;
+      margin:16px auto;
+      padding:16px;
+      overflow-x:auto;   /* solo la barra, no la página */
     }
-    /* Inputs/Selects dentro del filtro: apariencia consistente */
+    /* Evitamos que los elementos se encojan demasiado */
+    #filtersBar > * { flex:0 0 auto; }
     #filtersBar input, #filtersBar select{
-      padding:8px 12px; border:1px solid #ccc; border-radius:4px;
-      background:#f9f9f9; font-size:14px;
+      padding:8px 12px; border:1px solid #ccc; border-radius:4px; background:#f9f9f9; font-size:14px;
     }
     #filtersBar input:focus, #filtersBar select:focus{
       outline:none; border-color:#007bff; box-shadow:0 0 0 2px rgba(0,123,255,.2);
     }
 
-    /* ===== Tarjetas de usuario (no se cambia estructura) ===== */
+    /* ===== Tarjetas de usuario (sin cambios funcionales) ===== */
     .user-item{
-      width:100%; margin:0 0 16px 0; padding:16px;
-      background:#fff; border-radius:10px; border:2px solid #dfe3e8;
-      box-shadow:0 2px 8px rgba(0,0,0,.06); position:relative; padding-top:16px;
+      width:100%; margin:0 0 16px 0; padding:16px; background:#fff;
+      border-radius:10px; border:2px solid #dfe3e8; box-shadow:0 2px 8px rgba(0,0,0,.06);
+      position:relative; padding-top:16px;
     }
     .user-item > :not(.user-actions){ padding-right:200px; }
-
     .user-item button{
-      margin:4px 8px 4px 0; padding:8px 12px;
-      border:none; border-radius:4px; background:#007bff; color:#fff;
-      cursor:pointer; white-space:nowrap; font-size:14px;
+      margin:4px 8px 4px 0; padding:8px 12px; border:none; border-radius:4px;
+      background:#007bff; color:#fff; cursor:pointer; white-space:nowrap; font-size:14px;
     }
     .user-item .delete-user-btn{ background:#dc3545; }
     .user-actions{
-      position:absolute; top:6px; right:6px; display:flex; flex-direction:column; gap:0;
-      align-items:flex-end; z-index:2;
+      position:absolute; top:6px; right:6px; display:flex; flex-direction:column; gap:0; align-items:flex-end; z-index:2;
     }
     .user-actions .inline-edit-cta{ display:flex; gap:6px; }
     .user-actions button{ background:#0d6efd; border-radius:6px; font-size:13px; padding:6px 6px; }
@@ -88,15 +82,16 @@
     .hidden{ display:none !important; }
     .eval-title{ font-weight:600; margin:8px 0 4px; }
 
-    /* ===== Botón “+ Usuario” flotante (como lo tenías) ===== */
+    /* Botón “+ Usuario” (como lo tenías) */
     #createUserBtn{
       position:fixed; bottom:80px; right:20px; background:#28a745; color:#fff; border:none;
       padding:12px 16px; border-radius:50%; font-size:20px; cursor:pointer; z-index:1000;
     }
 
-    /* ===== Cerrar sesión: SIEMPRE fijo, esquina inferior derecha, tamaño pequeño ===== */
+    /* ===== Cerrar Sesión fijo, esquina inferior derecha, pequeño ===== */
     #logoutContainer{
-      position:fixed !important; right:16px !important; bottom:16px !important; z-index:1100;
+      position:fixed !important; right:16px !important; bottom:16px !important;
+      left:auto !important; transform:none !important; z-index:1100;
       pointer-events:auto;
     }
     #logoutButton{
@@ -105,7 +100,7 @@
       box-shadow:0 6px 14px rgba(220,53,69,.28);
     }
 
-    /* Modo oscuro (por si lo activas con tu toggle) */
+    /* Modo oscuro (si lo activas con tu JS) */
     body.dark{ background:#121212; color:#eee; }
     body.dark .user-item{ background:#1e1e1e; box-shadow:0 2px 8px rgba(0,0,0,.5); }
     body.dark header{ background:#222; }
@@ -126,36 +121,34 @@
   <script src="https://unpkg.com/@pdf-lib/fontkit/dist/fontkit.umd.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-  <!-- Tu lógica -->
+  <!-- Lógica -->
   <script src="dashboard-admin.js" defer></script>
 </head>
 <body>
-  <!-- Logo -->
+  <!-- Logo centrado -->
   <header>
     <a href="https://esys.cl/" target="_blank" rel="noopener">
       <img src="logo.png" alt="Logo de la Empresa" class="logo" />
     </a>
   </header>
 
-  <!-- Título + botón a la derecha -->
+  <!-- Título centrado + botón a la derecha -->
   <section class="hero-row">
     <div class="hero-row-inner">
-      <div></div>
       <h1 class="hero-title">Panel de Usuarios</h1>
       <a class="hero-action" href="dashboard-admin_evals.html">Panel de Cursos</a>
     </div>
   </section>
 
   <div class="dashboard-container">
-    <!-- La barra de filtros (#filtersBar) la inyecta tu JS justo después del H1.
-         Estas reglas CSS aseguran que no desborde ni provoque scroll horizontal. -->
+    <!-- La barra de filtros se inyecta por JS aquí, con id="filtersBar" -->
     <div id="usersList">Cargando usuarios…</div>
   </div>
 
   <!-- Botón “+ Usuario” flotante -->
   <button id="createUserBtn">+</button>
 
-  <!-- Formulario Crear Usuario (igual al tuyo) -->
+  <!-- Formulario Crear Usuario -->
   <div id="createUserForm"
        style="display:none; position:fixed; top:10vh; left:50%; transform:translateX(-50%); background:#fff;
               padding:24px; border:1px solid #ccc; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.2); z-index:1001; width:360px;">
@@ -176,9 +169,7 @@
     </div>
   </div>
 
-  <!-- Cerrar sesión fijo abajo a la derecha -->
-  <div id="logoutContainer">
-    <button id="logoutButton">Cerrar Sesión</button>
-  </div>
+  <!-- Cerrar Sesión fijo abajo a la derecha -->
+  <div id="logoutContainer"><button id="logoutButton">Cerrar Sesión</button></div>
 </body>
 </html>
