@@ -8,84 +8,126 @@
 
   <style>
     /* ===== Top bar ===== */
-    header{display:flex;justify-content:center;align-items:center;padding:16px 20px;background:#fff;border-bottom:1px solid #e5e7eb;}
-    .logo{max-width:200px;height:auto;}
+    header {
+      display:flex; justify-content:center; align-items:center;
+      padding:16px 20px; background:#fff; border-bottom:1px solid #e5e7eb;
+    }
+    .logo { max-width:200px; height:auto; }
 
-    /* ===== Banda de título ===== */
-    .hero-bar{background:#fff;border-bottom:1px solid #e5e7eb;padding:18px 12px;}
-    /* Grid para que el H1 quede realmente centrado */
+    /* Banda del título (misma estética del panel de evaluaciones) */
+    .hero-bar{
+      background:#fff; border-bottom:1px solid #e5e7eb; padding:18px 12px;
+    }
+
+    /* Fila del título: centro fijo + botón a la derecha */
     .title-row{
       display:grid;
-      grid-template-columns:1fr auto 1fr;  /* izq espacio / título (auto) / der botón */
+      grid-template-columns:1fr auto 1fr;   /* izq | centro | der */
       align-items:center;
       gap:12px;
-      padding:0 12px;
+      position:relative;
     }
     .title-row h1{
-      grid-column:2;
-      margin:0;
-      font-size:28px;
-      font-weight:800;
-      text-align:center;
+      grid-column:2; grid-row:1;
+      margin:0; font-size:28px; font-weight:800; text-align:center;
     }
-    .title-row .btn-ghost{
-      grid-column:3;
-      justify-self:end;
-      border:none;border-radius:8px;padding:8px 12px;background:#e9ecef;color:#111;cursor:pointer;
-      font-weight:600;font-size:14px;text-decoration:none;
+    /* El botón va en la misma fila que el título, a la derecha */
+    #goEvalsPageBtn{
+      grid-column:3; grid-row:1; justify-self:end;
+      border:none; border-radius:8px; padding:8px 12px;
+      background:#e9ecef; color:#111; font-weight:600; font-size:14px;
+      text-decoration:none; cursor:pointer;
     }
-    /* Forzar que los filtros (insertados por tu JS) ocupen toda la fila debajo del H1 */
+
+    /* Los filtros los inserta el JS como #filtersBar justo DESPUÉS del <h1>.
+       Aquí los ubicamos en la FILA 2 y recuperamos su estilo original. */
+    .title-row #filtersBar{
+      grid-column:1 / -1; grid-row:2; margin-top:12px;
+    }
+    /* Forzar apariencia y distribución original de la barra (sobre inline-style del JS) */
     #filtersBar{
-      grid-column:1 / -1;       /* ancho completo dentro del grid */
-      justify-self:stretch;     /* que no se pegue a un lado */
-      margin-top:12px;          /* respirito bajo el título */
+      width:100%;
+      background:#fff !important;
+      border:1px solid #ddd !important;
+      border-radius:6px !important;
+      box-shadow:0 2px 4px rgba(0,0,0,.1) !important;
+      padding:16px !important; margin:16px 0 !important;
+      display:flex !important; flex-wrap:wrap !important; gap:12px !important;
+      justify-content:flex-start !important; align-items:center !important;
+    }
+    #filtersBar input, #filtersBar select{
+      padding:8px 12px; border:1px solid #ccc; border-radius:4px; background:#f9f9f9; font-size:14px;
+    }
+    #filtersBar input:focus, #filtersBar select:focus{
+      outline:none; border-color:#007bff; box-shadow:0 0 0 2px rgba(0,123,255,.2);
     }
 
-    /* ===== Layout existente ===== */
-    .dashboard-container{width:100%;margin:0;padding:0 16px;box-sizing:border-box;}
-    #usersList{width:100%;margin:0;padding:0;box-sizing:border-box;}
+    /* ===== Layout existente (sin tocar lógica) ===== */
+    .dashboard-container { width:100%; margin:0; padding:0 16px; box-sizing:border-box; }
+    #usersList { width:100%; margin:0; padding:0; box-sizing:border-box; }
 
-    #filtersBar{
-      width:100%;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,.1);
-      padding:16px;margin:16px 0;display:flex;flex-wrap:wrap;gap:12px;justify-content:flex-start;align-items:center;
+    /* TARJETA DE USUARIO (mismo estilo que tenías) */
+    .user-item{
+      width:100%; margin:0 0 16px 0; padding:16px; background:#fff;
+      border-radius:10px; border:2px solid #dfe3e8; box-shadow:0 2px 8px rgba(0,0,0,.06);
+      position:relative; padding-top:16px;
     }
-    #filtersBar input,#filtersBar select{padding:8px 12px;border:1px solid #ccc;border-radius:4px;background:#f9f9f9;font-size:14px;}
-    #filtersBar input:focus,#filtersBar select:focus{outline:none;border-color:#007bff;box-shadow:0 0 0 2px rgba(0,123,255,.2);}
+    .user-item > :not(.user-actions){ padding-right:200px; }
+    .user-item button{
+      margin:4px 8px 4px 0; padding:8px 12px; border:none; border-radius:4px;
+      background:#007bff; color:#fff; cursor:pointer; white-space:nowrap; font-size:14px;
+    }
+    .user-item .delete-user-btn{ background:#dc3545; color:#fff; }
+    .user-item .delete-user-btn:hover{ background:#c82333; }
 
-    .user-item{width:100%;margin:0 0 16px 0;padding:16px;background:#fff;border-radius:10px;border:2px solid #dfe3e8;box-shadow:0 2px 8px rgba(0,0,0,.06);position:relative;padding-top:16px;}
-    .user-item > :not(.user-actions){padding-right:200px;}
-    .user-item button{margin:4px 8px 4px 0;padding:8px 12px;border:none;border-radius:4px;background:#007bff;color:#fff;cursor:pointer;white-space:nowrap;font-size:14px;}
-    .user-item .delete-user-btn{background:#dc3545;color:#fff;}
-    .user-actions{position:absolute;top:6px;right:6px;display:flex;flex-direction:column;gap:0;align-items:flex-end;z-index:2;}
-    .user-actions .inline-edit-cta{display:flex;gap:6px;}
-    .user-actions button{background:#0d6efd;border-radius:6px;font-size:13px;padding:6px 6px;}
-    .user-item .edit-user-btn,.user-item .save-user-btn,.user-item .cancel-user-btn{position:static!important;}
+    .user-actions{
+      position:absolute; top:6px; right:6px;
+      display:flex; flex-direction:column; gap:0px; align-items:flex-end; z-index:2;
+    }
+    .user-actions .inline-edit-cta{ display:flex; gap:6px; }
+    .user-actions button{ background:#0d6efd; border-radius:6px; font-size:13px; padding:6px 6px; }
+    .user-actions .delete-user-btn{ background:#dc3545; }
+    .user-actions .logout-btn{ background:#6c757d; }
 
-    .evals-container{display:flex;flex-direction:column;max-height:260px;overflow-y:auto;margin:12px 0;padding:4px;border:1px solid #ddd;border-radius:6px;}
-    .eval-option{display:flex;align-items:center;gap:8px;padding:6px 8px;margin:6px 0;border-radius:4px;}
-    .eval-item{background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:12px 16px;margin:12px 0;}
-    .eval-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
-    .eval-grid > div label{font-size:12px;color:#444;display:block;margin-bottom:4px;}
-    .muted{color:#777;font-size:12px;}
-    .hidden{display:none!important;}
-    .eval-title{font-weight:600;margin:8px 0 4px;}
+    .user-item .edit-user-btn,
+    .user-item .save-user-btn,
+    .user-item .cancel-user-btn{ position: static !important; }
 
-    /* Botón Cerrar Sesión fijo y más pequeño */
-    .logout-fab{
-      position:fixed;right:18px;bottom:18px;z-index:1100;
-      background:#dc3545;color:#fff;border:none;border-radius:8px;
-      padding:8px 10px;font-weight:700;font-size:13px;
-      box-shadow:0 8px 18px rgba(220,53,69,.25);cursor:pointer;
+    .evals-container{ display:flex; flex-direction:column; max-height:260px; overflow-y:auto; margin:12px 0; padding:4px; border:1px solid #ddd; border-radius:6px; }
+    .eval-option{ display:flex; align-items:center; gap:8px; padding:6px 8px; margin:6px 0; border-radius:4px; }
+    .eval-option input[type="checkbox"]{ margin:0 8px 0 0; }
+    .eval-item{ background:#f9f9f9; border:1px solid #e0e0e0; border-radius:6px; padding:12px 16px; margin:12px 0; }
+    .eval-grid{ display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:8px; }
+    .eval-grid > div label{ font-size:12px; color:#444; display:block; margin-bottom:4px; }
+    .muted{ color:#777; font-size:12px; }
+    .hidden{ display:none !important; }
+    .eval-title{ font-weight:600; margin:8px 0 4px; }
+
+    /* Botón “+ Usuario” (igual) */
+    /* (Está inline en el HTML, pero lo dejamos como estaba) */
+
+    /* Botón Cerrar Sesión: esquina inf. derecha y MÁS PEQUEÑO */
+    #logoutContainer{
+      position:fixed !important; right:18px !important; bottom:18px !important; z-index:1100;
+    }
+    #logoutContainer #logoutButton{
+      background:#dc3545; color:#fff; border:none; border-radius:8px;
+      padding:8px 10px; font-size:13px; font-weight:700;
+      box-shadow:0 8px 18px rgba(220,53,69,.25); cursor:pointer;
     }
 
-    body.dark{background:#121212;color:#eee;}
-    body.dark .user-item{background:#1e1e1e;box-shadow:0 2px 8px rgba(0,0,0,.5);}
-    body.dark header{background:#222;}
+    body.dark{ background:#121212; color:#eee; }
+    body.dark .user-item{ background:#1e1e1e; box-shadow:0 2px 8px rgba(0,0,0,.5); }
+    body.dark header{ background:#222; }
 
     @media (max-width:768px){
-      header{padding:12px;}
-      .dashboard-container{width:100%;padding:0 10px;}
-      .user-item > :not(.user-actions){padding-right:0;}
+      header{ padding:12px; }
+      .dashboard-container{ width:100%; padding:0 10px; }
+      .user-item > :not(.user-actions){ padding-right:0; }
+      .title-row{ grid-template-columns: 1fr auto; }
+      .title-row h1{ grid-column:1 / -1; order:1; }
+      #goEvalsPageBtn{ grid-column:2; order:1; }
+      .title-row #filtersBar{ grid-column:1 / -1; }
     }
   </style>
 
@@ -99,7 +141,7 @@
   <script src="https://unpkg.com/@pdf-lib/fontkit/dist/fontkit.umd.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-  <!-- Lógica -->
+  <!-- Lógica (SIN cambios) -->
   <script src="dashboard-admin.js" defer></script>
 </head>
 <body>
@@ -110,16 +152,17 @@
     </a>
   </header>
 
-  <!-- Título + botón a la derecha (misma altura del título) -->
+  <!-- Título + botón (misma fila) y filtros debajo (el JS inserta #filtersBar tras <h1>) -->
   <section class="hero-bar">
     <div class="title-row">
       <h1>Panel de Usuarios</h1>
-      <a id="goEvalsPageBtn" class="btn-ghost" href="dashboard-admin_evals.html">Panel de Cursos</a>
-      <!-- El #filtersBar será insertado por tu JS justo después del H1; el CSS de arriba lo hace ancho completo -->
+      <a id="goEvalsPageBtn" href="dashboard-admin_evals.html">Panel de Cursos</a>
+      <!-- #filtersBar será inyectado por el JS aquí (afterend del <h1>) -->
     </div>
   </section>
 
   <div class="dashboard-container">
+    <!-- La barra de filtros se inyecta por JS -->
     <div id="usersList">Cargando usuarios…</div>
   </div>
 
@@ -143,7 +186,7 @@
     <input id="newCompany"  type="text"   placeholder="Empresa" style="width:100%;margin:8px 0;padding:8px;" />
 
     <label style="margin:8px 0 0; display:block;">Evaluaciones:</label>
-    <div id="newEvalsContainer" class="evals-container"></div>
+    <div id="newEvalsContainer" class="evals-container"><!-- checkboxes + metas por evaluación --></div>
 
     <div style="text-align:right;margin-top:12px;">
       <button id="cancelCreateUser" style="margin-right:8px;">Cancelar</button>
@@ -151,7 +194,7 @@
     </div>
   </div>
 
-  <!-- Cerrar Sesión fijo, más pequeño -->
-  <button id="logoutButton" class="logout-fab">Cerrar Sesión</button>
+  <!-- Botón Cerrar Sesión (más pequeño, esquina inf. derecha) -->
+  <div id="logoutContainer"><button id="logoutButton">Cerrar Sesión</button></div>
 </body>
 </html>
