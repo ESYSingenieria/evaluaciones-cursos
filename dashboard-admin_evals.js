@@ -111,6 +111,66 @@ function courseCardHTML({ docId, id, name, title, puntajeAprobacion, version }){
   `;
 }
 
+function surveyCardHTML({ docId, title, evaluationId, questions }){
+  const qLen = Array.isArray(questions) ? questions.length : 0;
+  return `
+    <div class="course-card" data-survey="${docId}">
+      <div class="actions">
+        <button class="btn btn-sm btn-primary act-survey-edit">Editar</button>
+        <button class="btn btn-sm btn-neutral act-survey-copy">Copiar</button>
+        <button class="btn btn-sm btn-danger act-survey-delete">Eliminar</button>
+      </div>
+      <div class="course-title">${title || docId}</div>
+      <div class="meta">
+        <span class="tag">Base: ${evaluationId || 'default'}</span>
+        <span class="tag">Preguntas: ${qLen}</span>
+      </div>
+    </div>
+  `;
+}
+
+async function loadSurveys(){
+  const snap = await firebase.firestore().collection('surveyQuestions').get().catch(()=>null);
+  allSurveys = snap?.docs.map(d => ({ docId: d.id, ...d.data() })) || [];
+  surveyNameById = {}; allSurveys.forEach(s=> surveyNameById[s.docId] = s.title || s.docId);
+}
+
+function renderSurveyList(){
+  const q = ($('#searchCreated')?.value || '').toLowerCase().trim();
+  const list = $('#createdList');
+  const rows = (allSurveys || [])
+    .filter(s=>{
+      if(!q) return true;
+      const inDoc = (s.docId||'').toLowerCase().includes(q);
+      const inTitle = (s.title||'').toLowerCase().includes(q);
+      const inEval = (s.evaluationId||'').toLowerCase().includes(q);
+      const inQs = Array.isArray(s.questions) && s.questions.some(x => (x.text||'').toLowerCase().includes(q));
+      return inDoc || inTitle || inEval || inQs;
+    })
+    .sort((a,b)=> (a.title||a.docId).localeCompare(b.title||b.docId))
+    .map(surveyCardHTML)
+    .join('');
+  list.innerHTML = rows || '<div class="meta">No hay encuestas.</div>';
+}
+
+function renderCreatedOrSurveys(){
+  if (isSurveyMode) renderSurveyList(); else renderCreatedList();
+}
+
+async function toggleSurveyMode(force){
+  isSurveyMode = (typeof force === 'boolean') ? force : !isSurveyMode;
+  // Título/botones
+  const titleH2 = document.querySelector('.panel-card h2');
+  if (titleH2) titleH2.firstChild.nodeValue = isSurveyMode ? 'Encuestas de Satisfacción' : 'Cursos Ofertados';
+  $('#btnNewCourse').style.display = isSurveyMode ? 'none' : '';
+  $('#btnNewSurvey').style.display = isSurveyMode ? '' : 'none';
+  $('#searchCreated')?.setAttribute('placeholder',
+    isSurveyMode ? 'Buscar por nombre, curso base o texto...' : 'Buscar por nombre o ID...'
+  );
+  // Datos
+  if (isSurveyMode){ await loadSurveys(); renderSurveyList(); } else { renderCreatedList(); }
+}
+
 function historyCardHTML(item){
   return `
     <div class="course-card" data-hdoc="${item.docId}">
@@ -139,6 +199,11 @@ let allEvaluations = [];     // [{docId, data}]
 let evalNameByKey = {};      // { courseKey: name }
 let allHistory = [];         // realizados (inscripciones)
 let editingHistoryId = null; // id doc edicion o null si nuevo
+// Encuestas
+let isSurveyMode = false;
+let allSurveys = [];             // [{docId, title, evaluationId, questions}]
+let surveyNameById = {};         // { surveyDocId: title }
+let editingSurveyId = null;
 
 // ===== Cargar cursos creados =====
 async function loadCreatedCourses(){
@@ -207,9 +272,10 @@ async function loadHistoryCourses(){
         const participantsCount = Array.isArray(participants) ? participants.length : 0;
 
         const courseName = evalNameByKey[courseKey] || '(Curso desconocido)';
+        const surveyId = r.surveyId || ''; // toma la clave de encuesta si existe
 
         items.push({
-          docId: d.id, courseKey, courseName, date, forma, empresa, participants, participantsCount
+          docId: d.id, courseKey, courseName, date, forma, empresa, participants, participantsCount, surveyId
         });
       });
     }
@@ -505,6 +571,8 @@ function fillHistoryEditor(item, isEdit){
   setVal('historyDate', yyyyMMdd);
   setVal('historyForma', item.forma || 'abierto');
   setVal('historyEmpresa', item.empresa || '');
+  // Llenar el combo de encuestas (si hay una ya asignada, mostrarla seleccionada)
+  populateSurveySelect(item.surveyId || '')
   const box = $('#historyParticipants');
   if (item.participants && item.participants.length){
     box.innerHTML = item.participants.map(p=>{
@@ -517,12 +585,33 @@ function fillHistoryEditor(item, isEdit){
     box.innerHTML = '<div class="meta">Sin participantes (se asignan en el Panel de Usuarios).</div>';
   }
 }
+// Llena el <select id="historySurveySelect"> con todas las encuestas
+async function populateSurveySelect(selectedId=''){
+  // si aún no se han cargado, tráelas
+  if (!allSurveys || !allSurveys.length) {
+    await loadSurveys();   // usa la que agregamos antes
+  }
+  const sel = document.getElementById('historySurveySelect');
+  if (!sel) return;
+
+  sel.innerHTML = '<option value="">Usar la predeterminada</option>';
+  (allSurveys || [])
+    .sort((a,b) => (a.title||a.docId).localeCompare(b.title||b.docId))
+    .forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.docId;
+      o.textContent = s.title || s.docId;
+      if (s.docId === selectedId) o.selected = true;
+      sel.appendChild(o);
+    });
+}
 // ===== Reemplazar COMPLETO saveHistory por esto =====
 async function saveHistory(){
   const courseKey = $('#historyCourseKey').value;     // docId en evaluations (p.ej. NFPA_70E.v3)
   const dateStr   = $('#historyDate').value;          // YYYY-MM-DD (día 1)
   const forma     = $('#historyForma').value;         // 'abierto' | 'cerrado'
   const empresa   = $('#historyEmpresa').value.trim();
+  const surveyId = (document.getElementById('historySurveySelect')?.value || '').trim();
 
   if (!courseKey || !dateStr){
     alert('Selecciona curso y fecha.');
@@ -543,7 +632,8 @@ async function saveHistory(){
         empresaSolicitante: (forma === 'cerrado') ? empresa : '',
         inscriptions: [],
         totalInscritos: 0,
-        totalPagado: 0
+        totalPagado: 0,
+        surveyId
       }, { merge:false });
 
       alert('✅ Realizado creado: ' + newDocId);
@@ -589,7 +679,8 @@ async function saveHistory(){
         totalInscritos: remapped.length,
         totalPagado: (forma === 'cerrado')
           ? (oldData.totalPagado || 0)
-          : remapped.reduce((s,p)=> s + (Number(p.price)||0), 0)
+          : remapped.reduce((s,p)=> s + (Number(p.price)||0), 0),
+        surveyId
       };
 
       await col.doc(newDocId).set(base, { merge:false });
@@ -606,7 +697,8 @@ async function saveHistory(){
         courseKey,
         courseDate: dateStr,
         formaCurso: forma,
-        empresaSolicitante: (forma === 'cerrado') ? empresa : ''
+        empresaSolicitante: (forma === 'cerrado') ? empresa : '',
+        surveyId
       };
       await oldRef.set(payload, { merge:true });
 
@@ -755,3 +847,125 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('#btnHistorySave')?.addEventListener('click', saveHistory);
   $('#btnHistoryClose')?.addEventListener('click', closeHistoryEditor);
 });
+
+function openSurveyEditor(title='Nueva encuesta'){
+  $('#surveyTitle').textContent = title;
+  $('#surveyEditor').classList.add('open');
+  $('#surveyEditor').setAttribute('aria-hidden','false');
+}
+function closeSurveyEditor(){
+  $('#surveyEditor').classList.remove('open');
+  $('#surveyEditor').setAttribute('aria-hidden','true');
+  editingSurveyId = null;
+  setVal('surveyNameInput','');
+  $('#surveyQuestionsList').innerHTML = '';
+  populateSurveyEvalDefault('default');
+}
+function populateSurveyEvalDefault(selected='default'){
+  const sel = $('#surveyEvalDefault'); if (!sel) return;
+  sel.innerHTML = '';
+  const o0 = document.createElement('option'); o0.value = 'default'; o0.textContent = 'default';
+  sel.appendChild(o0);
+  (allEvaluations||[]).map(x=>x.docId).sort((a,b)=>a.localeCompare(b)).forEach(docId=>{
+    const o = document.createElement('option'); o.value = docId; o.textContent = docId;
+    if (docId === selected) o.selected = true; sel.appendChild(o);
+  });
+}
+function surveyQuestionCard(q = { text:'', type:'select', options:[''] }){
+  const wrap = document.createElement('div'); wrap.className='q-card';
+  wrap.innerHTML = `
+    <div class="q-head">
+      <div class="q-title"><span class="q-number">#</span> Texto de la pregunta</div>
+      <button type="button" class="small-btn q-del">Eliminar</button>
+    </div>
+    <div class="field"><input class="q-text" type="text" placeholder="Escribe la pregunta..." value="${(q.text||'').replace(/"/g,'&quot;')}"></div>
+    <div class="grid">
+      <div class="field">
+        <label>Tipo</label>
+        <select class="q-type">
+          <option value="select">Selección</option>
+          <option value="text">Respuesta abierta</option>
+        </select>
+      </div>
+      <div class="field full alt-box">
+        <label>Alternativas</label>
+        <div class="alt-list"></div>
+        <button type="button" class="small-btn small-add alt-add">+ Alternativa</button>
+      </div>
+    </div>
+  `;
+  const typeSel = wrap.querySelector('.q-type'); typeSel.value = q.type || 'select';
+  const altBox = wrap.querySelector('.alt-box'); const altList = wrap.querySelector('.alt-list');
+  function addAlt(v=''){ const r=document.createElement('div'); r.className='q-row';
+    r.innerHTML=`<input class="alt-text" type="text" placeholder="Texto de alternativa" value="${(v||'').replace(/"/g,'&quot;')}">
+                 <button type="button" class="small-btn q-del-opt">Quitar</button>`;
+    r.querySelector('.q-del-opt').addEventListener('click',()=>r.remove()); altList.appendChild(r);
+  }
+  (Array.isArray(q.options)&&q.options.length?q.options:['']).forEach(addAlt);
+  function sync(){ altBox.style.display = (typeSel.value === 'select') ? '' : 'none'; }
+  sync(); typeSel.addEventListener('change', sync);
+  wrap.querySelector('.alt-add').addEventListener('click', ()=> addAlt(''));
+  wrap.querySelector('.q-del').addEventListener('click', ()=> wrap.remove());
+  return wrap;
+}
+function renumberSurveyQuestions(){
+  $$('#surveyQuestionsList .q-card').forEach((card, idx)=>{
+    const n = card.querySelector('.q-number'); if(n) n.textContent = (idx+1)+'.';
+  });
+}
+function fillSurveyForm(docId, data){
+  editingSurveyId = docId || null;
+  setVal('surveyNameInput', data.title || '');
+  populateSurveyEvalDefault(data.evaluationId || 'default');
+  const box = $('#surveyQuestionsList'); box.innerHTML='';
+  (data.questions || []).forEach(q => box.appendChild(surveyQuestionCard(q)));
+  renumberSurveyQuestions();
+}
+function collectSurveyQuestions(){
+  const out = [];
+  $$('#surveyQuestionsList .q-card').forEach(card=>{
+    const text = card.querySelector('.q-text').value.trim();
+    const type = card.querySelector('.q-type').value;
+    let options=[];
+    if (type==='select'){
+      options = Array.from(card.querySelectorAll('.alt-text')).map(i=>i.value.trim()).filter(Boolean);
+      if(!options.length) options=['Sí','No'];
+    }
+    if(!text) return; const q={ text, type }; if(type==='select') q.options=options; out.push(q);
+  });
+  return out;
+}
+async function saveSurvey(){
+  const title = $('#surveyNameInput').value.trim();
+  const evalDefault = $('#surveyEvalDefault').value || 'default';
+  if(!title){ alert('Escribe el nombre de la encuesta.'); return; }
+  const docId = sanitizeDocId(title);
+  const questions = collectSurveyQuestions();
+  const payload = { title, evaluationId: evalDefault, questions };
+
+  const col = firebase.firestore().collection('surveyQuestions');
+  if(!editingSurveyId){
+    const exists = await col.doc(docId).get();
+    const id = exists.exists ? `${docId}_${Date.now().toString(36)}` : docId;
+    await col.doc(id).set(payload, { merge:false });
+  }else{
+    if (editingSurveyId !== docId){
+      const old = await col.doc(editingSurveyId).get();
+      const oldData = old.data() || {};
+      await col.doc(docId).set({ ...oldData, ...payload }, { merge:false });
+      await col.doc(editingSurveyId).delete();
+    }else{
+      await col.doc(docId).set(payload, { merge:true });
+    }
+  }
+  closeSurveyEditor(); await loadSurveys(); renderSurveyList();
+}
+async function copySurvey(docId){
+  const col = firebase.firestore().collection('surveyQuestions');
+  const snap = await col.doc(docId).get(); if(!snap.exists) return alert('No se encontró la encuesta.');
+  const data = snap.data(); const base = sanitizeDocId((data.title||docId)+'_copia');
+  let target = base, n=2;
+  while((await col.doc(target).get()).exists) target = `${base}_${n++}`;
+  await col.doc(target).set(data, { merge:false });
+  await loadSurveys(); renderSurveyList();
+}
