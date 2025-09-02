@@ -396,18 +396,31 @@ const loadEvaluations = async () => {
 
 
 // Verificar encuesta de satisfacción antes de realizar la evaluación
+// Verificar encuesta de satisfacción antes de realizar la evaluación
 const checkSurveyCompletion = async (evaluationId, userId) => {
-    const surveySnapshot = await db.collection('surveys')
-        .where('userId', '==', userId)
-        .where('evaluationId', '==', evaluationId)
-        .get();
+  // buscamos la sesión y encuesta asignadas
+  const { sessionId, surveyId } = await getActiveSessionAndSurvey(evaluationId);
 
-    if (surveySnapshot.empty) {
-        alert('Debes completar la encuesta de satisfacción antes de realizar esta evaluación.');
-        window.location.href = `survey.html?evaluationId=${evaluationId}`;
-        return false;
-    }
-    return true;
+  // preferimos validar por sesión; si no hay, usamos evaluationId (comportamiento antiguo)
+  let q = db.collection('surveys').where('userId', '==', userId);
+  if (sessionId) {
+    q = q.where('sessionId', '==', sessionId);
+  } else {
+    q = q.where('evaluationId', '==', evaluationId);
+  }
+
+  const surveySnapshot = await q.limit(1).get();
+
+  if (surveySnapshot.empty) {
+    alert('Debes completar la encuesta de satisfacción antes de realizar esta evaluación.');
+    const url = new URL('survey.html', window.location.origin);
+    url.searchParams.set('evaluationId', evaluationId);
+    if (sessionId) url.searchParams.set('sessionId', sessionId);
+    if (surveyId)  url.searchParams.set('surveyId',  surveyId);
+    window.location.href = url.toString();
+    return false;
+  }
+  return true;
 };
 
 // Enviar respuestas de evaluation.html
@@ -735,67 +748,79 @@ const loadEvaluation = async () => {
 let surveyLoaded = false; // Flag para evitar duplicaciones
 
 const loadSurveyQuestions = async (evaluationId) => {
-    const surveyForm = document.getElementById('surveyForm');
+  const surveyForm = document.getElementById('surveyForm');
+  if (!surveyForm) return;
 
-    // Validar si el formulario existe
-    if (!surveyForm) {
+  if (surveyLoaded) return;
+  surveyLoaded = true;
 
-        return;
+  try {
+    surveyForm.innerHTML = '';
+
+    // Tomamos parámetros de la URL (por si llegaron ya desde checkSurveyCompletion)
+    const params     = new URLSearchParams(window.location.search);
+    const urlSessId  = params.get('sessionId');
+    const urlSrvId   = params.get('surveyId');
+
+    // Si no vienen por URL, los resolvemos desde el perfil
+    let { sessionId, surveyId } = await getActiveSessionAndSurvey(evaluationId);
+    if (urlSessId) sessionId = urlSessId;
+    if (urlSrvId)  surveyId  = urlSrvId;
+
+    let surveyData = null;
+
+    if (surveyId) {
+      // Cargar una encuesta concreta por id de documento
+      const doc = await db.collection('surveyQuestions').doc(surveyId).get().catch(()=>null);
+      if (doc && doc.exists) {
+        surveyData = doc.data();
+      }
     }
 
-    // Evitar que la función se ejecute más de una vez
-    if (surveyLoaded) {
-        console.warn("Las preguntas de la encuesta ya se han cargado. Evitando duplicación.");
-        return;
+    // Fallback: igual que tu lógica original (evaluationId o 'default')
+    if (!surveyData) {
+      const surveySnapshot = await db.collection('surveyQuestions')
+        .where('evaluationId', 'in', [evaluationId, 'default'])
+        .limit(1)
+        .get();
+
+      if (!surveySnapshot.empty) {
+        surveyData = surveySnapshot.docs[0].data();
+      }
     }
 
-    surveyLoaded = true; // Activar la bandera para bloquear futuras ejecuciones
-
-    try {
-        console.log("Cargando preguntas para la encuesta...");
-        surveyForm.innerHTML = ''; // Limpiar el formulario antes de cargar
-
-        const surveySnapshot = await db.collection('surveyQuestions')
-            .where('evaluationId', 'in', [evaluationId, 'default'])
-            .limit(1)
-            .get();
-
-        if (surveySnapshot.empty) {
-            surveyForm.innerHTML = '<p>No hay preguntas disponibles en este momento.</p>';
-            console.warn("No se encontraron preguntas en Firestore.");
-            return;
-        }
-
-        const surveyData = surveySnapshot.docs[0].data();
-        surveyData.questions.forEach((question, index) => {
-            const questionDiv = document.createElement('div');
-            questionDiv.innerHTML = `
-                <label for="question${index}">${question.text}</label>
-                ${question.type === 'select' ? `
-                    <select name="question${index}" required>
-                        ${question.options.map(option => `<option value="${option}">${option}</option>`).join('')}
-                    </select>
-                ` : `
-                    <input type="${question.type}" name="question${index}" required>
-                `}
-            `;
-            surveyForm.appendChild(questionDiv);
-        });
-
-        // Agregar el botón de envío si no existe
-        if (!document.getElementById('submitSurveyButton')) {
-            const submitButton = document.createElement('button');
-            submitButton.type = 'submit';
-            submitButton.id = 'submitSurveyButton';
-            submitButton.textContent = 'Enviar Encuesta';
-            surveyForm.appendChild(submitButton);
-        }
-
-        console.log("Preguntas de la encuesta cargadas exitosamente.");
-    } catch (error) {
-        console.error('Error al cargar las preguntas de la encuesta:', error);
-        surveyForm.innerHTML = '<p>Error al cargar la encuesta. Intenta nuevamente más tarde.</p>';
+    if (!surveyData || !Array.isArray(surveyData.questions) || !surveyData.questions.length) {
+      surveyForm.innerHTML = '<p>No hay preguntas disponibles en este momento.</p>';
+      return;
     }
+
+    // Renderizado (igual a tu output actual)
+    surveyData.questions.forEach((question, index) => {
+      const questionDiv = document.createElement('div');
+      questionDiv.innerHTML = `
+        <label for="question${index}">${question.text}</label>
+        ${question.type === 'select' ? `
+            <select name="question${index}" required>
+              ${(question.options || []).map(option => `<option value="${option}">${option}</option>`).join('')}
+            </select>
+          ` : `
+            <input type="${question.type}" name="question${index}" required>
+          `}
+      `;
+      surveyForm.appendChild(questionDiv);
+    });
+
+    if (!document.getElementById('submitSurveyButton')) {
+      const submitButton = document.createElement('button');
+      submitButton.type = 'submit';
+      submitButton.id = 'submitSurveyButton';
+      submitButton.textContent = 'Enviar Encuesta';
+      surveyForm.appendChild(submitButton);
+    }
+  } catch (error) {
+    console.error('Error al cargar las preguntas de la encuesta:', error);
+    surveyForm.innerHTML = '<p>Error al cargar la encuesta. Intenta nuevamente más tarde.</p>';
+  }
 };
 
 // Llamada a la función SOLO si el formulario existe
@@ -809,41 +834,48 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 const submitSurvey = async (event) => {
-    event.preventDefault(); // Evitar el comportamiento predeterminado del formulario
+  event.preventDefault();
 
-    const surveyForm = document.getElementById('surveyForm');
-    const formData = new FormData(surveyForm);
+  const surveyForm = document.getElementById('surveyForm');
+  const formData   = new FormData(surveyForm);
 
-    const surveyData = {};
-    formData.forEach((value, key) => {
-        surveyData[key] = value; // Recopilar todas las respuestas
+  const surveyData = {};
+  formData.forEach((value, key) => { surveyData[key] = value; });
+
+  const urlParams    = new URLSearchParams(window.location.search);
+  const evaluationId = urlParams.get('evaluationId') || 'default';
+
+  const user = auth.currentUser;
+  if (!user) {
+    alert('Usuario no autenticado. Por favor, inicia sesión nuevamente.');
+    window.location.href = 'index.html';
+    return;
+  }
+
+  try {
+    // resolvemos sesión/encuesta (preferimos lo que venga por URL)
+    let { sessionId, surveyId } = await getActiveSessionAndSurvey(evaluationId);
+    const urlSessId = urlParams.get('sessionId');
+    const urlSrvId  = urlParams.get('surveyId');
+    if (urlSessId) sessionId = urlSessId;
+    if (urlSrvId)  surveyId  = urlSrvId;
+
+    // Guardar las respuestas de la encuesta
+    await db.collection('surveys').add({
+      userId:       user.uid,
+      evaluationId: evaluationId,
+      sessionId:    sessionId || null,  // <- clave para validar por sesión
+      surveyId:     surveyId  || null,  // <- opcional, por trazabilidad
+      surveyData:   surveyData,
+      timestamp:    firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const evaluationId = urlParams.get('evaluationId') || 'default';
-    const user = auth.currentUser;
-
-    if (!user) {
-        alert('Usuario no autenticado. Por favor, inicia sesión nuevamente.');
-        window.location.href = 'index.html';
-        return;
-    }
-
-    try {
-        // Guardar las respuestas de la encuesta en Firestore
-        await db.collection('surveys').add({
-            userId: user.uid,
-            evaluationId: evaluationId,
-            surveyData: surveyData,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
-
-        alert('Encuesta completada con éxito. Redirigiendo a la evaluación...');
-        window.location.href = `evaluation.html?id=${evaluationId}`;
-    } catch (error) {
-        console.error('Error al guardar la encuesta:', error);
-        alert('Hubo un problema al enviar la encuesta. Por favor, inténtalo de nuevo.');
-    }
+    alert('Encuesta completada con éxito. Redirigiendo a la evaluación...');
+    window.location.href = `evaluation.html?id=${evaluationId}`;
+  } catch (error) {
+    console.error('Error al guardar la encuesta:', error);
+    alert('Hubo un problema al enviar la encuesta. Por favor, inténtalo de nuevo.');
+  }
 };
 
 // Vincular la función al formulario
@@ -1190,6 +1222,33 @@ const loadUserData = async () => {
 };
 
 
+// --- Helper: obtiene la sesión (inscripción) y la encuesta seleccionada para este curso ---
+async function getActiveSessionAndSurvey(evaluationId) {
+  const user = auth.currentUser;
+  if (!user) return { sessionId: null, surveyId: null };
+
+  try {
+    const uDoc = await db.collection('users').doc(user.uid).get();
+    const meta = uDoc.exists ? (uDoc.data().assignedCoursesMeta || {}) : {};
+    // Buscamos la meta cuyo evaluationId o courseKey coincida con el evaluationId
+    const entry = Object.values(meta).find(m => m?.evaluationId === evaluationId || m?.courseKey === evaluationId) || null;
+    const sessionId = entry?.sessionId || null;
+
+    let surveyId = null;
+    if (sessionId) {
+      const sSnap = await db.collection('inscripciones').doc(sessionId).get().catch(() => null);
+      if (sSnap && sSnap.exists) {
+        const s = sSnap.data() || {};
+        // Soportamos varios nombres posibles del campo
+        surveyId = s.surveyDocId || s.surveyId || s.survey || s.encuestaId || null;
+      }
+    }
+    return { sessionId, surveyId };
+  } catch (e) {
+    console.error('getActiveSessionAndSurvey error:', e);
+    return { sessionId: null, surveyId: null };
+  }
+}
 
 
 
