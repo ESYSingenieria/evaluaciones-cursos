@@ -8,139 +8,84 @@
 
   <style>
     /* ===== Top bar ===== */
-    header { display:flex; justify-content:center; align-items:center; padding:16px 20px; background:#fff; border-bottom:1px solid #e5e7eb; }
-    .logo { max-width:200px; height:auto; }
+    header{display:flex;justify-content:center;align-items:center;padding:16px 20px;background:#fff;border-bottom:1px solid #e5e7eb;}
+    .logo{max-width:200px;height:auto;}
 
-    /* Banda de título */
-    .hero-bar{
-      background:#fff;
-      border-bottom:1px solid #e5e7eb;
-      padding:18px 12px;
-    }
-    /* ⬇️ Grid para mantener el H1 realmente centrado */
+    /* ===== Banda de título ===== */
+    .hero-bar{background:#fff;border-bottom:1px solid #e5e7eb;padding:18px 12px;}
+    /* Grid para que el H1 quede realmente centrado */
     .title-row{
       display:grid;
-      grid-template-columns: 1fr auto 1fr; /* izq espacio / título / der botón */
+      grid-template-columns:1fr auto 1fr;  /* izq espacio / título (auto) / der botón */
       align-items:center;
       gap:12px;
       padding:0 12px;
     }
     .title-row h1{
-      grid-column: 2;
+      grid-column:2;
       margin:0;
       font-size:28px;
       font-weight:800;
       text-align:center;
     }
     .title-row .btn-ghost{
-      grid-column: 3;
+      grid-column:3;
       justify-self:end;
-      border:none;
-      border-radius:8px;
-      padding:8px 12px;
-      background:#e9ecef;
-      color:#111;
-      cursor:pointer;
-      font-weight:600;
-      font-size:14px;
-      text-decoration:none;
+      border:none;border-radius:8px;padding:8px 12px;background:#e9ecef;color:#111;cursor:pointer;
+      font-weight:600;font-size:14px;text-decoration:none;
+    }
+    /* Forzar que los filtros (insertados por tu JS) ocupen toda la fila debajo del H1 */
+    #filtersBar{
+      grid-column:1 / -1;       /* ancho completo dentro del grid */
+      justify-self:stretch;     /* que no se pegue a un lado */
+      margin-top:12px;          /* respirito bajo el título */
     }
 
-    /* ===== Tu layout existente ===== */
-    .dashboard-container { width:100%; margin:0; padding:0 16px; box-sizing:border-box; }
-    #usersList { width:100%; margin:0; padding:0; box-sizing:border-box; }
+    /* ===== Layout existente ===== */
+    .dashboard-container{width:100%;margin:0;padding:0 16px;box-sizing:border-box;}
+    #usersList{width:100%;margin:0;padding:0;box-sizing:border-box;}
 
     #filtersBar{
-      width:100%; background:#fff; border:1px solid #ddd; border-radius:6px; box-shadow:0 2px 4px rgba(0,0,0,.1);
-      padding:16px; margin:16px 0; display:flex; flex-wrap:wrap; gap:12px; justify-content:flex-start; align-items:center;
+      width:100%;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,.1);
+      padding:16px;margin:16px 0;display:flex;flex-wrap:wrap;gap:12px;justify-content:flex-start;align-items:center;
     }
-    #filtersBar input, #filtersBar select{
-      padding:8px 12px; border:1px solid #ccc; border-radius:4px; background:#f9f9f9; font-size:14px;
-    }
-    #filtersBar input:focus, #filtersBar select:focus{
-      outline:none; border-color:#007bff; box-shadow:0 0 0 2px rgba(0,123,255,.2);
-    }
+    #filtersBar input,#filtersBar select{padding:8px 12px;border:1px solid #ccc;border-radius:4px;background:#f9f9f9;font-size:14px;}
+    #filtersBar input:focus,#filtersBar select:focus{outline:none;border-color:#007bff;box-shadow:0 0 0 2px rgba(0,123,255,.2);}
 
-    /* Tarjetas de usuario (igual que tenías) */
-    .user-item{
-      width:100%;
-      margin:0 0 16px 0;
-      padding:16px;
-      background:#fff;
-      border-radius:10px;
-      border:2px solid #dfe3e8;
-      box-shadow:0 2px 8px rgba(0,0,0,.06);
-      position:relative;
-      padding-top:16px;
-    }
-    .user-item > :not(.user-actions){ padding-right:200px; }
-    .user-item button{
-      margin:4px 8px 4px 0;
-      padding:8px 12px;
-      border:none;
-      border-radius:4px;
-      background:#007bff;
-      color:#fff;
-      cursor:pointer;
-      white-space:nowrap;
-      font-size:14px;
-    }
-    .user-item .delete-user-btn{ background:#dc3545; color:#fff; }
-    .user-item .delete-user-btn:hover{ background:#c82333; }
+    .user-item{width:100%;margin:0 0 16px 0;padding:16px;background:#fff;border-radius:10px;border:2px solid #dfe3e8;box-shadow:0 2px 8px rgba(0,0,0,.06);position:relative;padding-top:16px;}
+    .user-item > :not(.user-actions){padding-right:200px;}
+    .user-item button{margin:4px 8px 4px 0;padding:8px 12px;border:none;border-radius:4px;background:#007bff;color:#fff;cursor:pointer;white-space:nowrap;font-size:14px;}
+    .user-item .delete-user-btn{background:#dc3545;color:#fff;}
+    .user-actions{position:absolute;top:6px;right:6px;display:flex;flex-direction:column;gap:0;align-items:flex-end;z-index:2;}
+    .user-actions .inline-edit-cta{display:flex;gap:6px;}
+    .user-actions button{background:#0d6efd;border-radius:6px;font-size:13px;padding:6px 6px;}
+    .user-item .edit-user-btn,.user-item .save-user-btn,.user-item .cancel-user-btn{position:static!important;}
 
-    .user-actions{
-      position:absolute;
-      top:6px;
-      right:6px;
-      display:flex;
-      flex-direction:column;
-      gap:0px;
-      align-items:flex-end;
-      z-index:2;
-    }
-    .user-actions .inline-edit-cta{ display:flex; gap:6px; }
-    .user-actions button{ background:#0d6efd; border-radius:6px; font-size:13px; padding:6px 6px; }
-    .user-actions .delete-user-btn{ background:#dc3545; }
-    .user-actions .logout-btn{ background:#6c757d; }
-    .user-item .edit-user-btn,
-    .user-item .save-user-btn,
-    .user-item .cancel-user-btn{ position: static !important; }
+    .evals-container{display:flex;flex-direction:column;max-height:260px;overflow-y:auto;margin:12px 0;padding:4px;border:1px solid #ddd;border-radius:6px;}
+    .eval-option{display:flex;align-items:center;gap:8px;padding:6px 8px;margin:6px 0;border-radius:4px;}
+    .eval-item{background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:12px 16px;margin:12px 0;}
+    .eval-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+    .eval-grid > div label{font-size:12px;color:#444;display:block;margin-bottom:4px;}
+    .muted{color:#777;font-size:12px;}
+    .hidden{display:none!important;}
+    .eval-title{font-weight:600;margin:8px 0 4px;}
 
-    .evals-container{ display:flex; flex-direction:column; max-height:260px; overflow-y:auto; margin:12px 0; padding:4px; border:1px solid #ddd; border-radius:6px; }
-    .eval-option{ display:flex; align-items:center; gap:8px; padding:6px 8px; margin:6px 0; border-radius:4px; }
-    .eval-option input[type="checkbox"]{ margin:0 8px 0 0; }
-    .eval-item{ background:#f9f9f9; border:1px solid #e0e0e0; border-radius:6px; padding:12px 16px; margin:12px 0; }
-    .eval-grid{ display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:8px; }
-    .eval-grid > div label{ font-size:12px; color:#444; display:block; margin-bottom:4px; }
-    .muted{ color:#777; font-size:12px; }
-    .hidden{ display:none !important; }
-    .eval-title{ font-weight:600; margin:8px 0 4px; }
-
-    /* Botón Cerrar Sesión fijo (un solo botón) */
+    /* Botón Cerrar Sesión fijo y más pequeño */
     .logout-fab{
-      position:fixed;
-      right:18px;
-      bottom:18px;
-      z-index:1100;
-      background:#dc3545;
-      color:#fff;
-      border:none;
-      border-radius:10px;
-      padding:10px 12px;
-      font-weight:700;
-      font-size:14px;
-      box-shadow:0 8px 18px rgba(220,53,69,.35);
-      cursor:pointer;
+      position:fixed;right:18px;bottom:18px;z-index:1100;
+      background:#dc3545;color:#fff;border:none;border-radius:8px;
+      padding:8px 10px;font-weight:700;font-size:13px;
+      box-shadow:0 8px 18px rgba(220,53,69,.25);cursor:pointer;
     }
 
-    body.dark{ background:#121212; color:#eee; }
-    body.dark .user-item{ background:#1e1e1e; box-shadow:0 2px 8px rgba(0,0,0,.5); }
-    body.dark header{ background:#222; }
+    body.dark{background:#121212;color:#eee;}
+    body.dark .user-item{background:#1e1e1e;box-shadow:0 2px 8px rgba(0,0,0,.5);}
+    body.dark header{background:#222;}
 
     @media (max-width:768px){
-      header{ padding:12px; }
-      .dashboard-container{ width:100%; padding:0 10px; }
-      .user-item > :not(.user-actions){ padding-right:0; }
+      header{padding:12px;}
+      .dashboard-container{width:100%;padding:0 10px;}
+      .user-item > :not(.user-actions){padding-right:0;}
     }
   </style>
 
@@ -165,17 +110,16 @@
     </a>
   </header>
 
-  <!-- Título + botón a la derecha (misma altura del título, título centrado real) -->
+  <!-- Título + botón a la derecha (misma altura del título) -->
   <section class="hero-bar">
     <div class="title-row">
-      <div></div> <!-- espacio izquierdo del grid -->
       <h1>Panel de Usuarios</h1>
       <a id="goEvalsPageBtn" class="btn-ghost" href="dashboard-admin_evals.html">Panel de Cursos</a>
+      <!-- El #filtersBar será insertado por tu JS justo después del H1; el CSS de arriba lo hace ancho completo -->
     </div>
   </section>
 
   <div class="dashboard-container">
-    <!-- La barra de filtros la inyecta tu JS justo DESPUÉS del H1 -->
     <div id="usersList">Cargando usuarios…</div>
   </div>
 
@@ -199,7 +143,7 @@
     <input id="newCompany"  type="text"   placeholder="Empresa" style="width:100%;margin:8px 0;padding:8px;" />
 
     <label style="margin:8px 0 0; display:block;">Evaluaciones:</label>
-    <div id="newEvalsContainer" class="evals-container"><!-- checkboxes + metas por evaluación --></div>
+    <div id="newEvalsContainer" class="evals-container"></div>
 
     <div style="text-align:right;margin-top:12px;">
       <button id="cancelCreateUser" style="margin-right:8px;">Cancelar</button>
@@ -207,7 +151,7 @@
     </div>
   </div>
 
-  <!-- Botón Cerrar Sesión fijo abajo-derecha -->
+  <!-- Cerrar Sesión fijo, más pequeño -->
   <button id="logoutButton" class="logout-fab">Cerrar Sesión</button>
 </body>
 </html>
