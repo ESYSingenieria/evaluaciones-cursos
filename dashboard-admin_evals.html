@@ -115,6 +115,21 @@
     .q-add{ background:var(--primary); }
     .q-del{ background:#fd7e14; }
     .q-del-opt{ background:var(--danger); }
+
+    /* Encabezado con los dos textos en las esquinas */
+    .panel-head{
+      display:flex; align-items:center; justify-content:space-between;
+      margin:0 0 10px 0;
+    }
+
+    /* Mismo look que tu h2: usa la fuente/tamaño heredados (font:inherit) */
+    .tab-item{
+      background:none; border:0; padding:0; margin:0;
+      font:inherit; font-weight:800; color:#111; cursor:pointer;
+      text-decoration:none; user-select:none;
+    }
+
+    .tab-item.tab-on{ color:#0d6efd; } /* azul cuando está seleccionado */
   </style>
 </head>
 <body>
@@ -138,9 +153,16 @@
       <section class="panel-card">
         <!-- ⬇ Encabezado con el toggle (izquierda título, derecha el MISMO botón existente) -->
         <div class="panel-head">
-          <h2 id="createdHeading" class="tab-link tab-on">Cursos Ofertados</h2>
-          <!-- MISMO botón, mismo id, solo reubicado y con estilo de link -->
-          <button id="btnToggleSurveys" class="tab-link" style="background:none;border:0;padding:0;">Encuestas de Satisfacción</button>
+          <h2 id="createdTab" class="tab-item tab-on"
+              onclick="try{toggleSurveyMode(false)}catch(e){}">
+            Cursos Ofertados
+          </h2>
+
+          <!-- MISMO id: NO cambies nada, solo reubicado y con estilo de texto -->
+          <button id="btnToggleSurveys" type="button" class="tab-item"
+                  onclick="try{toggleSurveyMode(true)}catch(e){}">
+            Encuestas de Satisfacción
+          </button>
         </div>
 
         <div style="display:flex; gap:8px; margin:8px 0 12px 0;">
@@ -339,5 +361,23 @@
   </aside>
 
   <script src="dashboard-admin_evals.js" defer></script>
+
+  <script>
+  (function(){
+    const left  = document.getElementById('createdTab');
+    const right = document.getElementById('btnToggleSurveys');
+    function setOn(onSurveys){
+      right.classList.toggle('tab-on', !!onSurveys);
+      left.classList.toggle('tab-on',  !onSurveys);
+    }
+    // Arranque: cursos activos
+    setOn(false);
+
+    // Si además tienes listeners propios, esto solo se encarga del color
+    left?.addEventListener('click',  ()=> setOn(false));
+    right?.addEventListener('click', ()=> setOn(true));
+  })();
+  </script>
+
 </body>
 </html>
