@@ -474,8 +474,9 @@ function fillHistoryEditor(item, isEdit){
     box.innerHTML = '<div class="meta">Sin participantes (se asignan en el Panel de Usuarios).</div>';
   }
 }
+// ===== Reemplazar COMPLETO saveHistory por esto =====
 async function saveHistory(){
-  const courseKey = $('#historyCourseKey').value;     // docId elegido (NFPA_70E.v3, etc.)
+  const courseKey = $('#historyCourseKey').value;     // docId en evaluations (p.ej. NFPA_70E.v3)
   const dateStr   = $('#historyDate').value;          // YYYY-MM-DD
   const forma     = $('#historyForma').value;         // 'abierto' | 'cerrado'
   const empresa   = $('#historyEmpresa').value.trim();
@@ -485,50 +486,126 @@ async function saveHistory(){
     return;
   }
 
-  // Payload con los campos editables
-  const payload = {
-    courseKey,                 // relación con evaluations/{courseKey}
-    courseDate: dateStr,       // guardamos como string YYYY-MM-DD
-    formaCurso: forma,
-    empresaSolicitante: empresa
-  };
+  const empresaSlug = (forma === 'cerrado' && empresa) ? '_' + sanitizeDocId(empresa) : '';
+  const newDocId    = `${courseKey}_${dateStr}_${forma}${empresaSlug}`;
+  const col         = firebase.firestore().collection('inscripciones');
 
-  // Nuevo ID deseado según los cambios
-  const newDocId = buildHistoryDocId(courseKey, dateStr, forma, empresa);
+  try {
+    if (editingHistoryId && editingHistoryId !== newDocId) {
+      // === RENOMBRAR: copiar -> borrar -> propagar a usuarios ===
+      const oldSnap = await col.doc(editingHistoryId).get();
+      if (!oldSnap.exists) throw new Error('No se encontró el curso a editar.');
 
-  try{
-    const colRef = firebase.firestore().collection('inscripciones');
-
-    if (!editingHistoryId){
-      // ---- CREAR ----
-      await colRef.doc(newDocId).set(payload, { merge:false });
-      alert('✅ Realizado creado: ' + newDocId);
-    }else{
-      // ---- EDITAR ----
-      const oldRef  = colRef.doc(editingHistoryId);
-      const oldSnap = await oldRef.get();
-      const oldData = oldSnap.exists ? (oldSnap.data() || {}) : {};
-
-      // Preserva TODO lo que ya tenía el documento (participantes, etc.)
-      const merged = { ...oldData, ...payload };
-
-      if (newDocId === editingHistoryId){
-        // Mismo ID: solo actualizamos (sobrescritura explícita para limpiar campos obsoletos)
-        await oldRef.set(merged, { merge:false });
-        alert('✅ Realizado actualizado.');
-      }else{
-        // ID cambió: crear NUEVO doc con todo preservado + borrar el antiguo
-        await colRef.doc(newDocId).set(merged, { merge:false });
-        await oldRef.delete();
-        alert('✅ Realizado renombrado a: ' + newDocId);
+      const oldData = oldSnap.data() || {};
+      // normalizamos array de participantes
+      let participants = oldData.inscriptions || [];
+      if (participants && !Array.isArray(participants) && typeof participants === 'object') {
+        participants = Object.values(participants);
       }
+
+      // base del nuevo documento
+      const base = {
+        courseKey,
+        courseDate: dateStr,
+        formaCurso: forma,
+        empresaSolicitante: (forma === 'cerrado') ? empresa : '',
+        inscriptions: participants,
+        totalInscritos: Array.isArray(participants) ? participants.length : 0,
+        totalPagado: (forma === 'cerrado')
+          ? (oldData.totalPagado || 0)
+          : (Array.isArray(participants) ? participants.reduce((s,p)=> s + (Number(p.price)||0), 0) : 0)
+      };
+
+      // crear nuevo doc con el ID correcto
+      await col.doc(newDocId).set(base, { merge:false });
+      // borrar el antiguo
+      await col.doc(editingHistoryId).delete();
+
+      // actualizar metas de usuarios
+      await propagateCourseMetaToUsers(participants, {
+        courseKey,
+        date: dateStr,
+        sessionId: newDocId,
+        forma,
+        empresa
+      });
+
+      alert('✅ Realizado actualizado (renombrado) y usuarios sincronizados.');
+    } else {
+      // === MISMO ID: actualizar y propagar cambios de meta a usuarios ===
+      const payload = {
+        courseKey,
+        courseDate: dateStr,
+        formaCurso: forma,
+        empresaSolicitante: (forma === 'cerrado') ? empresa : ''
+      };
+      const targetId = editingHistoryId || newDocId;
+
+      await col.doc(targetId).set(payload, { merge:true });
+
+      // leer participantes actuales para propagar sus metas
+      const snap = await col.doc(targetId).get();
+      const data = snap.data() || {};
+      let participants = data.inscriptions || [];
+      if (participants && !Array.isArray(participants) && typeof participants === 'object') {
+        participants = Object.values(participants);
+      }
+
+      await propagateCourseMetaToUsers(participants, {
+        courseKey,
+        date: dateStr,
+        sessionId: targetId,
+        forma,
+        empresa
+      });
+
+      alert(editingHistoryId ? '✅ Realizado actualizado.' : ('✅ Realizado creado: ' + targetId));
     }
 
     closeHistoryEditor();
     await loadHistoryCourses();
-  }catch(err){
+  } catch (err) {
     console.error(err);
     alert('❌ Error al guardar: ' + err.message);
+  }
+}
+
+// ===== Agregar debajo (helper para actualizar usuarios) =====
+async function propagateCourseMetaToUsers(participants, { courseKey, date, sessionId, forma, empresa }) {
+  if (!Array.isArray(participants)) return;
+
+  for (const p of participants) {
+    const customID = p.customID || p.customId || p.cid || '';
+    const rut      = p.rut || '';
+
+    // Buscamos al usuario por customID (preferido) o por RUT
+    let q = null;
+    if (customID) {
+      q = await firebase.firestore().collection('users')
+            .where('customID','==', customID).limit(1).get().catch(()=>null);
+    }
+    if ((!q || q.empty) && rut) {
+      q = await firebase.firestore().collection('users')
+            .where('rut','==', rut).limit(1).get().catch(()=>null);
+    }
+    if (!q || q.empty) continue;
+
+    const uref = q.docs[0].ref;
+    const u    = q.docs[0].data() || {};
+    const meta = u.assignedCoursesMeta || {};
+    const prev = meta[courseKey] || {};
+
+    meta[courseKey] = {
+      ...prev,
+      evaluationId: courseKey,
+      courseKey,
+      sessionId,
+      date,                               // <- clave para que el Panel de Usuarios cambie fecha
+      formaCurso: forma,
+      empresaSolicitante: (forma === 'cerrado') ? (empresa || '') : ''
+    };
+
+    await uref.update({ assignedCoursesMeta: meta });
   }
 }
 // ===== Acciones (realizados) =====
@@ -600,6 +677,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('#btnHistorySave')?.addEventListener('click', saveHistory);
   $('#btnHistoryClose')?.addEventListener('click', closeHistoryEditor);
 });
+
 
 
 
