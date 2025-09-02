@@ -396,28 +396,23 @@ const loadEvaluations = async () => {
 
 
 // Verificar encuesta de satisfacción antes de realizar la evaluación
-// Verificar encuesta de satisfacción antes de realizar la evaluación
-const checkSurveyCompletion = async (evaluationId, userId) => {
-  // buscamos la sesión y encuesta asignadas
-  const { sessionId, surveyId } = await getActiveSessionAndSurvey(evaluationId);
-
-  // preferimos validar por sesión; si no hay, usamos evaluationId (comportamiento antiguo)
-  let q = db.collection('surveys').where('userId', '==', userId);
-  if (sessionId) {
-    q = q.where('sessionId', '==', sessionId);
-  } else {
-    q = q.where('evaluationId', '==', evaluationId);
-  }
-
-  const surveySnapshot = await q.limit(1).get();
+const checkSurveyCompletion = async (evaluationId, userId, sessionId = '') => {
+  const surveySnapshot = await db.collection('surveys')
+    .where('userId', '==', userId)
+    .where('evaluationId', '==', evaluationId)
+    .get();
 
   if (surveySnapshot.empty) {
     alert('Debes completar la encuesta de satisfacción antes de realizar esta evaluación.');
-    const url = new URL('survey.html', window.location.origin);
-    url.searchParams.set('evaluationId', evaluationId);
-    if (sessionId) url.searchParams.set('sessionId', sessionId);
-    if (surveyId)  url.searchParams.set('surveyId',  surveyId);
-    window.location.href = url.toString();
+
+    // Construye URL RELATIVA a la carpeta actual (mantiene /evaluaciones-cursos/)
+    const base = window.location.pathname.replace(/[^/]+$/, '');
+    // ej.: /evaluaciones-cursos/
+    const url = `${base}survey.html?evaluationId=${encodeURIComponent(evaluationId)}${
+      sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ''
+    }`;
+
+    window.location.href = url;
     return false;
   }
   return true;
@@ -682,7 +677,7 @@ const loadEvaluation = async () => {
     }
 
     try {
-        const surveyCompleted = await checkSurveyCompletion(evaluationId, user.uid);
+        const surveyCompleted = await checkSurveyCompletion(evaluationId, user.uid, m?.sessionId || '');
         if (!surveyCompleted) return;
 
         // Verificar intentos previos
@@ -745,81 +740,82 @@ const loadEvaluation = async () => {
     }
 };
 
-let surveyLoaded = false; // Flag para evitar duplicaciones
+let surveyLoaded = false;
 
-const loadSurveyQuestions = async (evaluationId) => {
+const loadSurveyQuestions = async (evaluationId, sessionId = '') => {
   const surveyForm = document.getElementById('surveyForm');
   if (!surveyForm) return;
-
   if (surveyLoaded) return;
   surveyLoaded = true;
 
+  surveyForm.innerHTML = 'Cargando…';
+
   try {
-    surveyForm.innerHTML = '';
+    let surveyDoc = null;
 
-    // Tomamos parámetros de la URL (por si llegaron ya desde checkSurveyCompletion)
-    const params     = new URLSearchParams(window.location.search);
-    const urlSessId  = params.get('sessionId');
-    const urlSrvId   = params.get('surveyId');
-
-    // Si no vienen por URL, los resolvemos desde el perfil
-    let { sessionId, surveyId } = await getActiveSessionAndSurvey(evaluationId);
-    if (urlSessId) sessionId = urlSessId;
-    if (urlSrvId)  surveyId  = urlSrvId;
-
-    let surveyData = null;
-
-    if (surveyId) {
-      // Cargar una encuesta concreta por id de documento
-      const doc = await db.collection('surveyQuestions').doc(surveyId).get().catch(()=>null);
-      if (doc && doc.exists) {
-        surveyData = doc.data();
+    // 1) Si tenemos sessionId, leemos el doc en "inscripciones/{sessionId}" y tomamos surveyId
+    if (sessionId) {
+      const sess = await db.collection('inscripciones').doc(sessionId).get();
+      if (sess.exists) {
+        const sid = sess.data()?.surveyId || '';
+        if (sid) {
+          const d = await db.collection('surveyQuestions').doc(sid).get();
+          if (d.exists) surveyDoc = d;  // ← encuesta asignada a ese curso-realizado
+        }
       }
     }
 
-    // Fallback: igual que tu lógica original (evaluationId o 'default')
-    if (!surveyData) {
-      const surveySnapshot = await db.collection('surveyQuestions')
+    // 2) Si no hubo encuesta específica, intenta una ligada a la evaluación o default
+    if (!surveyDoc) {
+      const snap = await db.collection('surveyQuestions')
         .where('evaluationId', 'in', [evaluationId, 'default'])
         .limit(1)
         .get();
-
-      if (!surveySnapshot.empty) {
-        surveyData = surveySnapshot.docs[0].data();
+      if (!snap.empty) {
+        surveyDoc = snap.docs[0];
+      } else {
+        // fallback final a un doc conocido; cambia "defaultSurvey" por el id que tengas para el default
+        const def = await db.collection('surveyQuestions').doc('defaultSurvey').get();
+        if (def.exists) surveyDoc = def;
       }
     }
 
-    if (!surveyData || !Array.isArray(surveyData.questions) || !surveyData.questions.length) {
-      surveyForm.innerHTML = '<p>No hay preguntas disponibles en este momento.</p>';
+    if (!surveyDoc) {
+      surveyForm.innerHTML = '<p>No hay encuesta disponible.</p>';
       return;
     }
 
-    // Renderizado (igual a tu output actual)
+    const surveyData = surveyDoc.data();
+    surveyForm.innerHTML = '';
+
+    // Render clásico (respeta tus estructuras existentes)
     surveyData.questions.forEach((question, index) => {
-      const questionDiv = document.createElement('div');
-      questionDiv.innerHTML = `
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = `
         <label for="question${index}">${question.text}</label>
-        ${question.type === 'select' ? `
-            <select name="question${index}" required>
-              ${(question.options || []).map(option => `<option value="${option}">${option}</option>`).join('')}
-            </select>
-          ` : `
-            <input type="${question.type}" name="question${index}" required>
-          `}
+        ${
+          question.type === 'select'
+          ? `<select name="question${index}" required>
+               ${question.options.map(o => `<option value="${o}">${o}</option>`).join('')}
+             </select>`
+          : `<input type="${question.type}" name="question${index}" required>`
+        }
       `;
-      surveyForm.appendChild(questionDiv);
+      surveyForm.appendChild(wrapper);
     });
 
+    // Botón de enviar si no existe
     if (!document.getElementById('submitSurveyButton')) {
-      const submitButton = document.createElement('button');
-      submitButton.type = 'submit';
-      submitButton.id = 'submitSurveyButton';
-      submitButton.textContent = 'Enviar Encuesta';
-      surveyForm.appendChild(submitButton);
+      const submit = document.createElement('button');
+      submit.type = 'submit';
+      submit.id   = 'submitSurveyButton';
+      submit.textContent = 'Enviar Encuesta';
+      surveyForm.appendChild(submit);
     }
-  } catch (error) {
-    console.error('Error al cargar las preguntas de la encuesta:', error);
-    surveyForm.innerHTML = '<p>Error al cargar la encuesta. Intenta nuevamente más tarde.</p>';
+
+  } catch (err) {
+    console.error(err);
+    surveyForm.innerHTML = '<p>Error al cargar la encuesta. Intenta más tarde.</p>';
   }
 };
 
@@ -829,7 +825,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (surveyForm) {
         const urlParams = new URLSearchParams(window.location.search);
         const evaluationId = urlParams.get('evaluationId') || 'default';
-        loadSurveyQuestions(evaluationId);
+        const sessionId    = urlParams.get('sessionId') || '';
+        loadSurveyQuestions(evaluationId, sessionId);
     }
 });
 
