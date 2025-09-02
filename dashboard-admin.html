@@ -11,28 +11,31 @@
     header { display:flex; justify-content:center; align-items:center; padding:16px 20px; background:#fff; border-bottom:1px solid #e5e7eb; }
     .logo { max-width:200px; height:auto; }
 
-    /* Banda de título (igual a Evaluaciones) */
+    /* Banda de título */
     .hero-bar{
       position:relative;
       background:#fff;
       border-bottom:1px solid #e5e7eb;
       padding:18px 12px;
     }
-    .hero-bar h1{
+    .title-row{
+      position:relative;
+      padding:0 12px;
+    }
+    .title-row h1{
       margin:0;
       font-size:28px;
       font-weight:800;
       text-align:center;
+      /* reserva espacio para que el botón a la derecha no tape el título */
+      padding-right:160px;
     }
-    .hero-actions{
+    /* ⬇️ Botón anclado ARRIBA (no centrado al alto total) */
+    .title-row .btn-ghost{
       position:absolute;
       right:16px;
-      top:50%;
-      transform:translateY(-50%);
-      display:flex;
-      gap:8px;
-    }
-    .btn-ghost{
+      top: 0;              /* ← fija a la parte superior de la fila del título */
+      transform:none;      /* ← sin translateY */
       border:none;
       border-radius:8px;
       padding:8px 12px;
@@ -41,9 +44,10 @@
       cursor:pointer;
       font-weight:600;
       font-size:14px;
+      text-decoration:none;
     }
 
-    /* ===== Tu layout existente (NO tocado) ===== */
+    /* ===== Tu layout existente (sin tocar lógica) ===== */
     .dashboard-container { width:100%; margin:0; padding:0 16px; box-sizing:border-box; }
     #usersList { width:100%; margin:0; padding:0; box-sizing:border-box; }
 
@@ -117,7 +121,7 @@
     .eval-title{ font-weight:600; margin:8px 0 4px; }
 
     /* Cerrar Sesión fijo (mismos IDs que tu JS) */
-    #logoutContainer{ position:fixed; bottom:18px; right:18px; z-index:1100; }
+    #logoutContainer{ position:fixed !important; bottom:18px !important; right:18px !important; z-index:1100; }
     #logoutButton{
       background:#dc3545; color:#fff; border:none; border-radius:10px;
       padding:10px 12px; font-weight:700; font-size:14px;
@@ -127,54 +131,6 @@
     body.dark{ background:#121212; color:#eee; }
     body.dark .user-item{ background:#1e1e1e; box-shadow:0 2px 8px rgba(0,0,0,.5); }
     body.dark header{ background:#222; }
-
-    /* Banda de título y botón a la derecha (no toca filtros) */
-    .title-row{
-      position:relative;
-      background:#fff;
-      border-bottom:1px solid #e5e7eb;
-      padding:18px 12px;
-    }
-    .title-row h1{
-      margin:0;
-      font-size:28px;
-      font-weight:800;
-      text-align:center;
-    }
-    .title-row .btn-ghost{
-      position:absolute;
-      right:16px;
-      top:50%;
-      transform:translateY(-50%);
-      border:none;
-      border-radius:8px;
-      padding:8px 12px;
-      background:#e9ecef;
-      color:#111;
-      cursor:pointer;
-      font-weight:600;
-      font-size:14px;
-      text-decoration:none;
-    }
-
-    /* Cerrar sesión fijo en la esquina inferior derecha */
-    #logoutContainer{
-      position:fixed !important;
-      right:18px !important;
-      bottom:18px !important;
-      z-index:1100;
-    }
-    #logoutButton{
-      background:#dc3545;
-      color:#fff;
-      border:none;
-      border-radius:10px;
-      padding:10px 12px;
-      font-weight:700;
-      font-size:14px;
-      box-shadow:0 8px 18px rgba(220,53,69,.35);
-      cursor:pointer;
-    }
 
     @media (max-width:768px){
       header{ padding:12px; }
@@ -204,7 +160,7 @@
     </a>
   </header>
 
-  <!-- Título + botón a la derecha (como Evaluaciones) -->
+  <!-- Título + botón a la derecha (misma altura del título) -->
   <section class="hero-bar">
     <div class="title-row">
       <h1>Panel de Usuarios</h1>
@@ -213,18 +169,18 @@
   </section>
 
   <div class="dashboard-container">
-    <!-- La barra de filtros se inyecta por JS aquí -->
+    <!-- La barra de filtros la inyecta tu JS justo DESPUÉS del H1 -->
     <div id="usersList">Cargando usuarios…</div>
   </div>
 
-  <!-- Botón “+ Usuario” flotante (igual que tenías) -->
+  <!-- Botón “+ Usuario” flotante -->
   <button id="createUserBtn"
           style="position:fixed; bottom:80px; right:20px; background:#28a745; color:#fff; border:none;
                  padding:12px 16px; border-radius:50%; font-size:20px; cursor:pointer; z-index:1000;">
     +
   </button>
 
-  <!-- Formulario Crear Usuario (igual) -->
+  <!-- Formulario Crear Usuario -->
   <div id="createUserForm"
        style="display:none; position:fixed; top:10vh; left:50%; transform:translateX(-50%); background:#fff;
               padding:24px; border:1px solid #ccc; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.2); z-index:1001; width:360px;">
@@ -245,7 +201,7 @@
     </div>
   </div>
 
-  <!-- Botón Cerrar Sesión (mismos IDs que tu JS) -->
+  <!-- Botón Cerrar Sesión -->
   <div id="logoutContainer"><button id="logoutButton">Cerrar Sesión</button></div>
 </body>
 </html>
