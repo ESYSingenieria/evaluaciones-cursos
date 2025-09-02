@@ -48,6 +48,49 @@ function parseDateAny(v){
   }
   return null;
 }
+function addDaysStr(yyyyMmDd, days){
+  const d = new Date(`${yyyyMmDd}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0,10);
+}
+
+function getCourseDaysFromKey(courseKey){
+  // lee horas declaradas en evaluations.timeEvaluation (p.ej. "16 HRS.")
+  const found = (allEvaluations || []).find(x => x.docId === courseKey);
+  const raw = found?.data?.timeEvaluation || '';
+  const m = /(\d+)/.exec(raw);
+  const hours = m ? parseInt(m[1],10) : 16;    // por defecto 16h
+  return Math.max(1, Math.ceil(hours / 8));    // 8h por día → 16h => 2 días
+}
+
+function firstDateFromAttendance(att = {}){
+  const dates = Object.keys(att)
+    .map(k => (k.match(/^(\d{4}-\d{2}-\d{2})_/)||[])[1])
+    .filter(Boolean)
+    .sort();
+  return dates[0] || null;
+}
+
+/**
+ * Remapea asistencia para N días (cada día AM/PM).
+ * - Usa oldStart si existe; si no, infiere del primer día presente en las claves.
+ * - Devuelve SOLO las nuevas claves (no deja “basura” de fechas viejas).
+ */
+function remapAttendanceRange(att = {}, oldStart, newStart, numDays){
+  const baseOld = oldStart || firstDateFromAttendance(att) || newStart;
+  const out = {};
+  for (let i = 0; i < numDays; i++){
+    const oldDay = addDaysStr(baseOld, i);
+    const newDay = addDaysStr(newStart, i);
+    for (const suf of ['_AM','_PM']){
+      const oldKey = `${oldDay}${suf}`;
+      const newKey = `${newDay}${suf}`;
+      const v = Object.prototype.hasOwnProperty.call(att, oldKey) ? !!att[oldKey] : false;
+      out[newKey] = v;
+    }
+  }
+  return out;
+}
 
 // ===== Render de tarjetas =====
 function courseCardHTML({ docId, id, name, title, puntajeAprobacion, version }){
@@ -477,7 +520,7 @@ function fillHistoryEditor(item, isEdit){
 // ===== Reemplazar COMPLETO saveHistory por esto =====
 async function saveHistory(){
   const courseKey = $('#historyCourseKey').value;     // docId en evaluations (p.ej. NFPA_70E.v3)
-  const dateStr   = $('#historyDate').value;          // YYYY-MM-DD
+  const dateStr   = $('#historyDate').value;          // YYYY-MM-DD (día 1)
   const forma     = $('#historyForma').value;         // 'abierto' | 'cerrado'
   const empresa   = $('#historyEmpresa').value.trim();
 
@@ -488,17 +531,17 @@ async function saveHistory(){
 
   const newDocId = buildHistoryDocId(courseKey, dateStr, forma, empresa);
   const col      = firebase.firestore().collection('inscripciones');
+  const numDays  = getCourseDaysFromKey(courseKey);   // ← 8h por día → 16h => 2 días
 
   try {
-    // --- crear NUEVO ---
+    // --- CREAR ---
     if (!editingHistoryId){
-      // base mínima del documento
       await col.doc(newDocId).set({
         courseKey,
         courseDate: dateStr,
         formaCurso: forma,
         empresaSolicitante: (forma === 'cerrado') ? empresa : '',
-        inscriptions: [],            // se irán llenando desde Panel de Usuarios
+        inscriptions: [],
         totalInscritos: 0,
         totalPagado: 0
       }, { merge:false });
@@ -513,27 +556,28 @@ async function saveHistory(){
     const oldRef  = col.doc(editingHistoryId);
     const oldSnap = await oldRef.get();
     if (!oldSnap.exists) throw new Error('No se encontró el curso a editar.');
-
     const oldData = oldSnap.data() || {};
-    // Fecha anterior (preferir campo; si falta, parsear del ID)
+
+    // fecha anterior (si no está en campo, la saco del ID)
     let oldDate = oldData.courseDate || '';
     if (!oldDate) {
       const m = /_(\d{4}-\d{2}-\d{2})_/.exec(editingHistoryId);
       if (m) oldDate = m[1];
     }
 
-    // Normalizar participantes
+    // normalizar participantes
     let participants = oldData.inscriptions || oldData.participants || oldData.users || [];
     if (participants && !Array.isArray(participants) && typeof participants === 'object') {
       participants = Object.values(participants);
     }
     if (!Array.isArray(participants)) participants = [];
 
-    // Si cambió el ID (fecha/forma/empresa/curso), copiamos -> remapeamos asistencia -> borramos viejo
+    // ¿Cambia el ID (fecha/forma/empresa/curso)?
     if (newDocId !== editingHistoryId){
-      const remappedParticipants = participants.map(p=>{
+      // remapear asistencia para TODOS los días esperados (AM/PM)
+      const remapped = participants.map(p=>{
         const att = p.attendance || {};
-        return { ...p, attendance: remapAttendance(att, oldDate, dateStr) };
+        return { ...p, attendance: remapAttendanceRange(att, oldDate, dateStr, numDays) };
       });
 
       const base = {
@@ -541,24 +585,23 @@ async function saveHistory(){
         courseDate: dateStr,
         formaCurso: forma,
         empresaSolicitante: (forma === 'cerrado') ? empresa : '',
-        inscriptions: remappedParticipants,
-        totalInscritos: remappedParticipants.length,
+        inscriptions: remapped,
+        totalInscritos: remapped.length,
         totalPagado: (forma === 'cerrado')
           ? (oldData.totalPagado || 0)
-          : remappedParticipants.reduce((s,p)=> s + (Number(p.price)||0), 0)
+          : remapped.reduce((s,p)=> s + (Number(p.price)||0), 0)
       };
 
       await col.doc(newDocId).set(base, { merge:false });
       await oldRef.delete();
 
-      // sincronizar metas de usuarios con nueva fecha + nuevo sessionId
-      await propagateCourseMetaToUsers(remappedParticipants, {
+      await propagateCourseMetaToUsers(remapped, {
         courseKey, date: dateStr, sessionId: newDocId, forma, empresa
       });
 
       alert('✅ Realizado actualizado (renombrado) y asistencias migradas.');
     } else {
-      // Mismo ID: solo actualizamos campos principales y (por si acaso) remapeamos si cambió fecha interna
+      // mismo ID: actualizar campos principales
       const payload = {
         courseKey,
         courseDate: dateStr,
@@ -567,13 +610,13 @@ async function saveHistory(){
       };
       await oldRef.set(payload, { merge:true });
 
-      // si por algún motivo oldDate != dateStr con el mismo ID, remapear en sitio
+      // si cambió la fecha interna con el mismo ID, remapear en sitio
       if (oldDate && oldDate !== dateStr && participants.length){
-        const remappedParticipants = participants.map(p=>{
+        const remapped = participants.map(p=>{
           const att = p.attendance || {};
-          return { ...p, attendance: remapAttendance(att, oldDate, dateStr) };
+          return { ...p, attendance: remapAttendanceRange(att, oldDate, dateStr, numDays) };
         });
-        await oldRef.update({ inscriptions: remappedParticipants });
+        await oldRef.update({ inscriptions: remapped });
       }
 
       await propagateCourseMetaToUsers(participants, {
@@ -712,6 +755,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('#btnHistorySave')?.addEventListener('click', saveHistory);
   $('#btnHistoryClose')?.addEventListener('click', closeHistoryEditor);
 });
+
 
 
 
