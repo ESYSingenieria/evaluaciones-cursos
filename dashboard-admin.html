@@ -1,46 +1,49 @@
-<!-- dashboard-admin.html (header/hero alineado al de evaluaciones) -->
+<!-- dashboard-admin.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Panel de Usuarios - Plataforma de Cursos</title>
+  <title>Panel de Administración</title>
   <link rel="stylesheet" href="styles.css" />
 
   <style>
-    :root{
-      --bg:#f4f6f8; --card:#fff; --border:#dfe3e8; --muted:#6b7280;
-      --primary:#0d6efd; --danger:#dc3545; --neutral:#6c757d;
+    /* ===== Top bar ===== */
+    header { display:flex; justify-content:center; align-items:center; padding:16px 20px; background:#fff; border-bottom:1px solid #e5e7eb; }
+    .logo { max-width:200px; height:auto; }
+
+    /* Banda de título (igual a Evaluaciones) */
+    .hero-bar{
+      position:relative;
+      background:#fff;
+      border-bottom:1px solid #e5e7eb;
+      padding:18px 12px;
     }
-    *{ box-sizing:border-box; }
-    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial; background:var(--bg); color:#111; }
-
-    /* === Header + Hero iguales al panel de evaluaciones === */
-    header{ background:#fff; border-bottom:1px solid #e5e7eb; padding:16px 20px; }
-    .logo-wrap{ display:flex; justify-content:center; align-items:center; }
-    .logo{ width:200px; height:auto; }
-
-    .hero{ position:relative; background:#fff; padding:18px 12px; border-bottom:1px solid #e5e7eb; }
-    .hero h1{ margin:0; font-size:28px; font-weight:800; text-align:center; }
+    .hero-bar h1{
+      margin:0;
+      font-size:28px;
+      font-weight:800;
+      text-align:center;
+    }
     .hero-actions{
-      position:absolute; right:16px; top:50%; transform:translateY(-50%);
-      display:flex; gap:8px; align-items:center;
+      position:absolute;
+      right:16px;
+      top:50%;
+      transform:translateY(-50%);
+      display:flex;
+      gap:8px;
+    }
+    .btn-ghost{
+      border:none;
+      border-radius:8px;
+      padding:8px 12px;
+      background:#e9ecef;
+      color:#111;
+      cursor:pointer;
+      font-weight:600;
+      font-size:14px;
     }
 
-    .container{ max-width:1280px; margin:16px auto; padding:0 16px; }
-
-    .btn{ border:none; border-radius:8px; padding:8px 12px; cursor:pointer; font-weight:600; }
-    .btn-primary{ background:var(--primary); color:#fff; }
-    .btn-outline{ background:#e9ecef; }
-    .btn-danger{ background:var(--danger); color:#fff; }
-
-    /* Botón fijo de Cerrar Sesión (abajo-derecha) */
-    #btnSignOutFixed{
-      position:fixed; right:18px; bottom:18px; z-index:1100;
-      background:var(--danger); color:#fff; border:none; border-radius:10px; padding:12px 14px; font-weight:700;
-      box-shadow:0 8px 18px rgba(220,53,69,0.35);
-    }
-
-    /* ====== Estilos existentes del tablero de usuarios (conservados) ====== */
+    /* ===== Tu layout existente (NO tocado) ===== */
     .dashboard-container { width:100%; margin:0; padding:0 16px; box-sizing:border-box; }
     #usersList { width:100%; margin:0; padding:0; box-sizing:border-box; }
 
@@ -55,93 +58,135 @@
       outline:none; border-color:#007bff; box-shadow:0 0 0 2px rgba(0,123,255,.2);
     }
 
-    /* Tarjeta de usuario con columna de acciones a la derecha (tus estilos) */
+    /* TARJETA DE USUARIO (sin cambios funcionales) */
     .user-item{
-      width:100%; margin:0 0 16px 0; padding:16px; background:#fff;
-      border-radius:10px; border:2px solid #dfe3e8; box-shadow:0 2px 8px rgba(0,0,0,.06);
-      position:relative; padding-top:16px;
+      width:100%;
+      margin:0 0 16px 0;
+      padding:16px;
+      background:#fff;
+      border-radius:10px;
+      border:2px solid #dfe3e8;
+      box-shadow:0 2px 8px rgba(0,0,0,.06);
+      position:relative;
+      padding-top:16px;
     }
     .user-item > :not(.user-actions){ padding-right:200px; }
     .user-item button{
-      margin:4px 8px 4px 0; padding:8px 12px; border:none; border-radius:4px;
-      background:#007bff; color:#fff; cursor:pointer; white-space:nowrap; font-size:14px;
+      margin:4px 8px 4px 0;
+      padding:8px 12px;
+      border:none;
+      border-radius:4px;
+      background:#007bff;
+      color:#fff;
+      cursor:pointer;
+      white-space:nowrap;
+      font-size:14px;
     }
     .user-item .delete-user-btn{ background:#dc3545; color:#fff; }
     .user-item .delete-user-btn:hover{ background:#c82333; }
 
     .user-actions{
-      position:absolute; top:6px; right:6px; display:flex; flex-direction:column; gap:0px; align-items:flex-end; z-index:2;
+      position:absolute;
+      top:6px;
+      right:6px;
+      display:flex;
+      flex-direction:column;
+      gap:0px;
+      align-items:flex-end;
+      z-index:2;
     }
     .user-actions .inline-edit-cta{ display:flex; gap:6px; }
     .user-actions button{ background:#0d6efd; border-radius:6px; font-size:13px; padding:6px 6px; }
     .user-actions .delete-user-btn{ background:#dc3545; }
+    .user-actions .logout-btn{ background:#6c757d; }
 
-    /* Contenedores de evaluaciones (crear/editar usuario) */
+    .user-item .edit-user-btn,
+    .user-item .save-user-btn,
+    .user-item .cancel-user-btn{
+      position: static !important;
+    }
+
     .evals-container{ display:flex; flex-direction:column; max-height:260px; overflow-y:auto; margin:12px 0; padding:4px; border:1px solid #ddd; border-radius:6px; }
     .eval-option{ display:flex; align-items:center; gap:8px; padding:6px 8px; margin:6px 0; border-radius:4px; }
+    .eval-option input[type="checkbox"]{ margin:0 8px 0 0; }
     .eval-item{ background:#f9f9f9; border:1px solid #e0e0e0; border-radius:6px; padding:12px 16px; margin:12px 0; }
     .eval-grid{ display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:8px; }
     .eval-grid > div label{ font-size:12px; color:#444; display:block; margin-bottom:4px; }
     .muted{ color:#777; font-size:12px; }
     .hidden{ display:none !important; }
+    .eval-title{ font-weight:600; margin:8px 0 4px; }
+
+    /* Cerrar Sesión fijo (mismos IDs que tu JS) */
+    #logoutContainer{ position:fixed; bottom:18px; right:18px; z-index:1100; }
+    #logoutButton{
+      background:#dc3545; color:#fff; border:none; border-radius:10px;
+      padding:10px 12px; font-weight:700; font-size:14px;
+      box-shadow:0 8px 18px rgba(220,53,69,.35); cursor:pointer;
+    }
+
+    body.dark{ background:#121212; color:#eee; }
+    body.dark .user-item{ background:#1e1e1e; box-shadow:0 2px 8px rgba(0,0,0,.5); }
+    body.dark header{ background:#222; }
 
     @media (max-width:768px){
-      header{ padding:8px 12px; }
+      header{ padding:12px; }
       .dashboard-container{ width:100%; padding:0 10px; }
       .user-item > :not(.user-actions){ padding-right:0; }
     }
   </style>
 
-  <!-- Firebase SDKs (tus mismos includes) -->
+  <!-- Firebase SDKs (v8 compat) -->
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
 
-  <!-- pdf-lib, fontkit, jsPDF (tus mismos includes) -->
+  <!-- pdf-lib, fontkit, jsPDF -->
   <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
   <script src="https://unpkg.com/@pdf-lib/fontkit/dist/fontkit.umd.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-  <!-- Tu lógica existente -->
+  <!-- Lógica -->
   <script src="dashboard-admin.js" defer></script>
 </head>
 <body>
-  <!-- Header con logo centrado (clickea a esys.cl) -->
+  <!-- Logo centrado -->
   <header>
-    <div class="logo-wrap">
-      <a href="https://esys.cl" target="_blank" rel="noopener">
-        <img class="logo" src="logo.png" alt="ESYS">
-      </a>
-    </div>
+    <a href="https://esys.cl/" target="_blank" rel="noopener">
+      <img src="logo.png" alt="Logo de la Empresa" class="logo" />
+    </a>
   </header>
 
-  <!-- Hero con título centrado y botón a la derecha -->
-  <section class="hero">
+  <!-- Título + botón a la derecha (como Evaluaciones) -->
+  <section class="hero-bar">
     <h1>Panel de Usuarios</h1>
     <div class="hero-actions">
-      <button class="btn btn-outline" id="btnGoEvals">Ir al Panel de Evaluaciones</button>
+      <button id="goEvalsPageBtn" class="btn-ghost">Ir al Panel de Evaluaciones</button>
     </div>
   </section>
 
-  <!-- Contenido existente del panel -->
-  <main class="container">
-    <div class="dashboard-container">
-      <!-- La barra de filtros se inyecta por JS aquí -->
-      <div id="usersList">Cargando usuarios…</div>
-    </div>
-  </main>
+  <!-- Navegación a Evaluaciones (sin tocar tu JS global) -->
+  <script>
+    document.getElementById('goEvalsPageBtn')?.addEventListener('click', () => {
+      location.href = 'dashboard-admin_evals.html';
+    });
+  </script>
 
-  <!-- Botón “+ Usuario” flotante (como lo tenías) -->
+  <div class="dashboard-container">
+    <!-- La barra de filtros se inyecta por JS aquí -->
+    <div id="usersList">Cargando usuarios…</div>
+  </div>
+
+  <!-- Botón “+ Usuario” flotante (igual que tenías) -->
   <button id="createUserBtn"
           style="position:fixed; bottom:80px; right:20px; background:#28a745; color:#fff; border:none;
                  padding:12px 16px; border-radius:50%; font-size:20px; cursor:pointer; z-index:1000;">
     +
   </button>
 
-  <!-- Formulario Crear Usuario (sin cambios) -->
+  <!-- Formulario Crear Usuario (igual) -->
   <div id="createUserForm"
        style="display:none; position:fixed; top:10vh; left:50%; transform:translateX(-50%); background:#fff;
-              padding:24px; border:1px solid #ccc; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,2); z-index:1001; width:360px;">
+              padding:24px; border:1px solid #ccc; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.2); z-index:1001; width:360px;">
     <h3>Crear nuevo usuario</h3>
     <input id="newEmail"    type="email" placeholder="Email" style="width:100%;margin:8px 0;padding:8px;" />
     <input id="newPassword" type="text"   placeholder="Contraseña" value="123456" style="width:100%;margin:8px 0;padding:8px;" />
@@ -159,21 +204,7 @@
     </div>
   </div>
 
-  <!-- Botón fijo de Cerrar Sesión -->
-  <button id="btnSignOutFixed" class="btn btn-danger">Cerrar Sesión</button>
-
-  <!-- Navegación y logout -->
-  <script>
-    // Ir al panel de evaluaciones
-    document.getElementById('btnGoEvals')?.addEventListener('click', ()=> {
-      location.href = 'dashboard-admin_evals.html';
-    });
-
-    // Cerrar sesión (usa tu sesión Firebase ya cargada por dashboard-admin.js)
-    document.getElementById('btnSignOutFixed')?.addEventListener('click', async ()=> {
-      try{ await firebase.auth().signOut(); location.href='index.html'; }
-      catch(e){ alert(e.message); }
-    });
-  </script>
+  <!-- Botón Cerrar Sesión (mismos IDs que tu JS) -->
+  <div id="logoutContainer"><button id="logoutButton">Cerrar Sesión</button></div>
 </body>
 </html>
