@@ -49,7 +49,22 @@
     @media (max-width:1024px){ .grid-2{ grid-template-columns:1fr; } }
 
     .panel-card{ background:var(--card); border:2px solid var(--border); border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); padding:12px; }
-    .panel-card h2{ margin:0 0 10px 0; font-size:18px; display:flex; align-items:center; gap:8px; }
+
+    /* Encabezado con tabs (izq/der) */
+    .panel-head{
+      display:flex; align-items:center; justify-content:space-between;
+      margin:0 0 10px 0;
+    }
+    .tab-link{
+      margin:0;
+      font-size:18px;
+      font-weight:800;
+      color:#111;
+      text-decoration:none;
+      cursor:pointer;
+      user-select:none;
+    }
+    .tab-link.tab-on{ color:var(--primary); }
 
     .course-card{
       position:relative; background:#fff; border:2px solid var(--border); border-radius:10px;
@@ -127,18 +142,24 @@
 
   <main class="container">
     <div class="grid-2">
+      <!-- ===== Panel izquierdo: Ofertados / Encuestas ===== -->
       <section class="panel-card">
-        <h2>Cursos Ofertados</h2>
+        <!-- Toggle en la cabecera -->
+        <div class="panel-head">
+          <h2 id="createdHeading" class="tab-link tab-on" role="button">Cursos Ofertados</h2>
+          <a id="surveysHeading" class="tab-link" href="#" role="button">Encuestas de Satisfacción</a>
+        </div>
+
         <div style="display:flex; gap:8px; margin:8px 0 12px 0;">
           <button id="btnNewCourse" class="btn btn-primary">Crear Nuevo Curso</button>
-          <!-- ↓ PÉGALO entre tu botón "Crear Nuevo Curso" y el input de búsqueda -->
-          <button id="btnToggleSurveys" class="btn btn-neutral">Encuestas de Satisfacción</button>
+          <!-- Botón de nueva encuesta (se muestra solo en modo encuestas) -->
           <button id="btnNewSurvey" class="btn btn-primary" style="display:none">Crear Nueva Encuesta</button>
           <input id="searchCreated" type="text" placeholder="Buscar por nombre o ID..." style="flex:1; border:1px solid #ccc; border-radius:8px; padding:8px 12px; background:#f9fafb;">
         </div>
         <div id="createdList"></div>
       </section>
 
+      <!-- ===== Panel derecho: Historial ===== -->
       <section class="panel-card">
         <h2>
           Historial de Cursos
@@ -155,7 +176,7 @@
   <!-- Botón fijo de Cerrar Sesión -->
   <button id="btnSignOutFixed">Cerrar Sesión</button>
 
-  <!-- Editor de cursos creados (igual que antes) -->
+  <!-- Editor de cursos creados -->
   <aside id="editor" class="drawer" aria-hidden="true">
     <header>
       <strong id="editorTitle">Nuevo curso</strong>
