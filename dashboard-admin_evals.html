@@ -69,6 +69,17 @@
     .tag{ display:inline-block; background:#eef2ff; color:#1e40af; padding:2px 8px; border-radius:999px; font-size:12px; }
     .actions{ position:absolute; top:12px; right:12px; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; max-width:150px; }
 
+    /* Historial: 3 botones en fila y sin desbordes */
+    .history-card { padding-right: 260px; }                 /* espacio para Editar + Estadísticas + Eliminar */
+    .history-card .actions{
+      top: 12px;
+      right: 12px;
+      flex-direction: row;                                   /* en fila */
+      gap: 8px;
+      max-width: none;                                       /* que no se apilen */
+    }
+    .history-card .actions .btn{ white-space: nowrap; }
+
     .btn{ border:none; border-radius:8px; padding:8px 12px; cursor:pointer; font-weight:600; }
     .btn-sm{ padding:6px 10px; border-radius:6px; font-size:13px; }
     .btn-primary{ background:var(--primary); color:#fff; }
