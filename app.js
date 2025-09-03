@@ -374,7 +374,8 @@ const loadEvaluations = async () => {
 
           if (!isLocked) {
             startButton.addEventListener("click", () => {
-              window.location.href = `evaluation.html?id=${doc.id}`;
+              const sid = (m && m.sessionId) ? `&sessionId=${encodeURIComponent(m.sessionId)}` : '';
+              window.location.href = `evaluation.html?id=${encodeURIComponent(doc.id)}${sid}`;
             });
           }
 
@@ -429,6 +430,7 @@ const submitEvaluation = async (event) => {
 
     const urlParams = new URLSearchParams(window.location.search);
     const evaluationId = urlParams.get('id');
+    const sessionId = urlParams.get('sessionId') || '';   // << lee la sesión
     const form = document.getElementById('evaluationForm');
     const formData = new FormData(form);
     const answers = {};
@@ -450,10 +452,11 @@ const submitEvaluation = async (event) => {
 
         // Guardar respuestas reales en Firestore
         await db.collection('responses').add({
-            userId: userId,
-            evaluationId: evaluationId,
-            answers: answers,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+          userId: userId,
+          evaluationId: evaluationId,
+          sessionId,                                         // << guarda la sesión
+          answers: answers,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
         });
 
         form.innerHTML = `
@@ -466,7 +469,7 @@ const submitEvaluation = async (event) => {
         });
 
         // Llamar a `calculateAndHandleResult` con `userId` correctamente definido
-        await calculateAndHandleResult(userId, evaluationId, answers);
+        await calculateAndHandleResult(userId, evaluationId, answers, sessionId);
         console.log("Evaluación procesada correctamente.");
 
     } catch (error) {
@@ -661,6 +664,7 @@ const loadEvaluation = async () => {
     const myRUT = userDoc.data().rut || "";
 
     const m = Object.values(meta).find(mm => mm?.evaluationId === evaluationId || mm?.courseKey === evaluationId) || null;
+    const sessionId = urlParams.get('sessionId') || (m?.sessionId || '');  // <= USAR ESTE
     let blocked = true;
     if (m?.sessionId) {
       const sSnap = await db.collection('inscripciones').doc(m.sessionId).get();
@@ -677,14 +681,15 @@ const loadEvaluation = async () => {
     }
 
     try {
-        const surveyCompleted = await checkSurveyCompletion(evaluationId, user.uid, m?.sessionId || '');
+        const surveyCompleted = await checkSurveyCompletion(evaluationId, user.uid, sessionId);
         if (!surveyCompleted) return;
 
         // Verificar intentos previos
         const snapshot = await db.collection('responses')
-            .where('userId', '==', user.uid)
-            .where('evaluationId', '==', evaluationId)
-            .get();
+          .where('userId', '==', user.uid)
+          .where('evaluationId', '==', evaluationId)
+          .where('sessionId', '==', sessionId)   // << clave
+          .get();
 
         let attempts = 0;
         if (!snapshot.empty) {
@@ -704,7 +709,8 @@ const loadEvaluation = async () => {
         } else {
             await db.collection('responses').add({
                 userId: user.uid,
-                evaluationId: evaluationId,
+                evaluationId,
+                sessionId,
                 attempts: 1,
                 answers: {},
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
@@ -964,6 +970,7 @@ async function calculateAndHandleResult(userId, evaluationId, answers) {
         await db.collection("responses").add({
             userId,
             evaluationId,
+            sessionId,     // << aquí también
             answers,
             result,
             timestamp,
