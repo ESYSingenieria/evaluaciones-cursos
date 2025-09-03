@@ -1039,10 +1039,19 @@ async function renderSurveyStatsInto(container, sessionItem){
   });
 }
 
-// ======== EVALUACIÓN: barras (multilínea) + dona correctas/incorrectas ========
+// ======== EVALUACIÓN: barras (multilínea con alto dinámico) + dona ========
 async function renderEvaluationStatsInto(container, sessionItem){
-  // Rompe texto en varias líneas (por palabras)
-  function wrapText(str = '', maxChars = 28){
+  // ------------- CONFIG editable -------------
+  const MAX_CHARS_PER_LINE = 30;   // ancho “virtual” de línea para envolver
+  const LINE_HEIGHT_PX     = 18;   // alto por línea de texto
+  const CAT_PADDING_PX     = 10;   // separación vertical entre categorías
+  const MIN_BARS_HEIGHT    = 180;  // alto mínimo del canvas de barras
+  const DONUT_COL_WIDTH    = 340;  // ancho fijo de la columna de dona
+  const DONUT_HEIGHT       = 220;  // alto de la dona
+  // ------------------------------------------
+
+  // Rompe texto por palabras en varias líneas
+  function wrapText(str = '', maxChars = MAX_CHARS_PER_LINE){
     const words = String(str).split(/\s+/);
     const lines = [];
     let line = '';
@@ -1055,20 +1064,20 @@ async function renderEvaluationStatsInto(container, sessionItem){
     return lines;
   }
 
-  // 1) Sesión y UIDs permitidos (solo esta sesión)
+  // Sesión → UIDs permitidos
   const insRef  = firebase.firestore().collection('inscripciones').doc(sessionItem.docId);
   const insSnap = await insRef.get();
   if (!insSnap.exists){ container.innerHTML = '<div class="meta">No se encontró la sesión.</div>'; return; }
   const participants = Array.isArray(insSnap.data()?.inscriptions) ? insSnap.data().inscriptions : [];
   const allowedUIDs  = await userIdsFromParticipants(participants);
 
-  // 2) Preguntas de la evaluación
+  // Preguntas
   const evSnap = await firebase.firestore().collection('evaluations').doc(sessionItem.courseKey).get();
   if (!evSnap.exists){ container.innerHTML = '<div class="meta">No se encontró la evaluación.</div>'; return; }
   const ev = evSnap.data() || {};
   const questions = Array.isArray(ev.questions) ? ev.questions : [];
 
-  // 3) Respuestas (contamos **todos** los intentos) filtradas por esta sesión
+  // Respuestas (cuentan todos los intentos), filtradas por esta sesión
   const respSnap = await firebase.firestore().collection('responses')
                     .where('evaluationId','==', sessionItem.courseKey).get();
 
@@ -1078,7 +1087,7 @@ async function renderEvaluationStatsInto(container, sessionItem){
   respSnap.forEach(r=>{
     const d   = r.data() || {};
     const uid = d.userId || '';
-    if (!allowedUIDs.has(uid)) return;                      // <- SOLO usuarios de esta sesión
+    if (!allowedUIDs.has(uid)) return;
     const a = d.answers || {};
     questions.forEach((q, idx)=>{
       const val = a[`question${idx}`];
@@ -1092,39 +1101,39 @@ async function renderEvaluationStatsInto(container, sessionItem){
     });
   });
 
-  // 4) Render por pregunta (grid 2 columnas: barras | dona)
+  // Render
   questions.forEach((q, idx)=>{
-    const cleanTitle     = String(q.text||'').replace(/^\s*\d+\s*[\.\)]\s*/,'');
-    const optionsArr     = Array.isArray(q.options) ? q.options : [];
-    const wrappedLabels  = optionsArr.map(t => wrapText(t, 30));
-    const barHeightPx    = Math.max(160, optionsArr.length * 28 + 40); // alto dinámico
+    const cleanTitle = String(q.text||'').replace(/^\s*\d+\s*[\.\)]\s*/,'');
+    const optionsArr = Array.isArray(q.options) ? q.options : [];
+
+    // Etiquetas multilínea + cálculo de alto por cantidad real de líneas
+    const wrappedLabels   = optionsArr.map(t => wrapText(t));
+    const linesPerLabel   = wrappedLabels.map(l => Math.max(1, l.length));
+    const estimatedHeight =
+      linesPerLabel.reduce((sum, nLines) => sum + (nLines * LINE_HEIGHT_PX + CAT_PADDING_PX), 0) + 30;
+    const barHeightPx = Math.max(MIN_BARS_HEIGHT, estimatedHeight);
 
     const card = document.createElement('div');
     card.className = 'panel-card';
     card.style.margin = '10px 0';
     card.innerHTML = `
       <div style="font-weight:700; margin-bottom:6px;">${idx+1}. ${cleanTitle}</div>
-
       <div style="
         display:grid;
-        grid-template-columns:minmax(0,1fr) 340px;   /* ← izquierda flexible, derecha fija */
-        gap:12px;
-        align-items:center;
+        grid-template-columns:minmax(0,1fr) ${DONUT_COL_WIDTH}px;
+        gap:12px; align-items:center;
       ">
-        <!-- BARRAS: wrapper con min-width:0 para que no invada la segunda columna -->
         <div style="min-width:0; overflow:hidden;">
           <canvas id="chart_b_${idx}" style="height:${barHeightPx}px; width:100%; display:block;"></canvas>
         </div>
-
-        <!-- DONA: columna fija -->
-        <div style="width:340px; min-width:340px;">
-          <canvas id="chart_p_${idx}" style="height:220px; width:100%; display:block;"></canvas>
+        <div style="width:${DONUT_COL_WIDTH}px; min-width:${DONUT_COL_WIDTH}px;">
+          <canvas id="chart_p_${idx}" style="height:${DONUT_HEIGHT}px; width:100%; display:block;"></canvas>
         </div>
       </div>
     `;
     container.appendChild(card);
 
-    // BARRAS horizontales con etiquetas multilínea
+    // BARRAS horizontales
     const bctx = card.querySelector(`#chart_b_${idx}`).getContext('2d');
     _statsCharts.push(new Chart(bctx,{
       type:'bar',
@@ -1132,17 +1141,22 @@ async function renderEvaluationStatsInto(container, sessionItem){
       options:{
         indexAxis: 'y',
         responsive: true,
-        maintainAspectRatio: false,    // respeta el height del canvas
+        maintainAspectRatio: false,
         plugins:{ legend:{ display:false }, tooltip:{ enabled:true } },
         layout:{ padding:{ right:8, left:8 } },
+        // un poco más de grosor de categoría para que “respire”
+        categoryPercentage: 0.9,
+        barPercentage: 0.9,
         scales:{
           x:{ beginAtZero:true, ticks:{ precision:0 } },
-          y:{ ticks:{ autoSkip:false } }   // no omitir etiquetas
+          y:{
+            ticks:{ autoSkip:false, padding:4, crossAlign:'center' }
+          }
         }
       }
     }));
 
-    // DONA correctas vs incorrectas (SIN solaparse)
+    // DONA
     const pctx = card.querySelector(`#chart_p_${idx}`).getContext('2d');
     _statsCharts.push(new Chart(pctx,{
       type:'doughnut',
@@ -1152,9 +1166,9 @@ async function renderEvaluationStatsInto(container, sessionItem){
       },
       options:{
         responsive:true,
-        maintainAspectRatio:false,     // ← clave para que se ajuste a su columna
+        maintainAspectRatio:false,
         plugins:{ legend:{ position:'bottom' } },
-        cutout: '55%'                  // opcional (estética)
+        cutout: '55%'
       }
     }));
   });
@@ -1495,6 +1509,7 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
 
