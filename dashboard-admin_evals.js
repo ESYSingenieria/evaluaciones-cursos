@@ -1039,50 +1039,46 @@ async function renderSurveyStatsInto(container, sessionItem){
   });
 }
 
-// ======== EVALUACIÓN: barras (con etiquetas multilínea) + doughnut correctas vs. incorrectas ========
+// ======== EVALUACIÓN: barras (multilínea) + dona correctas/incorrectas ========
 async function renderEvaluationStatsInto(container, sessionItem){
-  // Helper: envuelve un texto en varias líneas (rompe por espacios)
+  // Rompe texto en varias líneas (por palabras)
   function wrapText(str = '', maxChars = 28){
     const words = String(str).split(/\s+/);
     const lines = [];
     let line = '';
     for (const w of words){
       const test = line ? line + ' ' + w : w;
-      if (test.length <= maxChars){
-        line = test;
-      } else {
-        if (line) lines.push(line);
-        line = w;
-      }
+      if (test.length <= maxChars) line = test;
+      else { if (line) lines.push(line); line = w; }
     }
     if (line) lines.push(line);
     return lines;
   }
 
-  // Trae la sesión para derivar los participantes (filtramos por UID)
+  // 1) Sesión y UIDs permitidos (solo esta sesión)
   const insRef  = firebase.firestore().collection('inscripciones').doc(sessionItem.docId);
   const insSnap = await insRef.get();
   if (!insSnap.exists){ container.innerHTML = '<div class="meta">No se encontró la sesión.</div>'; return; }
   const participants = Array.isArray(insSnap.data()?.inscriptions) ? insSnap.data().inscriptions : [];
   const allowedUIDs  = await userIdsFromParticipants(participants);
 
-  // Preguntas de la evaluación
+  // 2) Preguntas de la evaluación
   const evSnap = await firebase.firestore().collection('evaluations').doc(sessionItem.courseKey).get();
   if (!evSnap.exists){ container.innerHTML = '<div class="meta">No se encontró la evaluación.</div>'; return; }
   const ev = evSnap.data() || {};
   const questions = Array.isArray(ev.questions) ? ev.questions : [];
 
-  // Respuestas de la evaluación (filtradas a UIDs de esta sesión)
+  // 3) Respuestas (contamos **todos** los intentos) filtradas por esta sesión
   const respSnap = await firebase.firestore().collection('responses')
-      .where('evaluationId','==', sessionItem.courseKey).get();
+                    .where('evaluationId','==', sessionItem.courseKey).get();
 
   const counts = questions.map(q => new Array((q.options||[]).length).fill(0));
   const oknok  = questions.map(_ => ({ok:0, bad:0}));
 
   respSnap.forEach(r=>{
-    const d  = r.data() || {};
-    const uid= d.userId || '';
-    if (!allowedUIDs.has(uid)) return;  // SOLO este curso del historial
+    const d   = r.data() || {};
+    const uid = d.userId || '';
+    if (!allowedUIDs.has(uid)) return;                      // <- SOLO usuarios de esta sesión
     const a = d.answers || {};
     questions.forEach((q, idx)=>{
       const val = a[`question${idx}`];
@@ -1096,50 +1092,57 @@ async function renderEvaluationStatsInto(container, sessionItem){
     });
   });
 
-  // Render por pregunta
+  // 4) Render por pregunta (grid 2 columnas: barras | dona)
   questions.forEach((q, idx)=>{
-    const cleanTitle = String(q.text||'').replace(/^\s*\d+\s*[\.\)]\s*/,''); // limpia "1. ", "2) ", etc.
-    const optionsArr = Array.isArray(q.options) ? q.options : [];
-    const wrappedLabels = optionsArr.map(t => wrapText(t, 30)); // ← multilínea
-
-    // alto del canvas de barras en función de nº de opciones
-    const barHeightPx = Math.max(160, optionsArr.length * 28 + 40);
+    const cleanTitle     = String(q.text||'').replace(/^\s*\d+\s*[\.\)]\s*/,'');
+    const optionsArr     = Array.isArray(q.options) ? q.options : [];
+    const wrappedLabels  = optionsArr.map(t => wrapText(t, 30));
+    const barHeightPx    = Math.max(160, optionsArr.length * 28 + 40); // alto dinámico
 
     const card = document.createElement('div');
     card.className = 'panel-card';
     card.style.margin = '10px 0';
     card.innerHTML = `
       <div style="font-weight:700; margin-bottom:6px;">${idx+1}. ${cleanTitle}</div>
-      <div style="display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:12px; align-items:center;">
-        <canvas id="chart_b_${idx}" style="height:${barHeightPx}px"></canvas>
-        <div><canvas id="chart_p_${idx}" height="160"></canvas></div>
+
+      <div style="
+        display:grid;
+        grid-template-columns:minmax(0,1fr) 340px;   /* ← izquierda flexible, derecha fija */
+        gap:12px;
+        align-items:center;
+      ">
+        <!-- BARRAS: wrapper con min-width:0 para que no invada la segunda columna -->
+        <div style="min-width:0; overflow:hidden;">
+          <canvas id="chart_b_${idx}" style="height:${barHeightPx}px; width:100%; display:block;"></canvas>
+        </div>
+
+        <!-- DONA: columna fija -->
+        <div style="width:340px; min-width:340px;">
+          <canvas id="chart_p_${idx}" style="height:220px; width:100%; display:block;"></canvas>
+        </div>
       </div>
     `;
     container.appendChild(card);
 
-    // Barras horizontales con etiquetas multilínea
+    // BARRAS horizontales con etiquetas multilínea
     const bctx = card.querySelector(`#chart_b_${idx}`).getContext('2d');
     _statsCharts.push(new Chart(bctx,{
       type:'bar',
-      data:{
-        // labels acepta arrays de líneas → Chart.js las renderiza apiladas
-        labels: wrappedLabels,
-        datasets:[{ data: counts[idx] }]
-      },
+      data:{ labels: wrappedLabels, datasets:[{ data: counts[idx] }] },
       options:{
-        indexAxis: 'y',                 // ← horizontales (más legibles)
+        indexAxis: 'y',
         responsive: true,
-        maintainAspectRatio: false,     // respetar el alto fijado
+        maintainAspectRatio: false,    // respeta el height del canvas
         plugins:{ legend:{ display:false }, tooltip:{ enabled:true } },
-        layout:{ padding:{ right: 8, left: 8 } },
+        layout:{ padding:{ right:8, left:8 } },
         scales:{
           x:{ beginAtZero:true, ticks:{ precision:0 } },
-          y:{ ticks:{ autoSkip:false } }   // no saltar etiquetas
+          y:{ ticks:{ autoSkip:false } }   // no omitir etiquetas
         }
       }
     }));
 
-    // Pie (doughnut) correctas vs incorrectas
+    // DONA correctas vs incorrectas (SIN solaparse)
     const pctx = card.querySelector(`#chart_p_${idx}`).getContext('2d');
     _statsCharts.push(new Chart(pctx,{
       type:'doughnut',
@@ -1149,8 +1152,9 @@ async function renderEvaluationStatsInto(container, sessionItem){
       },
       options:{
         responsive:true,
-        maintainAspectRatio:false,   // <-- añade esto
-        plugins:{ legend:{ position:'bottom' } }
+        maintainAspectRatio:false,     // ← clave para que se ajuste a su columna
+        plugins:{ legend:{ position:'bottom' } },
+        cutout: '55%'                  // opcional (estética)
       }
     }));
   });
@@ -1491,6 +1495,7 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
 
