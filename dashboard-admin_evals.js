@@ -1086,30 +1086,79 @@ async function openSurveyStats(sessionId){
     const responses = respSnap.docs.map(d => d.data().surveyData || {});
 
     // 4) Calcular promedios y distribuciones (escala 1..7)
+    //    y limpiar numeración inicial ya presente en el texto.
     const stats = questions.map((qObj, idx) => {
       const key = `question${idx}`;
+
+      // limpia prefijos tipo "1. ", "2) ", "03. " etc.
+      const cleanText = String(qObj.text || `Pregunta ${idx+1}`)
+        .replace(/^\s*\d+\s*[\.\)]\s*/, '')  // 1. ó 2) ó 03.
+        .trim();
+
       const vals = responses
         .map(r => parseInt(r[key], 10))
-        .filter(n => Number.isFinite(n) && n>=1 && n<=7);
+        .filter(n => Number.isFinite(n) && n >= 1 && n <= 7);
 
       const counts = Array(7).fill(0);
-      vals.forEach(n => counts[n-1]++);
-      const avg = vals.length ? (vals.reduce((a,b)=>a+b,0) / vals.length) : 0;
+      vals.forEach(n => counts[n - 1]++);
+      const avg = vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
 
-      return { text: qObj.text || `Pregunta ${idx+1}`, counts, avg: avg.toFixed(2) };
+      return { text: cleanText, counts, avg: avg.toFixed(2) };
     });
+
+    // 4.1) Resumen global: promedio y desviación estándar sobre TODAS las notas
+    let totalNotas = 0;   // número total de valores (todas las respuestas de todas las preguntas)
+    let sumaPonderada = 0;
+
+    stats.forEach(s => {
+      s.counts.forEach((c, idx) => {
+        const x = idx + 1;          // valor 1..7
+        totalNotas += c;            // cuántas veces aparece ese valor
+        sumaPonderada += c * x;     // suma total de valores
+      });
+    });
+
+    const promGlobal = totalNotas ? (sumaPonderada / totalNotas) : 0;
+
+    // Desviación estándar muestral (divide por N-1)
+    let varAcum = 0;
+    if (totalNotas > 1) {
+      stats.forEach(s => {
+        s.counts.forEach((c, idx) => {
+          const x = idx + 1;
+          varAcum += c * Math.pow(x - promGlobal, 2);
+        });
+      });
+    }
+    const desvEstandar = (totalNotas > 1) ? Math.sqrt(varAcum / (totalNotas - 1)) : 0;
 
     // 5) Renderizar modal con gráficos
     const box = document.getElementById('statsContent');
-    box.innerHTML = stats.map((s,i)=>`
+
+    const headerCard = `
+      <div class="stat-card" style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin:10px 0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <strong>Resumen general</strong>
+          <div>
+            <span class="tag" style="background:#eef2ff;color:#1e40af;padding:2px 8px;border-radius:999px;">Nota final: ${promGlobal.toFixed(2)}</span>
+            <span class="tag" style="background:#eef2ff;color:#1e40af;padding:2px 8px;border-radius:999px;margin-left:6px;">Desv. estándar: ${desvEstandar.toFixed(2)}</span>
+            <span class="tag" style="background:#eef2ff;color:#1e40af;padding:2px 8px;border-radius:999px;margin-left:6px;">Encuestas: ${responses.length}</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const chartsHTML = stats.map((s,i)=>`
       <div class="stat-card" style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin:10px 0;">
         <div class="stat-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <strong>${i+1}. ${s.text}</strong>
+          <strong>${s.text}</strong>
           <span class="tag" style="background:#eef2ff;color:#1e40af;padding:2px 8px;border-radius:999px;">Promedio: ${s.avg}</span>
         </div>
         <canvas id="chartQ${i}" height="120"></canvas>
       </div>
     `).join('');
+
+    box.innerHTML = headerCard + chartsHTML;
 
     stats.forEach((s,i)=>{
       const ctx = document.getElementById('chartQ'+i).getContext('2d');
@@ -1147,3 +1196,4 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
