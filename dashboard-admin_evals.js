@@ -173,10 +173,10 @@ async function toggleSurveyMode(force){
 
 function historyCardHTML(item){
   return `
-    <div class="course-card" data-hdoc="${item.docId}">
+    <div class="course-card history-card" data-hdoc="${item.docId}">
       <div class="actions">
         <button class="btn btn-sm btn-primary act-h-edit">Editar</button>
-        <button class="btn btn-sm btn-outline act-h-stats">Estadísticas</button> <!-- NUEVO -->
+        <button class="btn btn-sm btn-neutral act-h-stats">Estadísticas</button>
         <button class="btn btn-sm btn-danger act-h-del">Eliminar</button>
       </div>
       <div class="course-title">${item.courseName || '(Curso desconocido)'}</div>
@@ -1196,4 +1196,3 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
-
