@@ -1149,6 +1149,7 @@ async function renderEvaluationStatsInto(container, sessionItem){
       },
       options:{
         responsive:true,
+        maintainAspectRatio:false,   // <-- añade esto
         plugins:{ legend:{ position:'bottom' } }
       }
     }));
@@ -1490,6 +1491,7 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
 
