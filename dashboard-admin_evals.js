@@ -1,3 +1,53 @@
+/* ============ AUTH GUARD (admin-only) ============ */
+/* Oculta la página mientras valida */
+document.documentElement.style.visibility = 'hidden';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
+  authDomain: "plataforma-de-cursos-esys.firebaseapp.com",
+  projectId: "plataforma-de-cursos-esys",
+  storageBucket: "plataforma-de-cursos-esys.firebasestorage.app",
+  messagingSenderId: "950684050808",
+  appId: "1:950684050808:web:33d2ef70f2343642f4548d"
+};
+try { if (!firebase.apps.length) firebase.initializeApp(firebaseConfig); } catch(e) {}
+
+const __auth = firebase.auth();
+const __db   = firebase.firestore();
+
+/* Flag para no arrancar la página hasta pasar el guard */
+window.__EVALS_CAN_RUN__ = false;
+/* Callback que se ejecutará cuando el guard apruebe (se define más abajo) */
+window.__EVALS_POST_AUTH_INIT__ = null;
+
+__auth.onAuthStateChanged(async (user) => {
+  // Rutas públicas que no deben bloquearse (si aplicara)
+  const path = location.pathname;
+  const isVerification = path.includes("verificar.html") || path.includes("/evaluaciones-cursos/verificar.html");
+  if (isVerification) { document.documentElement.style.visibility = ""; return; }
+
+  if (!user) { location.replace("index.html"); return; }
+
+  try {
+    const snap = await __db.collection("users").doc(user.uid).get();
+    const role = snap.data()?.role;
+
+    // Si NO es admin, lo sacamos a su dashboard de usuario
+    if (role !== "admin") { location.replace("dashboard.html"); return; }
+
+    // ✅ Admin validado: permitir que arranque la página
+    window.__EVALS_CAN_RUN__ = true;
+    document.documentElement.style.visibility = "";
+    if (typeof window.__EVALS_POST_AUTH_INIT__ === "function") {
+      window.__EVALS_POST_AUTH_INIT__();
+    }
+  } catch (err) {
+    console.error("Guard admin error:", err);
+    location.replace("index.html");
+  }
+});
+/* ============ FIN AUTH GUARD ============ */
+
 // ===== Utilitarios =====
 const $  = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -1509,10 +1559,3 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
-
-
-
-
-
-
-
