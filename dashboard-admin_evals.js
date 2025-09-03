@@ -826,46 +826,43 @@ async function propagateCourseMetaToUsers(participants, { courseKey, date, sessi
   }
 }
 // ===== Acciones (realizados) =====
-document.addEventListener('click', async (e)=>{
-  const btnHEdit = e.target.closest('.act-h-edit');
-  const btnHDel  = e.target.closest('.act-h-del');
+document.addEventListener('click', async (e) => {
+  const btnHEdit  = e.target.closest('.act-h-edit');
+  const btnHDel   = e.target.closest('.act-h-del');
   const btnHStats = e.target.closest('.act-h-stats');
-  if (btnHStats){
+
+  if (btnHStats) {
     const card = btnHStats.closest('.course-card');
-    const id   = card.getAttribute('data-hdoc');
-    const item = allHistory.find(h=>h.docId===id);
-    if (!item){ alert('No se encontró el realizado.'); return; }
-    openStatsModal(item); // <-- funciones del modal más abajo
+    const id   = card.getAttribute('data-hdoc');      // id del doc en "inscripciones"
+    const item = allHistory.find(h => h.docId === id);
+    if (!item) { alert('No se encontró el realizado.'); return; }
+    // ÚNICO modal de estadísticas (con pestañas Encuesta/Evaluación)
+    openStatsModal(item);
   }
 
-  if (btnHEdit){
+  if (btnHEdit) {
     const card = btnHEdit.closest('.course-card');
     const id   = card.getAttribute('data-hdoc');
-    const item = allHistory.find(h=>h.docId===id);
-    if (!item){ alert('No se encontró el realizado.'); return; }
+    const item = allHistory.find(h => h.docId === id);
+    if (!item) { alert('No se encontró el realizado.'); return; }
     editingHistoryId = id;
     fillHistoryEditor(item, true);
     openHistoryEditor('Editar realizado');
   }
 
-  const btnHStats = e.target.closest('.act-h-stats'); // NUEVO
-  if (btnHStats){
-    const card = btnHStats.closest('.course-card');
-    const sessionId = card.getAttribute('data-hdoc'); // id del doc en "inscripciones"
-    openSurveyStats(sessionId);                       // << llama a la función de abajo
-  }
-
-  if (btnHDel){
+  if (btnHDel) {
     const card = btnHDel.closest('.course-card');
     const id   = card.getAttribute('data-hdoc');
-    const item = allHistory.find(h=>h.docId===id);
+    const item = allHistory.find(h => h.docId === id);
     const name = item?.courseName || id;
-    if(!confirm(`Vas a eliminar este curso realizado:\n\n${name}\n(ID: ${id})\n\n¿Continuar?`)) return;
-    try{
+    if (!confirm(`Vas a eliminar este curso realizado:\n\n${name}\n(ID: ${id})\n\n¿Continuar?`)) return;
+    try {
       await firebase.firestore().collection('inscripciones').doc(id).delete();
       alert('🗑️ Realizado eliminado.');
       await loadHistoryCourses();
-    }catch(err){ console.error(err); alert('❌ Error al eliminar: '+err.message); }
+    } catch (err) {
+      console.error(err); alert('❌ Error al eliminar: ' + err.message);
+    }
   }
 });
 
@@ -1448,4 +1445,5 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
