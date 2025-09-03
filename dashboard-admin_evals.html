@@ -10,17 +10,18 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
 
-  <!-- Conexión a tu proyecto -->
+  <!-- Conexión a tu proyecto (SIN declarar const firebaseConfig para evitar choques) -->
   <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
-      authDomain: "plataforma-de-cursos-esys.firebaseapp.com",
-      projectId: "plataforma-de-cursos-esys",
-      storageBucket: "plataforma-de-cursos-esys.firebasestorage.app",
-      messagingSenderId: "950684050808",
-      appId: "1:950684050808:web:33d2ef70f2343642f4548d"
-    };
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    if (!firebase.apps.length) {
+      firebase.initializeApp({
+        apiKey: "AIzaSyBikggLtX1nwc1OXWUvDKXFm6P_hAdAe-Y",
+        authDomain: "plataforma-de-cursos-esys.firebaseapp.com",
+        projectId: "plataforma-de-cursos-esys",
+        storageBucket: "plataforma-de-cursos-esys.firebasestorage.app",
+        messagingSenderId: "950684050808",
+        appId: "1:950684050808:web:33d2ef70f2343642f4548d"
+      });
+    }
     const auth = firebase.auth();
     const db   = firebase.firestore();
   </script>
@@ -70,13 +71,9 @@
     .actions{ position:absolute; top:12px; right:12px; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; max-width:150px; }
 
     /* Historial: 3 botones en fila y sin desbordes */
-    .history-card { padding-right: 260px; }                 /* espacio para Editar + Estadísticas + Eliminar */
+    .history-card { padding-right: 260px; }
     .history-card .actions{
-      top: 12px;
-      right: 12px;
-      flex-direction: row;                                   /* en fila */
-      gap: 8px;
-      max-width: none;                                       /* que no se apilen */
+      top: 12px; right: 12px; flex-direction: row; gap: 8px; max-width: none;
     }
     .history-card .actions .btn{ white-space: nowrap; }
 
@@ -127,34 +124,19 @@
     .q-del{ background:#fd7e14; }
     .q-del-opt{ background:var(--danger); }
 
-    /* Encabezado con los dos textos en las esquinas */
-    .panel-head{
-      display:flex; align-items:center; justify-content:space-between;
-      margin:0 0 10px 0;
-    }
+    .panel-head{ display:flex; align-items:center; justify-content:space-between; margin:0 0 10px 0; }
+    .tab-item{ background:none; border:0; padding:0; margin:0; font:inherit; font-weight:800; color:#111; cursor:pointer; text-decoration:none; user-select:none; }
+    .tab-item.tab-on{ color:#0d6efd; }
 
-    /* Mismo look que tu h2: usa la fuente/tamaño heredados (font:inherit) */
-    .tab-item{
-      background:none; border:0; padding:0; margin:0;
-      font:inherit; font-weight:800; color:#111; cursor:pointer;
-      text-decoration:none; user-select:none;
-    }
-
-    .tab-item.tab-on{ color:#0d6efd; } /* azul cuando está seleccionado */
-
-    .stats-row{
-      display:flex; gap:16px; align-items:center;
-    }
+    .stats-row{ display:flex; gap:16px; align-items:center; }
     .stats-row .bar-wrap{ flex:1 1 auto; min-width:0; }
     .stats-row .pie-wrap{ flex:0 0 280px; max-width:280px; }
     .stats-row canvas{ width:100% !important; height:220px !important; }
 
-    /* En pantallas angostas, que se apilen */
     @media (max-width: 900px){
       .stats-row{ flex-direction:column; }
       .stats-row .pie-wrap{ flex:0 0 auto; max-width:100%; }
     }
-    
   </style>
 </head>
 <body>
@@ -176,16 +158,11 @@
   <main class="container">
     <div class="grid-2">
       <section class="panel-card">
-        <!-- ⬇ Encabezado con el toggle (izquierda título, derecha el MISMO botón existente) -->
         <div class="panel-head">
-          <h2 id="createdTab" class="tab-item tab-on"
-              onclick="try{toggleSurveyMode(false)}catch(e){}">
+          <h2 id="createdTab" class="tab-item tab-on" onclick="try{toggleSurveyMode(false)}catch(e){}">
             Cursos Ofertados
           </h2>
-
-          <!-- MISMO id: NO cambies nada, solo reubicado y con estilo de texto -->
-          <button id="btnToggleSurveys" type="button" class="tab-item"
-                  onclick="try{toggleSurveyMode(true)}catch(e){}">
+          <button id="btnToggleSurveys" type="button" class="tab-item" onclick="try{toggleSurveyMode(true)}catch(e){}">
             Encuestas de Satisfacción
           </button>
         </div>
@@ -214,7 +191,7 @@
   <!-- Botón fijo de Cerrar Sesión -->
   <button id="btnSignOutFixed">Cerrar Sesión</button>
 
-  <!-- Editor de cursos creados (igual que antes) -->
+  <!-- Editor de cursos creados -->
   <aside id="editor" class="drawer" aria-hidden="true">
     <header>
       <strong id="editorTitle">Nuevo curso</strong>
@@ -401,8 +378,32 @@
     </div>
   </div>
 
-  <script src="dashboard-admin_evals.js" defer></script>
+  <!-- 🔒 Guard de sesión + rol admin: si no hay sesión o no es admin → index.html.
+       Si es admin, recién ahí cargo dashboard-admin_evals.js -->
+  <script>
+    (function(){
+      const goIndex = ()=> location.replace('index.html');
 
+      auth.onAuthStateChanged(async (user)=>{
+        if (!user) { goIndex(); return; }
+        try{
+          const snap = await db.collection('users').doc(user.uid).get();
+          const role = (snap.exists && (snap.data().role || snap.data().rol)) || '';
+          if (String(role).toLowerCase() !== 'admin') { goIndex(); return; }
+
+          // ✅ Es admin → cargar lógica de la página
+          const s = document.createElement('script');
+          s.src = 'dashboard-admin_evals.js?v=3';
+          s.defer = true;
+          document.head.appendChild(s);
+        }catch(e){
+          console.error(e); goIndex();
+        }
+      });
+    })();
+  </script>
+
+  <!-- Toggle visual de pestañas (solo pinta el estado; tu JS maneja la lógica real) -->
   <script>
   (function(){
     const left  = document.getElementById('createdTab');
@@ -411,10 +412,7 @@
       right.classList.toggle('tab-on', !!onSurveys);
       left.classList.toggle('tab-on',  !onSurveys);
     }
-    // Arranque: cursos activos
     setOn(false);
-
-    // Si además tienes listeners propios, esto solo se encarga del color
     left?.addEventListener('click',  ()=> setOn(false));
     right?.addEventListener('click', ()=> setOn(true));
   })();
