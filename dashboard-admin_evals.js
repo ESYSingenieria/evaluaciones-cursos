@@ -1039,8 +1039,27 @@ async function renderSurveyStatsInto(container, sessionItem){
   });
 }
 
-// ======== EVALUACIÓN: barras por alternativa + pastel correctas vs incorrectas ========
+// ======== EVALUACIÓN: barras (con etiquetas multilínea) + doughnut correctas vs. incorrectas ========
 async function renderEvaluationStatsInto(container, sessionItem){
+  // Helper: envuelve un texto en varias líneas (rompe por espacios)
+  function wrapText(str = '', maxChars = 28){
+    const words = String(str).split(/\s+/);
+    const lines = [];
+    let line = '';
+    for (const w of words){
+      const test = line ? line + ' ' + w : w;
+      if (test.length <= maxChars){
+        line = test;
+      } else {
+        if (line) lines.push(line);
+        line = w;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  // Trae la sesión para derivar los participantes (filtramos por UID)
   const insRef  = firebase.firestore().collection('inscripciones').doc(sessionItem.docId);
   const insSnap = await insRef.get();
   if (!insSnap.exists){ container.innerHTML = '<div class="meta">No se encontró la sesión.</div>'; return; }
@@ -1053,7 +1072,7 @@ async function renderEvaluationStatsInto(container, sessionItem){
   const ev = evSnap.data() || {};
   const questions = Array.isArray(ev.questions) ? ev.questions : [];
 
-  // Respuestas de la evaluación, filtradas a esta sesión
+  // Respuestas de la evaluación (filtradas a UIDs de esta sesión)
   const respSnap = await firebase.firestore().collection('responses')
       .where('evaluationId','==', sessionItem.courseKey).get();
 
@@ -1063,7 +1082,7 @@ async function renderEvaluationStatsInto(container, sessionItem){
   respSnap.forEach(r=>{
     const d  = r.data() || {};
     const uid= d.userId || '';
-    if (!allowedUIDs.has(uid)) return;  // <-- SOLO este curso del historial
+    if (!allowedUIDs.has(uid)) return;  // SOLO este curso del historial
     const a = d.answers || {};
     questions.forEach((q, idx)=>{
       const val = a[`question${idx}`];
@@ -1077,35 +1096,61 @@ async function renderEvaluationStatsInto(container, sessionItem){
     });
   });
 
+  // Render por pregunta
   questions.forEach((q, idx)=>{
-    const cleanTitle = String(q.text||'').replace(/^\s*\d+[\.)]\s*/,'');
+    const cleanTitle = String(q.text||'').replace(/^\s*\d+\s*[\.\)]\s*/,''); // limpia "1. ", "2) ", etc.
+    const optionsArr = Array.isArray(q.options) ? q.options : [];
+    const wrappedLabels = optionsArr.map(t => wrapText(t, 30)); // ← multilínea
+
+    // alto del canvas de barras en función de nº de opciones
+    const barHeightPx = Math.max(160, optionsArr.length * 28 + 40);
+
     const card = document.createElement('div');
     card.className = 'panel-card';
     card.style.margin = '10px 0';
     card.innerHTML = `
       <div style="font-weight:700; margin-bottom:6px;">${idx+1}. ${cleanTitle}</div>
-      <div style="display:grid; grid-template-columns:1fr 320px; gap:12px; align-items:center;">
-        <canvas id="chart_b_${idx}" height="160"></canvas>
+      <div style="display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:12px; align-items:center;">
+        <canvas id="chart_b_${idx}" style="height:${barHeightPx}px"></canvas>
         <div><canvas id="chart_p_${idx}" height="160"></canvas></div>
       </div>
     `;
     container.appendChild(card);
 
-    // Barras por alternativa
+    // Barras horizontales con etiquetas multilínea
     const bctx = card.querySelector(`#chart_b_${idx}`).getContext('2d');
     _statsCharts.push(new Chart(bctx,{
       type:'bar',
-      data:{ labels:(q.options||[]), datasets:[{ data: counts[idx] }] },
-      options:{ responsive:true, plugins:{ legend:{display:false} },
-        scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+      data:{
+        // labels acepta arrays de líneas → Chart.js las renderiza apiladas
+        labels: wrappedLabels,
+        datasets:[{ data: counts[idx] }]
+      },
+      options:{
+        indexAxis: 'y',                 // ← horizontales (más legibles)
+        responsive: true,
+        maintainAspectRatio: false,     // respetar el alto fijado
+        plugins:{ legend:{ display:false }, tooltip:{ enabled:true } },
+        layout:{ padding:{ right: 8, left: 8 } },
+        scales:{
+          x:{ beginAtZero:true, ticks:{ precision:0 } },
+          y:{ ticks:{ autoSkip:false } }   // no saltar etiquetas
+        }
+      }
     }));
 
-    // Pie: correctas vs incorrectas
+    // Pie (doughnut) correctas vs incorrectas
     const pctx = card.querySelector(`#chart_p_${idx}`).getContext('2d');
     _statsCharts.push(new Chart(pctx,{
       type:'doughnut',
-      data:{ labels:['Correctas','Incorrectas'], datasets:[{ data:[oknok[idx].ok, oknok[idx].bad] }] },
-      options:{ responsive:true, plugins:{ legend:{ position:'bottom' } } }
+      data:{
+        labels:['Correctas','Incorrectas'],
+        datasets:[{ data:[oknok[idx].ok, oknok[idx].bad] }]
+      },
+      options:{
+        responsive:true,
+        plugins:{ legend:{ position:'bottom' } }
+      }
     }));
   });
 }
@@ -1445,5 +1490,6 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
