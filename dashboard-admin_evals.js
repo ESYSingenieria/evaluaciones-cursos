@@ -829,6 +829,14 @@ async function propagateCourseMetaToUsers(participants, { courseKey, date, sessi
 document.addEventListener('click', async (e)=>{
   const btnHEdit = e.target.closest('.act-h-edit');
   const btnHDel  = e.target.closest('.act-h-del');
+  const btnHStats = e.target.closest('.act-h-stats');
+  if (btnHStats){
+    const card = btnHStats.closest('.course-card');
+    const id   = card.getAttribute('data-hdoc');
+    const item = allHistory.find(h=>h.docId===id);
+    if (!item){ alert('No se encontró el realizado.'); return; }
+    openStatsModal(item); // <-- funciones del modal más abajo
+  }
 
   if (btnHEdit){
     const card = btnHEdit.closest('.course-card');
@@ -860,6 +868,250 @@ document.addEventListener('click', async (e)=>{
     }catch(err){ console.error(err); alert('❌ Error al eliminar: '+err.message); }
   }
 });
+
+// =============== ESTADÍSTICAS (por curso del HISTORIAL / documento de 'inscripciones') ===============
+let _statsCharts = []; // limpiar instancias al cerrar/cambiar vista
+
+// Mapear participantes (customID / rut) a uids de 'users'
+async function userIdsFromParticipants(participants = []){
+  const out = new Set();
+  for (const p of (participants || [])){
+    const cid = p.customID || p.customId || '';
+    const rut = p.rut || '';
+    if (cid){
+      const s = await firebase.firestore().collection('users').where('customID','==',cid).limit(1).get().catch(()=>null);
+      if (s && !s.empty) out.add(s.docs[0].id);
+    } else if (rut){
+      const s = await firebase.firestore().collection('users').where('rut','==',rut).limit(1).get().catch(()=>null);
+      if (s && !s.empty) out.add(s.docs[0].id);
+    }
+  }
+  return out;
+}
+
+function openStatsModal(sessionItem){
+  // Crea modal si no existe
+  let modal = document.getElementById('statsModal');
+  if (!modal){
+    modal = document.createElement('div');
+    modal.id = 'statsModal';
+    modal.style.cssText = `
+      position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:2000;
+      display:flex; align-items:flex-start; justify-content:center; padding:24px;
+    `;
+    modal.innerHTML = `
+      <div style="background:#fff; width:min(1100px,100%); max-height:90vh; overflow:auto; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25)">
+        <div id="statsHeader" style="position:sticky; top:0; background:#fff; padding:12px 14px; border-bottom:1px solid #eee; display:flex; align-items:center; gap:8px;">
+          <strong style="flex:1">Estadísticas • ${sessionItem.courseKey} • ${fmtDate(sessionItem.date)}</strong>
+          <button id="btnStatsSurvey" class="btn btn-outline" style="border:1px solid #ddd">Encuesta</button>
+          <button id="btnStatsEval"   class="btn btn-outline" style="border:1px solid #ddd">Evaluación</button>
+          <button id="btnStatsClose"  class="btn btn-outline">Cerrar</button>
+        </div>
+        <div id="statsBody" style="padding:14px;"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (ev)=>{
+      if (ev.target.id==='btnStatsClose' || ev.target===modal){
+        _statsCharts.forEach(ch => { try{ ch.destroy(); }catch{} });
+        _statsCharts = [];
+        modal.remove();
+      }
+    });
+  } else {
+    modal.querySelector('#statsHeader strong').textContent =
+      `Estadísticas • ${sessionItem.courseKey} • ${fmtDate(sessionItem.date)}`;
+  }
+
+  const btnSurvey = modal.querySelector('#btnStatsSurvey');
+  const btnEval   = modal.querySelector('#btnStatsEval');
+  const body      = modal.querySelector('#statsBody');
+
+  function setActive(btnA, btnB){
+    btnA.style.background = '#0d6efd'; btnA.style.color = '#fff';
+    btnB.style.background = '';        btnB.style.color = '';
+  }
+
+  async function renderSurvey(){
+    setActive(btnSurvey, btnEval);
+    body.innerHTML = '';
+    _statsCharts.forEach(ch => { try{ ch.destroy(); }catch{} }); _statsCharts = [];
+    await renderSurveyStatsInto(body, sessionItem);
+  }
+  async function renderEvaluation(){
+    setActive(btnEval, btnSurvey);
+    body.innerHTML = '';
+    _statsCharts.forEach(ch => { try{ ch.destroy(); }catch{} }); _statsCharts = [];
+    await renderEvaluationStatsInto(body, sessionItem);
+  }
+
+  btnSurvey.onclick = renderSurvey;
+  btnEval.onclick   = renderEvaluation;
+
+  // por defecto: encuesta
+  renderSurvey();
+}
+
+// ======== ENCUESTA: promedios 1–7 por pregunta + promedio global + desviación estándar ========
+async function renderSurveyStatsInto(container, sessionItem){
+  const insRef  = firebase.firestore().collection('inscripciones').doc(sessionItem.docId);
+  const insSnap = await insRef.get();
+  if (!insSnap.exists){ container.innerHTML = '<div class="meta">No se encontró la sesión.</div>'; return; }
+  const insData = insSnap.data() || {};
+  const participants = Array.isArray(insData.inscriptions) ? insData.inscriptions : [];
+  const allowedUIDs  = await userIdsFromParticipants(participants);
+
+  // Encuesta usada: docId guardado (si lo guardas) o fallback por evaluationId/default
+  let surveyDoc = null;
+  if (insData.surveyId){
+    const s = await firebase.firestore().collection('surveyQuestions').doc(insData.surveyId).get();
+    if (s.exists) surveyDoc = s;
+  }
+  if (!surveyDoc){
+    const q = await firebase.firestore().collection('surveyQuestions')
+      .where('evaluationId','in',[sessionItem.courseKey,'default']).limit(1).get();
+    surveyDoc = q.docs[0];
+  }
+  if (!surveyDoc){ container.innerHTML = '<div class="meta">Sin encuesta.</div>'; return; }
+
+  const sData = surveyDoc.data();
+  const questions = (sData.questions || []).slice(0,10);
+
+  // Respuestas de esta evaluación PERO filtrando a los usuarios de esta sesión
+  const respSnap = await firebase.firestore().collection('surveys')
+      .where('evaluationId','==', sessionItem.courseKey).get();
+
+  const summaries = questions.map(()=>({ sum:0, n:0, vals:[] }));
+
+  respSnap.forEach(r=>{
+    const d  = r.data() || {};
+    const uid= d.userId || '';
+    if (!allowedUIDs.has(uid)) return;  // <-- SOLO los de este curso del historial
+    const sd = d.surveyData || {};
+    questions.forEach((q, idx)=>{
+      const v = Number(sd[`question${idx}`]);
+      if (!isNaN(v) && v>=1 && v<=7){
+        summaries[idx].sum += v;
+        summaries[idx].n   += 1;
+        summaries[idx].vals.push(v);
+      }
+    });
+  });
+
+  // Nota global y desviación estándar
+  const all = summaries.flatMap(s=>s.vals);
+  const mean = all.length ? (all.reduce((a,b)=>a+b,0)/all.length) : 0;
+  const std  = all.length ? Math.sqrt(all.reduce((a,b)=>a+(b-mean)**2,0)/all.length) : 0;
+
+  const resume = document.createElement('div');
+  resume.style.margin = '6px 0 12px';
+  resume.innerHTML = `
+    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+      <div class="tag">Respuestas: ${new Set(respSnap.docs
+        .map(d=>d.data()?.userId)
+        .filter(uid=>allowedUIDs.has(uid))).size}</div>
+      <div class="tag">Promedio global: ${mean.toFixed(2)}</div>
+      <div class="tag">Desv. estándar: ${std.toFixed(2)}</div>
+    </div>`;
+  container.appendChild(resume);
+
+  questions.forEach((q, idx)=>{
+    // Quita numeración que ya viene en el enunciado
+    const cleanTitle = String(q.text||'').replace(/^\s*\d+[\.)]\s*/,'');
+    const card = document.createElement('div');
+    card.className = 'panel-card';
+    card.style.margin = '10px 0';
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <div style="font-weight:700">${idx+1}. ${cleanTitle} (1 = Muy Insatisfecho ; 7 = Muy Satisfecho)</div>
+        <span class="tag">Promedio: ${(summaries[idx].n? summaries[idx].sum/summaries[idx].n : 0).toFixed(2)}</span>
+      </div>
+      <canvas id="chart_s_${idx}" height="120"></canvas>
+    `;
+    container.appendChild(card);
+
+    // Frecuencia de 1..7
+    const freq = [1,2,3,4,5,6,7].map(v => summaries[idx].vals.filter(x=>x===v).length);
+    const ctx  = card.querySelector(`#chart_s_${idx}`).getContext('2d');
+    _statsCharts.push(new Chart(ctx,{
+      type:'bar',
+      data:{ labels:[1,2,3,4,5,6,7], datasets:[{ data: freq }] },
+      options:{ responsive:true, plugins:{ legend:{display:false} },
+        scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+    }));
+  });
+}
+
+// ======== EVALUACIÓN: barras por alternativa + pastel correctas vs incorrectas ========
+async function renderEvaluationStatsInto(container, sessionItem){
+  const insRef  = firebase.firestore().collection('inscripciones').doc(sessionItem.docId);
+  const insSnap = await insRef.get();
+  if (!insSnap.exists){ container.innerHTML = '<div class="meta">No se encontró la sesión.</div>'; return; }
+  const participants = Array.isArray(insSnap.data()?.inscriptions) ? insSnap.data().inscriptions : [];
+  const allowedUIDs  = await userIdsFromParticipants(participants);
+
+  // Preguntas de la evaluación
+  const evSnap = await firebase.firestore().collection('evaluations').doc(sessionItem.courseKey).get();
+  if (!evSnap.exists){ container.innerHTML = '<div class="meta">No se encontró la evaluación.</div>'; return; }
+  const ev = evSnap.data() || {};
+  const questions = Array.isArray(ev.questions) ? ev.questions : [];
+
+  // Respuestas de la evaluación, filtradas a esta sesión
+  const respSnap = await firebase.firestore().collection('responses')
+      .where('evaluationId','==', sessionItem.courseKey).get();
+
+  const counts = questions.map(q => new Array((q.options||[]).length).fill(0));
+  const oknok  = questions.map(_ => ({ok:0, bad:0}));
+
+  respSnap.forEach(r=>{
+    const d  = r.data() || {};
+    const uid= d.userId || '';
+    if (!allowedUIDs.has(uid)) return;  // <-- SOLO este curso del historial
+    const a = d.answers || {};
+    questions.forEach((q, idx)=>{
+      const val = a[`question${idx}`];
+      if (val==null) return;
+      const pos = (q.options||[]).indexOf(val);
+      if (pos>=0) counts[idx][pos]++;
+      if (q.correct){
+        const isOk = String(val).trim().toLowerCase() === String(q.correct).trim().toLowerCase();
+        if (isOk) oknok[idx].ok++; else oknok[idx].bad++;
+      }
+    });
+  });
+
+  questions.forEach((q, idx)=>{
+    const cleanTitle = String(q.text||'').replace(/^\s*\d+[\.)]\s*/,'');
+    const card = document.createElement('div');
+    card.className = 'panel-card';
+    card.style.margin = '10px 0';
+    card.innerHTML = `
+      <div style="font-weight:700; margin-bottom:6px;">${idx+1}. ${cleanTitle}</div>
+      <div style="display:grid; grid-template-columns:1fr 320px; gap:12px; align-items:center;">
+        <canvas id="chart_b_${idx}" height="160"></canvas>
+        <div><canvas id="chart_p_${idx}" height="160"></canvas></div>
+      </div>
+    `;
+    container.appendChild(card);
+
+    // Barras por alternativa
+    const bctx = card.querySelector(`#chart_b_${idx}`).getContext('2d');
+    _statsCharts.push(new Chart(bctx,{
+      type:'bar',
+      data:{ labels:(q.options||[]), datasets:[{ data: counts[idx] }] },
+      options:{ responsive:true, plugins:{ legend:{display:false} },
+        scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+    }));
+
+    // Pie: correctas vs incorrectas
+    const pctx = card.querySelector(`#chart_p_${idx}`).getContext('2d');
+    _statsCharts.push(new Chart(pctx,{
+      type:'doughnut',
+      data:{ labels:['Correctas','Incorrectas'], datasets:[{ data:[oknok[idx].ok, oknok[idx].bad] }] },
+      options:{ responsive:true, plugins:{ legend:{ position:'bottom' } } }
+    }));
+  });
+}
 
 // ===== Wire-up =====
 document.addEventListener('DOMContentLoaded', ()=>{
@@ -1196,3 +1448,4 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
