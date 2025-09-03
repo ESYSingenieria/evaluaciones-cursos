@@ -1020,7 +1020,7 @@ async function renderSurveyStatsInto(container, sessionItem){
     card.style.margin = '10px 0';
     card.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-        <div style="font-weight:700">${idx+1}. ${cleanTitle} (1 = Muy Insatisfecho ; 7 = Muy Satisfecho)</div>
+        <div style="font-weight:700">${idx+1}. ${cleanTitle}</div>
         <span class="tag">Promedio: ${(summaries[idx].n? summaries[idx].sum/summaries[idx].n : 0).toFixed(2)}</span>
       </div>
       <canvas id="chart_s_${idx}" height="120"></canvas>
@@ -1490,6 +1490,7 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
 
