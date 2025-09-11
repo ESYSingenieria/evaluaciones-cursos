@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Curso grabado</title>
+  <link rel="stylesheet" href="styles.css"/>
+
+  <style>
+    /* --- Estilo consistente con tu dashboard --- */
+    :root{
+      --bg:#f6f7fb; --card:#fff; --b:#e5e7eb; --text:#111827; --muted:#6b7280; --brand:#1d4ed8;
+    }
+    html,body{background:var(--bg); color:var(--text); margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Ubuntu,"Noto Sans",sans-serif}
+    a{color:var(--brand); text-decoration:none}
+    header{
+      display:flex; justify-content:space-between; align-items:center;
+      padding:10px 20px; background:#fff; border-bottom:1px solid var(--b);
+      position:sticky; top:0; z-index:10;
+    }
+    .user-info{display:flex;flex-direction:column;border:1px solid var(--b);border-radius:10px;padding:8px 10px;background:#fafafa}
+    .user-info p{margin:2px 0;font-size:14px}
+    .user-info button{margin-top:6px;padding:6px 10px;font-size:12px;cursor:pointer}
+    .logo{max-width:160px;height:auto}
+
+    .page-wrap{width:95%;max-width:1200px;margin:18px auto 28px}
+    .crumbs{font-size:14px;color:#666;margin-bottom:12px}
+    .course-title{margin:0 0 6px}
+    .course-sub{color:#555;margin:0 0 16px}
+
+    .layout{
+      display:grid;
+      grid-template-columns: 300px 1fr;
+      gap:18px;
+    }
+    .sidebar{
+      border:1px solid var(--b);border-radius:12px;padding:10px;background:var(--card);
+      overflow:auto;max-height:calc(100vh - 230px)
+    }
+    .module{margin-bottom:10px}
+    .module h4{margin:10px 6px;font-size:15px}
+    .lesson{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:8px 10px;margin:6px;border-radius:8px;cursor:pointer;
+      background:#f8fafc;border:1px solid var(--b);
+    }
+    .lesson.active{background:#e6f0ff;border-color:#bcd2ff}
+    .player-card{
+      border:1px solid var(--b);border-radius:12px;background:var(--card);
+      padding:10px;
+    }
+    .player-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .player-wrap{position:relative}
+    .watermark{
+      position:absolute;right:12px;bottom:8px;opacity:.28;
+      background:#000;color:#fff;padding:6px 10px;border-radius:8px;font-size:12px
+    }
+    video{width:100%;height:auto;border-radius:10px;max-height:70vh;background:#000}
+    .meta{margin-top:10px;color:#475569}
+    .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+    .chip{padding:4px 8px;border-radius:999px;background:#f1f5f9;color:#334155;font-size:12px;border:1px solid #e2e8f0}
+    .only-live{
+      border:1px dashed var(--b); background:#fff; border-radius:12px; padding:16px;
+    }
+    .btn{
+      display:inline-block; padding:10px 14px; border-radius:10px; border:1px solid var(--b);
+      background:#0ea5e9; color:#fff; font-weight:600; margin-right:10px;
+    }
+    @media (max-width:900px){
+      .layout{grid-template-columns: 1fr}
+      .sidebar{max-height:none}
+    }
+  </style>
+
+  <!-- Firebase (compat) igual que en tu proyecto -->
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
+
+  <!-- Tu inicialización/logic base (debes tener db, auth, etc.) -->
+  <script src="app.js" defer></script>
+
+  <!-- hls.js para HLS en navegadores sin soporte nativo -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+  <!-- Script de esta página -->
+  <script src="course-viewer.js" defer></script>
+</head>
+<body>
+
+  <!-- Header igual que en dashboard -->
+  <header>
+    <div id="user-info" class="user-info">
+      <p id="userNameDisplay"></p>
+      <p id="userRutDisplay"></p>
+      <button id="editProfileButton">Editar perfil</button>
+    </div>
+    <a href="https://esys.cl/">
+      <img src="logo.png" alt="Logo de la Empresa" class="logo"/>
+    </a>
+  </header>
+
+  <div class="page-wrap">
+    <div class="crumbs">
+      <a href="dashboard.html">Dashboard</a> &nbsp;/&nbsp;
+      <span id="crumb-course">Curso</span>
+    </div>
+
+    <h2 class="course-title" id="courseTitle">Cargando…</h2>
+    <p class="course-sub" id="courseDesc"></p>
+
+    <!-- Contenido para cursos asincrónicos (videos) -->
+    <div id="asyncLayout" class="layout" style="display:none;">
+      <!-- Sidebar: módulos / capítulos -->
+      <aside class="sidebar" id="modulesList"></aside>
+
+      <!-- Player -->
+      <section class="player-card">
+        <div class="player-head">
+          <div>
+            <div id="lessonTitle" style="font-weight:600">Selecciona una lección</div>
+            <div id="lessonPath" style="font-size:13px;color:#6b7280"></div>
+          </div>
+          <a id="backToDashboard" href="dashboard.html">← Volver</a>
+        </div>
+
+        <div class="player-wrap">
+          <video id="player" controls playsinline></video>
+          <div class="watermark" id="wm"></div>
+        </div>
+
+        <div class="meta">
+          <div class="chips" id="tags"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Contenido para cursos NO asincrónicos -->
+    <div id="liveLayout" class="only-live" style="display:none;">
+      <p id="liveMsg">Este curso no incluye material grabado. Puedes acceder al manual y a la evaluación.</p>
+      <div style="margin-top:10px;">
+        <a id="manualBtn" class="btn" href="#">Abrir Manual</a>
+        <a id="evalBtn" class="btn" href="#">Comenzar Evaluación</a>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
