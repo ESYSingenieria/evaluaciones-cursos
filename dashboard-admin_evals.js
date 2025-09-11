@@ -1173,7 +1173,7 @@ async function renderEvaluationStatsInto(container, sessionItem){
       type:'doughnut',
       data:{
         labels:['Correctas','Incorrectas'],
-        datasets:[{ data:[ Math.round(oknok[idx].ok/2), Math.round(oknok[idx].bad/2) ] }]
+        datasets:[{ data:[ Math.round(oknok[idx].ok), Math.round(oknok[idx].bad) ] }]
       },
       options:{
         responsive:true,
@@ -1520,6 +1520,7 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
 
