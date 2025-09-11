@@ -290,109 +290,127 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 // Lógica para cargar evaluaciones asignadas específicamente a un usuario
 const loadEvaluations = async () => {
-    const evaluationsList = document.getElementById('evaluationsList');
-    const user = auth.currentUser;
-    if (!user) return;
+  const evaluationsList = document.getElementById('evaluationsList');
+  const user = auth.currentUser;
+  if (!user) return;
 
-    try {
-        const userDoc = await db.collection('users').doc(user.uid).get();
-        const assignedEvaluations = userDoc.data().assignedEvaluations || [];
-        const meta = userDoc.data().assignedCoursesMeta || {};
-        const myCID = userDoc.data().customID || "";
-        const myRUT = userDoc.data().rut || "";
+  try {
+    const userDoc = await db.collection('users').doc(user.uid).get();
+    const assignedEvaluations = userDoc.data().assignedEvaluations || [];
+    const meta = userDoc.data().assignedCoursesMeta || {};
+    const myCID = userDoc.data().customID || "";
+    const myRUT = userDoc.data().rut || "";
 
+    const snapshot = await db.collection('evaluations').get();
+    evaluationsList.innerHTML = '';
 
-        const snapshot = await db.collection('evaluations').get();
-        evaluationsList.innerHTML = '';
+    for (const doc of snapshot.docs) {
+      if (!assignedEvaluations.includes(doc.id)) continue;
 
-        for (const doc of snapshot.docs) {
-          if (!assignedEvaluations.includes(doc.id)) continue;
+      const evaluation = doc.data();
 
-          const evaluation = doc.data();
+      // === Bloqueo por sesión/inscripciones (tu lógica original) ===
+      const m = Object.values(meta).find(mm => mm?.evaluationId === doc.id || mm?.courseKey === doc.id) || null;
+      let isLocked = true;
 
-          // === Nuevo: bloqueo por usuario-curso leyendo inscripciones ===
-          // Busca la meta que apunte a esta evaluación (por evaluationId o courseKey)
-          const m = Object.values(meta).find(mm => mm?.evaluationId === doc.id || mm?.courseKey === doc.id) || null;
-          let isLocked = true; // default: bloqueada
-
-          if (m?.sessionId) {
-            const sSnap = await db.collection('inscripciones').doc(m.sessionId).get();
-            if (sSnap.exists) {
-              const arr = Array.isArray(sSnap.data().inscriptions) ? sSnap.data().inscriptions : [];
-              const me = arr.find(p => (myCID && p.customID === myCID) || (myRUT && p.rut === myRUT));
-              if (me && me.evaluationLocked === false) {
-                isLocked = false; // solo se desbloquea si explicitamente está en false
-              }
-            }
+      if (m?.sessionId) {
+        const sSnap = await db.collection('inscripciones').doc(m.sessionId).get();
+        if (sSnap.exists) {
+          const arr = Array.isArray(sSnap.data().inscriptions) ? sSnap.data().inscriptions : [];
+          const me = arr.find(p => (myCID && p.customID === myCID) || (myRUT && p.rut === myRUT));
+          if (me && me.evaluationLocked === false) {
+            isLocked = false;
           }
-
-          // === (lo demás de tu render queda igual, solo usa isLocked de arriba)
-          const div = document.createElement('div');
-          div.className = "evaluation-item";
-
-          const img = document.createElement('img');
-          img.src = evaluation.imageURL || 'default-image.jpg';
-          img.alt = `Portada de ${evaluation.title}`;
-          img.className = 'evaluation-image';
-          img.style.borderRadius = "5px";
-          img.style.marginBottom = "10px";
-
-          const title = document.createElement('h3');
-          title.textContent = evaluation.title;
-          title.style.marginBottom = "10px";
-
-          const buttonContainer = document.createElement('div');
-          buttonContainer.style.display = "flex";
-          buttonContainer.style.justifyContent = "center";
-          buttonContainer.style.gap = "10px";
-          buttonContainer.style.marginTop = "-6px";
-          buttonContainer.style.position = "relative";
-          buttonContainer.style.top = "-2px";
-
-          const manualButton = document.createElement('button');
-          manualButton.textContent = "Abrir Manual";
-          manualButton.style.padding = "10px 20px";
-          manualButton.style.backgroundColor = "#007BFF";
-          manualButton.style.color = "white";
-          manualButton.style.border = "none";
-          manualButton.style.borderRadius = "5px";
-          manualButton.style.cursor = "pointer";
-          manualButton.addEventListener("click", () => {
-            const manualUrl = `manual.html?evaluationId=${doc.id}`;
-            window.open(manualUrl, "_blank");
-          });
-
-          const startButton = document.createElement('button');
-          startButton.textContent = "Comenzar Evaluación";
-          startButton.disabled = isLocked;
-          startButton.style.padding = "10px 20px";
-          startButton.style.backgroundColor = isLocked ? "#ccc" : "#28a745";
-          startButton.style.color = isLocked ? "#666" : "white";
-          startButton.style.border = "none";
-          startButton.style.borderRadius = "5px";
-          startButton.style.cursor = isLocked ? "not-allowed" : "pointer";
-
-          if (!isLocked) {
-            startButton.addEventListener("click", () => {
-              const sid = (m && m.sessionId) ? `&sessionId=${encodeURIComponent(m.sessionId)}` : '';
-              window.location.href = `evaluation.html?id=${encodeURIComponent(doc.id)}${sid}`;
-            });
-          }
-
-          buttonContainer.appendChild(manualButton);
-          buttonContainer.appendChild(startButton);
-          div.appendChild(img);
-          div.appendChild(title);
-          div.appendChild(buttonContainer);
-          evaluationsList.appendChild(div);
         }
+      }
 
-        if (evaluationsList.innerHTML === '') {
-            evaluationsList.innerHTML = '<p>No tienes evaluaciones asignadas.</p>';
-        }
-    } catch (error) {
-        console.error('Error cargando evaluaciones:', error);
+      // === Card del curso ===
+      const div = document.createElement('div');
+      div.className = "evaluation-item";
+
+      const img = document.createElement('img');
+      img.src = evaluation.imageURL || 'default-image.jpg';
+      img.alt = `Portada de ${evaluation.title}`;
+      img.className = 'evaluation-image';
+      img.style.borderRadius = "5px";
+      img.style.marginBottom = "10px";
+
+      const title = document.createElement('h3');
+      title.textContent = evaluation.title;
+      title.style.marginBottom = "10px";
+
+      const buttonContainer = document.createElement('div');
+      buttonContainer.style.display = "flex";
+      buttonContainer.style.justifyContent = "center";
+      buttonContainer.style.gap = "10px";
+      buttonContainer.style.marginTop = "-6px";
+      buttonContainer.style.position = "relative";
+      buttonContainer.style.top = "-2px";
+
+      // --- Abrir Manual (siempre visible) ---
+      const manualButton = document.createElement('button');
+      manualButton.textContent = "Abrir Manual";
+      manualButton.style.padding = "10px 20px";
+      manualButton.style.backgroundColor = "#007BFF";
+      manualButton.style.color = "white";
+      manualButton.style.border = "none";
+      manualButton.style.borderRadius = "5px";
+      manualButton.style.cursor = "pointer";
+      manualButton.addEventListener("click", () => {
+        const manualUrl = `manual.html?evaluationId=${doc.id}`;
+        window.open(manualUrl, "_blank");
+      });
+      buttonContainer.appendChild(manualButton);
+
+      // --- Ver Curso (solo si es asincrónico) ---
+      const isAsync = doc.id.endsWith('_asincronico');
+      if (isAsync) {
+        const viewButton = document.createElement('button');
+        viewButton.textContent = "Ver Curso";
+        viewButton.style.padding = "10px 20px";
+        viewButton.style.backgroundColor = "#0ea5e9"; // celeste
+        viewButton.style.color = "white";
+        viewButton.style.border = "none";
+        viewButton.style.borderRadius = "5px";
+        viewButton.style.cursor = "pointer";
+        viewButton.addEventListener("click", () => {
+          // Abre el visor de cursos grabados con el mismo identificador del curso
+          window.location.href = `course-viewer.html?course=${encodeURIComponent(doc.id)}`;
+        });
+        buttonContainer.appendChild(viewButton);
+      }
+
+      // --- Comenzar Evaluación (respeta tu “isLocked”) ---
+      const startButton = document.createElement('button');
+      startButton.textContent = "Comenzar Evaluación";
+      startButton.disabled = isLocked;
+      startButton.style.padding = "10px 20px";
+      startButton.style.backgroundColor = isLocked ? "#ccc" : "#28a745";
+      startButton.style.color = isLocked ? "#666" : "white";
+      startButton.style.border = "none";
+      startButton.style.borderRadius = "5px";
+      startButton.style.cursor = isLocked ? "not-allowed" : "pointer";
+      if (!isLocked) {
+        startButton.addEventListener("click", () => {
+          const sid = (m && m.sessionId) ? `&sessionId=${encodeURIComponent(m.sessionId)}` : '';
+          window.location.href = `evaluation.html?id=${encodeURIComponent(doc.id)}${sid}`;
+        });
+      }
+      buttonContainer.appendChild(startButton);
+
+      // Montaje de la card
+      div.appendChild(img);
+      div.appendChild(title);
+      div.appendChild(buttonContainer);
+      evaluationsList.appendChild(div);
     }
+
+    if (evaluationsList.innerHTML === '') {
+      evaluationsList.innerHTML = '<p>No tienes evaluaciones asignadas.</p>';
+    }
+  } catch (error) {
+    console.error('Error cargando evaluaciones:', error);
+  }
 };
 
 
