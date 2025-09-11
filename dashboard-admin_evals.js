@@ -1101,9 +1101,13 @@ async function renderEvaluationStatsInto(container, sessionItem){
     });
   });
 
-  // --- CORRECCIÓN GLOBAL: partir TODO por la mitad ---
-  counts = counts.map(arr => arr.map(v => Math.round(v / 2)));  // barras por opción (todas las preguntas)
-  oknok.forEach(o => {                                           // dona correctas/incorrectas
+  // --- CORRECCIÓN GLOBAL: partir TODO por la mitad (in-place, compatible con const) ---
+  for (let i = 0; i < counts.length; i++) {
+    for (let j = 0; j < counts[i].length; j++) {
+      counts[i][j] = Math.round(counts[i][j] / 2);
+    }
+  }
+  oknok.forEach(o => {
     o.ok  = Math.round(o.ok  / 2);
     o.bad = Math.round(o.bad / 2);
   });
@@ -1516,6 +1520,7 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
 
