@@ -1100,6 +1100,13 @@ async function renderEvaluationStatsInto(container, sessionItem){
       }
     });
   });
+
+  // --- CORRECCIÓN GLOBAL: partir TODO por la mitad ---
+  counts = counts.map(arr => arr.map(v => Math.round(v / 2)));  // barras por opción (todas las preguntas)
+  oknok.forEach(o => {                                           // dona correctas/incorrectas
+    o.ok  = Math.round(o.ok  / 2);
+    o.bad = Math.round(o.bad / 2);
+  });
   
   // Render
   questions.forEach((q, idx)=>{
@@ -1509,6 +1516,7 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
 
