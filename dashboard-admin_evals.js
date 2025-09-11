@@ -1101,6 +1101,13 @@ async function renderEvaluationStatsInto(container, sessionItem){
     });
   });
 
+  // ⬇⬇⬇ Forzar mitad en correctas/incorrectas (arreglo rápido a duplicación) ⬇⬇⬇
+  oknok.forEach(o => {
+    o.ok  = Math.round(o.ok  / 2);   // o Math.floor si prefieres hacia abajo
+    o.bad = Math.round(o.bad / 2);
+  });
+  // ⬆⬆⬆
+
   // Render
   questions.forEach((q, idx)=>{
     const cleanTitle = String(q.text||'').replace(/^\s*\d+\s*[\.\)]\s*/,'');
@@ -1509,4 +1516,5 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
