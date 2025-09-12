@@ -250,16 +250,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     };
 
-    editProfileButton.addEventListener("click", () => {
+    if (editProfileButton) {
+      editProfileButton.addEventListener("click", () => {
         if (isEditing) {
-            saveChanges();
+          saveChanges();
         } else {
-            enableEditing();
+          enableEditing();
         }
-    });
+      });
+    }
 
-    // Cargar datos del usuario al iniciar
-    await loadUserData();
+    if (auth.currentUser) {
+      await loadUserData();
+    }
 });
 
 
