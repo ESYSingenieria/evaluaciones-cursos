@@ -155,33 +155,52 @@
   }
 
   // Reproduce una lección (HLS). Si tienes backend con URLs firmadas, cámbialo aquí.
-  async function playLesson(course, module, lesson, idx){
-    const title = lesson.title || `Lección ${idx.li+1}`;
-    els.lessonTitle.textContent = title;
-    els.lessonPath.textContent  = `${module.title || ('Módulo '+(idx.mi+1))} • ${title}`;
+  async function playLesson(lesson, course) {
+    // 1) Info en la UI
+    document.getElementById('lessonTitle').textContent = lesson.title || 'Lección';
+    document.getElementById('lessonPath').textContent  = `${course.title || 'Curso'} • ${lesson.module || ''}`;
 
-    // Si usas firma, descomenta y adapta:
-    // const signed = await fetch(`/api/play?key=${encodeURIComponent(lesson.key || '')}`).then(r=>r.json()).catch(()=>null);
-    // const src = signed?.url || lesson.hlsUrl || lesson.publicUrl;
-    const src = lesson.hlsUrl || lesson.publicUrl;
+    const video = document.getElementById('player');
+    const wm    = document.getElementById('wm');
 
-    if (!src){ console.warn('Lección sin URL'); return; }
-
-    const video = els.player;
-    try { video.pause(); } catch {}
+    // 2) Reset duro del <video>
+    if (window.hls) { try { window.hls.destroy(); } catch(e) {} window.hls = null; }
+    video.pause();
     video.removeAttribute('src');
+    video.load();
 
-    if (Hls.isSupported()){
-      if (HLS) { HLS.destroy(); }
-      HLS = new Hls({ maxBufferLength: 30 });
-      HLS.loadSource(src);
-      HLS.attachMedia(video);
-      HLS.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(()=>{}));
-    } else {
-      // Safari iOS/macOS reproduce HLS nativo
-      video.src = src;
-      video.play().catch(()=>{});
+    // 3) Cache-buster para evitar listas viejas del m3u8
+    const raw = lesson.hlsUrl || lesson.publicUrl || '';
+    const src = raw ? (raw + (raw.includes('?') ? '&' : '?') + 't=' + Date.now()) : '';
+
+    // 4) Marca de agua / overlay
+    wm.textContent = (window.__userEmail || '') + ' — ' + new Date().toLocaleString();
+
+    // 5) Reproducción
+    if (!src) {
+      console.warn('No hay URL HLS para la lección');
+      return;
     }
+
+    // Safari iOS/macOS: HLS nativo
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = src;
+      video.crossOrigin = 'anonymous';
+      video.load();
+      video.play().catch(()=>{});
+      return;
+    }
+
+    // Otros: hls.js
+    const hls = new Hls({ lowLatencyMode:false, backBufferLength: 90 });
+    window.hls = hls;
+    hls.on(Hls.Events.ERROR, (evt, data) => {
+      console.log('[hls.js error]', data.type, data.details, data);
+    });
+    hls.loadSource(src);
+    hls.attachMedia(video);
+    video.crossOrigin = 'anonymous';
+    video.play().catch(()=>{});
   }
 
   // 3) Cursos NO asincrónicos: solo manual + evaluación
