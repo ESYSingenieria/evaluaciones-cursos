@@ -252,11 +252,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (editProfileButton) {
       editProfileButton.addEventListener("click", () => {
-        if (isEditing) {
-          saveChanges();
-        } else {
-          enableEditing();
-        }
+        if (isEditing) { saveChanges(); } else { enableEditing(); }
       });
     }
 
