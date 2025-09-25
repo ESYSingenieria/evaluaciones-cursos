@@ -1107,31 +1107,51 @@ if (logoutButton) {
 }
 
 // === Dashboard Usuario ===
-// Generar certificado (con bloqueo por alumno/sesión + link clickeable)
+// Generar certificado (sin requerir índice compuesto; con bloqueo por alumno/sesión + link clickeable)
 const generateCertificateFromPDF = async (userName, evaluationID, score, approvalDate) => {
   try {
     console.log("Certificado solicitado para ID:", evaluationID);
 
-    // ---------- 0) BLOQUEO DURO: NO PERMITIR DESCARGA SI ESTÁ BLOQUEADA PARA ESTE ALUMNO ----------
+    // ---------- 0) USUARIO ----------
     const user = auth.currentUser;
     if (!user) throw new Error("Usuario no autenticado.");
 
-    // Tomar el último intento del alumno para esta evaluación (para obtener sessionId)
-    const respSnap = await db.collection('responses')
-      .where('userId', '==', user.uid)
-      .where('evaluationId', '==', evaluationID)
-      .orderBy('timestamp', 'desc')
-      .limit(1)
-      .get();
-
-    const lastResp   = !respSnap.empty ? respSnap.docs[0].data() : null;
-    const sessionId  = lastResp?.sessionId || null;
-
-    // Identificadores del alumno
-    const userDoc  = await db.collection('users').doc(user.uid).get();
+    const userDoc = await db.collection('users').doc(user.uid).get();
     if (!userDoc.exists) throw new Error("No se encontró el perfil del usuario.");
-    const { name: userNameDB, rut, company, customID } = userDoc.data();
+    const { name: userNameDB, rut, company, customID, assignedCoursesMeta } = userDoc.data() || {};
 
+    // ---------- 1) OBTENER sessionId SIN ÍNDICE COMPUESTO ----------
+    // 1.a) Primero, intenta por metadatos del usuario (más barato)
+    let sessionId = null;
+    if (assignedCoursesMeta && typeof assignedCoursesMeta === 'object') {
+      for (const k of Object.keys(assignedCoursesMeta)) {
+        const mm = assignedCoursesMeta[k];
+        if (mm && (mm.evaluationId === evaluationID || mm.courseKey === evaluationID)) {
+          sessionId = mm.sessionId || null;
+          break;
+        }
+      }
+    }
+
+    // 1.b) Si no está en meta, consulta 'responses' SIN orderBy/limit y elige el último en memoria
+    if (!sessionId) {
+      const snap = await db.collection('responses')
+        .where('userId', '==', user.uid)
+        .where('evaluationId', '==', evaluationID)
+        .get(); // <-- sin orderBy/limit => no requiere índice
+
+      let latest = null;
+      snap.forEach(d => {
+        const r = d.data();
+        const ts = r?.timestamp;
+        // Soporta Timestamp de Firestore o número/ISO
+        const ms = ts?.toMillis ? ts.toMillis() : (typeof ts === 'number' ? ts : (Date.parse(ts) || 0));
+        if (!latest || ms > (latest.ms || 0)) latest = { ...r, ms };
+      });
+      sessionId = latest?.sessionId || null;
+    }
+
+    // ---------- 2) BLOQUEO DURO POR ALUMNO/SESIÓN ----------
     if (sessionId) {
       const sSnap = await db.collection('inscripciones').doc(sessionId).get();
       if (sSnap.exists) {
@@ -1142,55 +1162,44 @@ const generateCertificateFromPDF = async (userName, evaluationID, score, approva
         );
         if (me?.certDownloadLocked === true) {
           alert("Descarga de certificado bloqueada por el instructor.");
-          return; // 🔒 bloqueo duro
+          return; // 🔒 bloqueo
         }
       }
     }
-    // ---------- FIN BLOQUEO DURO ----------
 
-    // ---------- 1) DATOS DE LA EVALUACIÓN ----------
+    // ---------- 3) DATOS DE LA EVALUACIÓN ----------
     const evaluationDoc = await db.collection('evaluations').doc(evaluationID).get();
     if (!evaluationDoc.exists) throw new Error("La evaluación no existe.");
 
-    const evaluationData       = evaluationDoc.data();
-    const evaluationName       = evaluationData.name;
-    const evaluationTime       = evaluationData.timeEvaluation;
-    const certificateTemplate  = evaluationData.certificateTemplate || "plantilla.pdf";
-    const evaluationIDNumber   = evaluationData.ID || "00";
+    const evaluationData      = evaluationDoc.data();
+    const evaluationName      = evaluationData.name;
+    const evaluationTime      = evaluationData.timeEvaluation;
+    const certificateTemplate = evaluationData.certificateTemplate || "plantilla.pdf";
+    const evaluationIDNumber  = evaluationData.ID || "00";
 
-    // ---------- 2) FECHA Y ID DE CERTIFICADO ----------
-    // Acepta Date o string ("dd-mm-yyyy" o "yyyy-mm-dd")
+    // ---------- 4) FECHA E ID DINÁMICO ----------
     const parseToDate = (d) => {
       if (d instanceof Date) return d;
       if (typeof d === "string") {
-        if (/^\d{2}-\d{2}-\d{4}$/.test(d)) { // dd-mm-yyyy
-          const [dd, mm, yyyy] = d.split("-").map(Number);
-          return new Date(yyyy, mm - 1, dd);
-        }
-        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) { // yyyy-mm-dd
-          const [yyyy, mm, dd] = d.split("-").map(Number);
-          return new Date(yyyy, mm - 1, dd);
-        }
+        if (/^\d{2}-\d{2}-\d{4}$/.test(d)) { const [dd, mm, yyyy] = d.split("-").map(Number); return new Date(yyyy, mm - 1, dd); }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) { const [yyyy, mm, dd] = d.split("-").map(Number); return new Date(yyyy, mm - 1, dd); }
       }
-      return new Date(); // fallback hoy
+      return new Date();
     };
     const pad2 = (n) => String(n).padStart(2, "0");
-    const toDDMMYYYY = (dateObj) =>
-      `${pad2(dateObj.getDate())}-${pad2(dateObj.getMonth() + 1)}-${dateObj.getFullYear()}`;
+    const toDDMMYYYY = (d) => `${pad2(d.getDate())}-${pad2(d.getMonth()+1)}-${d.getFullYear()}`;
 
     const apDate  = parseToDate(approvalDate);
     const dateStr = toDDMMYYYY(apDate);
     const year    = apDate.getFullYear();
 
-    // ID dinámico (mismo criterio que admin)
     const certificateID = `${evaluationIDNumber}${customID}${year}`;
 
-    // ---------- 3) CARGA/EDICIÓN DEL PDF ----------
+    // ---------- 5) CARGA/EDICIÓN DEL PDF ----------
     const tplBytes = await fetch(certificateTemplate).then(r => r.arrayBuffer());
     const pdfDoc   = await PDFLib.PDFDocument.load(tplBytes);
     pdfDoc.registerFontkit(fontkit);
 
-    // Fuentes
     const monoBytes   = await fetch("fonts/MonotypeCorsiva.ttf").then(r => r.arrayBuffer());
     const perpBytes   = await fetch("fonts/Perpetua.ttf").then(r => r.arrayBuffer());
     const perpItBytes = await fetch("fonts/PerpetuaItalic.ttf").then(r => r.arrayBuffer());
@@ -1199,13 +1208,12 @@ const generateCertificateFromPDF = async (userName, evaluationID, score, approva
     const perpetuaFont       = await pdfDoc.embedFont(perpBytes);
     const perpetuaItalicFont = await pdfDoc.embedFont(perpItBytes);
 
-    // Página y helpers
     const page = pdfDoc.getPages()[0];
     const { width, height } = page.getSize();
 
     const centerText = (txt, yPos, font, size) => {
-      const wTxt = font.widthOfTextAtSize(txt, size);
-      page.drawText(txt, { x: (width - wTxt) / 2, y: yPos, font, size, color: PDFLib.rgb(0, 0, 0) });
+      const wTxt = font.widthOfTextAtSize(txt || "", size);
+      page.drawText(txt || "", { x: (width - wTxt) / 2, y: yPos, font, size, color: PDFLib.rgb(0, 0, 0) });
     };
 
     const wrapText = (txt, font, size, maxW) => {
@@ -1225,20 +1233,16 @@ const generateCertificateFromPDF = async (userName, evaluationID, score, approva
       return lines;
     };
 
-    // ---------- 4) PINTAR CAMPOS ----------
-    centerText(`${userNameDB}`,              height - 295, monotypeFont,       35);
-    centerText(`RUT: ${rut || ""}`,          height - 340, perpetuaItalicFont, 19);
-    centerText(`Empresa: ${company || ""}`,  height - 360, perpetuaItalicFont, 19);
+    // Campos
+    centerText(`${userNameDB || ""}`,          height - 295, monotypeFont,       35);
+    centerText(`RUT: ${rut || ""}`,            height - 340, perpetuaItalicFont, 19);
+    centerText(`Empresa: ${company || ""}`,    height - 360, perpetuaItalicFont, 19);
 
     const maxW2 = width - 100;
     const lines = wrapText(evaluationName, monotypeFont, 34, maxW2);
     let y0 = height - 448;
-    for (const l of lines) {
-      centerText(l, y0, monotypeFont, 34);
-      y0 -= 40;
-    }
+    for (const l of lines) { centerText(l, y0, monotypeFont, 34); y0 -= 40; }
 
-    // NOTA: mismas posiciones que usas en admin (primera versión con link)
     page.drawText(`Fecha de Aprobación: ${dateStr}`, {
       x: 147, y: height - 534, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0)
     });
@@ -1249,69 +1253,40 @@ const generateCertificateFromPDF = async (userName, evaluationID, score, approva
       x: 184, y: height - 562, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0)
     });
 
-    // ---------- 5) ENLACE DE VERIFICACIÓN CLICKEABLE (una línea debajo del ID) ----------
+    // ---------- 6) ENLACE CLICKEABLE DE VERIFICACIÓN ----------
     const { PDFName, PDFArray, PDFNumber, PDFString } = PDFLib;
 
     const idX   = 144;
     const idY   = height - 562;
-    const vGap  = 14;           // igual que el salto vertical usado entre Duración e ID
+    const vGap  = 14;
     const linkX = idX;
-    const linkY = idY - vGap;   // justo debajo del ID
+    const linkY = idY - vGap;
 
     const verifyUrl = `https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${encodeURIComponent(certificateID)}`;
     const linkText  = `Verificar Autenticidad de Certificado`;
     const linkSize  = 12;
     const linkFont  = perpetuaFont;
 
-    // Texto del enlace (azul)
-    page.drawText(linkText, {
-      x: linkX, y: linkY, size: linkSize, font: linkFont, color: PDFLib.rgb(0, 0, 1)
-    });
+    page.drawText(linkText, { x: linkX, y: linkY, size: linkSize, font: linkFont, color: PDFLib.rgb(0, 0, 1) });
 
-    // Subrayado fino (opcional)
     const linkWidth = linkFont.widthOfTextAtSize(linkText, linkSize);
     page.drawLine({
-      start: { x: linkX, y: linkY - 1 },
-      end:   { x: linkX + linkWidth, y: linkY - 1 },
-      thickness: 0.5,
-      color: PDFLib.rgb(0, 0, 1)
+      start: { x: linkX, y: linkY - 1 }, end: { x: linkX + linkWidth, y: linkY - 1 },
+      thickness: 0.5, color: PDFLib.rgb(0, 0, 1)
     });
 
-    // Anotación PDF Link
-    const urlAction = pdfDoc.context.obj({
-      Type: PDFName.of('Action'),
-      S:    PDFName.of('URI'),
-      URI:  PDFString.of(verifyUrl)
-    });
-
-    const rectArr = pdfDoc.context.obj([
-      PDFNumber.of(linkX),
-      PDFNumber.of(linkY - 2),
-      PDFNumber.of(linkX + linkWidth),
-      PDFNumber.of(linkY + linkSize + 2)
-    ]);
-
-    const borderArr = pdfDoc.context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]);
+    const urlAction = pdfDoc.context.obj({ Type: PDFName.of('Action'), S: PDFName.of('URI'), URI: PDFString.of(verifyUrl) });
+    const rectArr   = pdfDoc.context.obj([ PDFNumber.of(linkX), PDFNumber.of(linkY - 2), PDFNumber.of(linkX + linkWidth), PDFNumber.of(linkY + linkSize + 2) ]);
+    const borderArr = pdfDoc.context.obj([ PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0) ]);
 
     const linkAnnotRef = pdfDoc.context.register(
-      pdfDoc.context.obj({
-        Type:    PDFName.of('Annot'),
-        Subtype: PDFName.of('Link'),
-        Rect:    rectArr,
-        Border:  borderArr,
-        A:       urlAction
-      })
+      pdfDoc.context.obj({ Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'), Rect: rectArr, Border: borderArr, A: urlAction })
     );
 
     let annots = page.node.lookup(PDFName.of('Annots'), PDFArray);
-    if (annots) {
-      annots.push(linkAnnotRef);
-    } else {
-      page.node.set(PDFName.of('Annots'), pdfDoc.context.obj([linkAnnotRef]));
-    }
-    // ---------- FIN ENLACE ----------
+    if (annots) annots.push(linkAnnotRef); else page.node.set(PDFName.of('Annots'), pdfDoc.context.obj([linkAnnotRef]));
 
-    // ---------- 6) DESCARGA ----------
+    // ---------- 7) DESCARGA ----------
     const pdfBytes = await pdfDoc.save();
     const blob     = new Blob([pdfBytes], { type: "application/pdf" });
     const a        = document.createElement("a");
