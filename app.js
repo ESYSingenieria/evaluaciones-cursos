@@ -508,178 +508,216 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Cargar respuestas en dashboard.html
 const loadResponses = async () => {
-    const responsesContainer = document.getElementById('responsesList');
-    responsesContainer.innerHTML = ""; // Limpia el contenedor
+  const responsesContainer = document.getElementById('responsesList');
+  responsesContainer.innerHTML = ""; // Limpia el contenedor
 
-    try {
-        const user = auth.currentUser;
-        if (!user) throw new Error("Usuario no autenticado.");
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Usuario no autenticado.");
 
-        // Obtener respuestas del usuario desde Firestore
-        const snapshot = await db.collection('responses')
+    // Perfil del usuario (lo reutilizamos varias veces)
+    const userDoc = await db.collection("users").doc(user.uid).get();
+    if (!userDoc.exists) {
+      responsesContainer.innerHTML = "<p>No se encontró tu perfil.</p>";
+      return;
+    }
+    const userData = userDoc.data() || {};
+    const myCID = userData.customID || "";
+    const myRUT = userData.rut || "";
+    const assignedCoursesMeta = userData.assignedCoursesMeta || {};
+
+    // Obtener respuestas del usuario
+    const snapshot = await db.collection('responses')
+      .where('userId', '==', user.uid)
+      .get();
+
+    if (snapshot.empty) {
+      responsesContainer.innerHTML = "<p>No tienes evaluaciones realizadas.</p>";
+      return;
+    }
+
+    // Map con el mejor resultado por evaluationId
+    const resultsMap = {};
+
+    for (const doc of snapshot.docs) {
+      const response = doc.data();
+      const result = await calculateResult(response.evaluationId, response.answers);
+
+      if (result) {
+        const evaluationId = response.evaluationId;
+        const sessionId    = response.sessionId || ""; // guarda el sessionId si viene
+
+        if (!resultsMap[evaluationId] || result.score > resultsMap[evaluationId].score) {
+          resultsMap[evaluationId] = {
+            score: result.score,
+            grade: result.grade,
+            timestamp: response.timestamp,
+            sessionId, // posible sesión del intento
+          };
+        }
+      }
+    }
+
+    // Mostrar los resultados con el puntaje más alto
+    for (const evaluationId in resultsMap) {
+      const evaluationDoc = await db.collection('evaluations').doc(evaluationId).get();
+      const evalData = evaluationDoc.exists ? evaluationDoc.data() : {};
+      const evaluationTitle = evalData.title || evalData.name || "Nombre no disponible";
+      const passingScore = (evalData.puntajeAprobacion ?? evalData.passingScore ?? 0);
+
+      const highestResult = resultsMap[evaluationId];
+
+      const div = document.createElement('div');
+      div.className = "result-item";
+      div.innerHTML = `
+        <h3>${evaluationTitle}</h3>
+        <p><strong>Puntaje:</strong> ${highestResult.score}</p>
+        <p><strong>Estado de Aprobación:</strong> ${highestResult.grade}</p>
+      `;
+
+      if (highestResult.score >= passingScore) {
+        const approvalDate = highestResult.timestamp
+          ? new Date(highestResult.timestamp.toDate()).toLocaleDateString()
+          : "Fecha no disponible";
+
+        // ---------- ¿ESTÁ BLOQUEADA LA DESCARGA PARA ESTE ALUMNO? ----------
+        // 1) Intento con el sessionId guardado al calcular el mejor resultado
+        let sessionId = highestResult.sessionId || null;
+
+        // 2) Si no hay sessionId, intenta resolverlo por metadatos del usuario
+        if (!sessionId && assignedCoursesMeta && typeof assignedCoursesMeta === 'object') {
+          for (const k of Object.keys(assignedCoursesMeta)) {
+            const mm = assignedCoursesMeta[k];
+            if (mm && (mm.evaluationId === evaluationId || mm.courseKey === evaluationId)) {
+              sessionId = mm.sessionId || null;
+              break;
+            }
+          }
+        }
+
+        // 3) Si aún no hay sessionId, busca en responses (sin índices compuestos)
+        if (!sessionId) {
+          const snap = await db.collection('responses')
             .where('userId', '==', user.uid)
+            .where('evaluationId', '==', evaluationId)
             .get();
 
-        if (snapshot.empty) {
-            responsesContainer.innerHTML = "<p>No tienes evaluaciones realizadas.</p>";
-            return;
+          let latest = null;
+          snap.forEach(d => {
+            const r = d.data();
+            const ts = r?.timestamp;
+            const ms = ts?.toMillis ? ts.toMillis() : (typeof ts === 'number' ? ts : (Date.parse(ts) || 0));
+            if (!latest || ms > (latest.ms || 0)) latest = { ...r, ms };
+          });
+          sessionId = latest?.sessionId || null;
         }
 
-        const resultsMap = {};
+        let certLocked = false;
+        if (sessionId) {
+          const sSnap = await db.collection("inscripciones").doc(sessionId).get();
+          if (sSnap.exists) {
+            const arr = Array.isArray(sSnap.data().inscriptions) ? sSnap.data().inscriptions : [];
+            const me  = arr.find(p =>
+              (myCID && p.customID === myCID) ||
+              (myRUT && p.rut === myRUT)
+            );
+            certLocked = me?.certDownloadLocked === true;
+          }
+        }
+        // ---------- FIN chequeo bloqueo ----------
 
-        for (const doc of snapshot.docs) {
-            const response = doc.data();
-            const result = await calculateResult(response.evaluationId, response.answers);
+        // Contenedor de botones
+        const buttonContainer = document.createElement("div");
+        buttonContainer.className = "button-container";
 
-            if (result) {
-                const evaluationId = response.evaluationId;
-                const sessionId    = response.sessionId || ""; // ⬅️ agrega esto
-
-                // Si no existe una entrada para este evaluationId o el puntaje es mayor, actualizamos
-                if (!resultsMap[evaluationId] || result.score > resultsMap[evaluationId].score) {
-                    resultsMap[evaluationId] = {
-                        score: result.score,
-                        grade: result.grade,
-                        timestamp: response.timestamp,
-                        sessionId,                          // ⬅️ guarda la sesión del intento
-                    };
-                }
-            }
+        // Crear botón de descarga SOLO si NO está bloqueado
+        if (!certLocked) {
+          const downloadButton = document.createElement("button");
+          downloadButton.textContent = "Descargar Certificado";
+          downloadButton.className = "download-button";
+          downloadButton.addEventListener("click", () => {
+            console.log("Intentando generar certificado para:", evaluationId);
+            generateCertificateFromPDF(
+              auth.currentUser.email,
+              evaluationId,
+              highestResult.score,
+              approvalDate
+            );
+          });
+          buttonContainer.appendChild(downloadButton);
         }
 
-        // Mostrar los resultados con el puntaje más alto
-        for (const evaluationId in resultsMap) {
-            const evaluationDoc = await db.collection('evaluations').doc(evaluationId).get();
-            const evaluationTitle = evaluationDoc.exists ? evaluationDoc.data().title : "Nombre no disponible";
-            const passingScore = evaluationDoc.data().puntajeAprobacion;
-
-            const highestResult = resultsMap[evaluationId];
-            const div = document.createElement('div');
-            div.className = "result-item";
-            div.innerHTML = `
-                <h3>${evaluationTitle}</h3>
-                <p><strong>Puntaje:</strong> ${highestResult.score}</p>
-                <p><strong>Estado de Aprobación:</strong> ${highestResult.grade}</p>
-            `;
-
-            if (highestResult.score >= passingScore) {
-                const approvalDate = highestResult.timestamp 
-                    ? new Date(highestResult.timestamp.toDate()).toLocaleDateString()
-                    : "Fecha no disponible";
-
-                // Crear contenedor para los botones
-                const buttonContainer = document.createElement("div");
-                buttonContainer.className = "button-container"; // Clase del CSS para diseño
-
-                // === CONSULTA BLOQUEO POR ALUMNO/SESIÓN (justo antes de crear el downloadButton) ===
-                let certLocked = false;
-
-                // 1) Tomar el sessionId que guardaste en resultsMap
-                const sessionId = highestResult.sessionId || "";
-
-                // 2) Cargar identificadores del alumno (customID / rut) para buscarlo en la sesión
-                const userDoc = await db.collection("users").doc(auth.currentUser.uid).get();
-                const myCID = userDoc.exists ? (userDoc.data().customID || "") : "";  // ya usas customID arriba para LinkedIn
-                const myRUT = userDoc.exists ? (userDoc.data().rut || "") : "";       // idem
-
-                // 3) Si hay sesión, leer el doc de esa sesión y buscar a este alumno
-                if (sessionId) {
-                  const sSnap = await db.collection("inscripciones").doc(sessionId).get();
-                  if (sSnap.exists) {
-                    const arr = Array.isArray(sSnap.data().inscriptions) ? sSnap.data().inscriptions : [];
-                    const me  = arr.find(p => (myCID && p.customID === myCID) || (myRUT && p.rut === myRUT));
-                    certLocked = me?.certDownloadLocked === true;  // ← si true, está bloqueado
-                  }
-                }
-
-                // 5) SOLO crear el botón de descarga si NO está bloqueado
-                if (!certLocked) {
-                  const downloadButton = document.createElement("button");
-                  downloadButton.textContent = "Descargar Certificado";
-                  downloadButton.className = "download-button";
-                  downloadButton.addEventListener("click", () => {
-                    console.log("Intentando generar certificado para:", evaluationId);
-                    generateCertificateFromPDF(auth.currentUser.email, evaluationId, highestResult.score, approvalDate);
-                  });
-                  buttonContainer.appendChild(downloadButton);
-                }
-
-                // Botón de añadir a LinkedIn
-                const linkedInButton = document.createElement("button");
-                linkedInButton.textContent = "Añadir a LinkedIn";
-                linkedInButton.className = "linkedin-button"; // Clase CSS para diseño
-                linkedInButton.addEventListener("click", async () => {
-                    try {
-                        const userDoc = await db.collection("users").doc(auth.currentUser.uid).get();
-                        const customID = userDoc.exists ? userDoc.data().customID : "defaultID";
-
-                        const evaluationDoc = await db.collection("evaluations").doc(evaluationId).get();
-                        const evaluationData = evaluationDoc.exists ? evaluationDoc.data() : null;
-
-                        if (!evaluationData) {
-                            alert("No se pudo encontrar la evaluación asociada.");
-                            return;
-                        }
-
-                        const year = new Date(highestResult.timestamp.toDate()).getFullYear();
-                        const certificateID = `${evaluationData.ID}${customID}${year}`;
-
-                        // Buscar el certificado por su ID
-                        const certificateDoc = await db.collection("certificates").doc(certificateID).get();
-                        if (!certificateDoc.exists) {
-                            alert("Certificado no encontrado.");
-                            return;
-                        }
-
-                        const certificateData = certificateDoc.data();
-
-                        // Obtener fechas de expedición y caducidad
-                        const issuedDate = new Date(certificateData.issuedDate); // Fecha de expedición
-                        // **Nueva lógica**: calcular fecha de expiración solo si `lastDate` existe
-                        let expirationDate = null;
-                        if (evaluationData.lastDate !== undefined && evaluationData.lastDate !== null) {
-                            expirationDate = new Date(issuedDate);
-                            expirationDate.setMonth(expirationDate.getMonth() + evaluationData.lastDate);
-                        }
-
-        // Construir URL de LinkedIn con formato correcto
-        let linkedInUrl = "https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME" +
-                          `&name=${encodeURIComponent(certificateData.courseName)}` +
-                          `&organizationId=66227493` +  // ID de la empresa (ESYS) en LinkedIn
-                          `&issueYear=${issuedDate.getFullYear()}` +
-                          `&issueMonth=${issuedDate.getMonth() + 1}`;
-        
-        // Si hay fecha de expiración calculada, incluirla en la URL
-        if (expirationDate) {
-            linkedInUrl += `&expirationYear=${expirationDate.getFullYear()}` +
-                           `&expirationMonth=${expirationDate.getMonth() + 1}`;
-        }
-        
-        // Continuar construyendo la URL con el enlace de verificación y el ID
-        linkedInUrl += `&certUrl=${encodeURIComponent(`https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${certificateID}`)}` +
-                       `&certId=${encodeURIComponent(certificateID)}`;
-
-        // Redirigir a LinkedIn con el enlace generado
-        window.open(linkedInUrl, "_blank");
-                        
-                    } catch (error) {
-                        console.error("Error al añadir a LinkedIn:", error);
-                        alert("Hubo un problema al intentar añadir el certificado a LinkedIn.");
-                    }
-                });
-
-                // Añadir botones al contenedor
-                buttonContainer.appendChild(linkedInButton);
-                div.appendChild(buttonContainer);
+        // Botón de añadir a LinkedIn (siempre visible)
+        const linkedInButton = document.createElement("button");
+        linkedInButton.textContent = "Añadir a LinkedIn";
+        linkedInButton.className = "linkedin-button";
+        linkedInButton.addEventListener("click", async () => {
+          try {
+            // Usamos datos ya leídos: myCID y highestResult.timestamp
+            const evaluationDoc2 = await db.collection("evaluations").doc(evaluationId).get();
+            const evaluationData = evaluationDoc2.exists ? evaluationDoc2.data() : null;
+            if (!evaluationData) {
+              alert("No se pudo encontrar la evaluación asociada.");
+              return;
             }
 
-            responsesContainer.appendChild(div);
-        }
+            const year = highestResult.timestamp
+              ? new Date(highestResult.timestamp.toDate()).getFullYear()
+              : new Date().getFullYear();
 
-    } catch (error) {
-        console.error("Error cargando respuestas:", error);
-        responsesContainer.innerHTML = "<p>Hubo un problema al cargar tus resultados.</p>";
+            const certificateID = `${evaluationData.ID}${myCID}${year}`;
+
+            // Buscar el certificado por su ID
+            const certificateDoc = await db.collection("certificates").doc(certificateID).get();
+            if (!certificateDoc.exists) {
+              alert("Certificado no encontrado.");
+              return;
+            }
+            const certificateData = certificateDoc.data();
+
+            // Fechas
+            const issuedDate = new Date(certificateData.issuedDate);
+            let expirationDate = null;
+            if (evaluationData.lastDate !== undefined && evaluationData.lastDate !== null) {
+              expirationDate = new Date(issuedDate);
+              expirationDate.setMonth(expirationDate.getMonth() + evaluationData.lastDate);
+            }
+
+            // URL LinkedIn
+            let linkedInUrl = "https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME" +
+                              `&name=${encodeURIComponent(certificateData.courseName)}` +
+                              `&organizationId=66227493` +
+                              `&issueYear=${issuedDate.getFullYear()}` +
+                              `&issueMonth=${issuedDate.getMonth() + 1}`;
+
+            if (expirationDate) {
+              linkedInUrl += `&expirationYear=${expirationDate.getFullYear()}` +
+                             `&expirationMonth=${expirationDate.getMonth() + 1}`;
+            }
+
+            linkedInUrl += `&certUrl=${encodeURIComponent(
+                              `https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${certificateID}`
+                            )}` +
+                           `&certId=${encodeURIComponent(certificateID)}`;
+
+            window.open(linkedInUrl, "_blank");
+          } catch (error) {
+            console.error("Error al añadir a LinkedIn:", error);
+            alert("Hubo un problema al intentar añadir el certificado a LinkedIn.");
+          }
+        });
+
+        buttonContainer.appendChild(linkedInButton);
+        div.appendChild(buttonContainer);
+      }
+
+      responsesContainer.appendChild(div);
     }
+
+  } catch (error) {
+    console.error("Error cargando respuestas:", error);
+    responsesContainer.innerHTML = "<p>Hubo un problema al cargar tus resultados.</p>";
+  }
 };
 
 
@@ -1000,7 +1038,59 @@ const calculateResult = async (evaluationId, userAnswers) => {
 
 
 
+// ¿La descarga está bloqueada para ESTE alumno en ESTA evaluación?
+async function isCertDownloadLockedForCurrentUser(evaluationId) {
+  const user = auth.currentUser;
+  if (!user) return false;
 
+  const uDoc = await db.collection('users').doc(user.uid).get();
+  if (!uDoc.exists) return false;
+
+  const { customID, rut, assignedCoursesMeta } = uDoc.data() || {};
+
+  // 1) Intento rápido por metadatos del usuario
+  let sessionId = null;
+  if (assignedCoursesMeta && typeof assignedCoursesMeta === 'object') {
+    for (const k of Object.keys(assignedCoursesMeta)) {
+      const mm = assignedCoursesMeta[k];
+      if (mm && (mm.evaluationId === evaluationId || mm.courseKey === evaluationId)) {
+        sessionId = mm.sessionId || null;
+        break;
+      }
+    }
+  }
+
+  // 2) Si no hay sessionId en meta, busca responses SIN orderBy/limit (evita índice)
+  if (!sessionId) {
+    const snap = await db.collection('responses')
+      .where('userId', '==', user.uid)
+      .where('evaluationId', '==', evaluationId)
+      .get();
+
+    let latest = null;
+    snap.forEach(d => {
+      const r = d.data();
+      const ts = r?.timestamp;
+      const ms = ts?.toMillis ? ts.toMillis() : (typeof ts === 'number' ? ts : (Date.parse(ts) || 0));
+      if (!latest || ms > (latest.ms || 0)) latest = { ...r, ms };
+    });
+    sessionId = latest?.sessionId || null;
+  }
+
+  if (!sessionId) return false;
+
+  // 3) Leer la sesión e identificar al alumno
+  const sSnap = await db.collection('inscripciones').doc(sessionId).get();
+  if (!sSnap.exists) return false;
+
+  const arr = Array.isArray(sSnap.data().inscriptions) ? sSnap.data().inscriptions : [];
+  const me  = arr.find(p =>
+    (customID && p.customID === customID) ||
+    (rut && p.rut === rut)
+  );
+
+  return me?.certDownloadLocked === true;
+}
 
 async function calculateAndHandleResult(userId, evaluationId, answers) {
     try {
