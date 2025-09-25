@@ -1368,7 +1368,6 @@ function loadAllUsers() {
         ctrl.appendChild(tools);
 
         // Lee estado inicial desde la sesión (ya tienes readParticipantState)
-        const { participant } = await readParticipantState(m.sessionId, u);
         let certLocked = participant?.certDownloadLocked === true; // default: desbloqueada si no existe
 
         // Botón bloquear/Desbloquear descarga de certificado
@@ -1902,6 +1901,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
