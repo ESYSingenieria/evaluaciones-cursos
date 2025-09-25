@@ -533,6 +533,7 @@ const loadResponses = async () => {
 
             if (result) {
                 const evaluationId = response.evaluationId;
+                const sessionId    = response.sessionId || ""; // ⬅️ agrega esto
 
                 // Si no existe una entrada para este evaluationId o el puntaje es mayor, actualizamos
                 if (!resultsMap[evaluationId] || result.score > resultsMap[evaluationId].score) {
@@ -540,6 +541,7 @@ const loadResponses = async () => {
                         score: result.score,
                         grade: result.grade,
                         timestamp: response.timestamp,
+                        sessionId,                          // ⬅️ guarda la sesión del intento
                     };
                 }
             }
@@ -569,14 +571,42 @@ const loadResponses = async () => {
                 const buttonContainer = document.createElement("div");
                 buttonContainer.className = "button-container"; // Clase del CSS para diseño
 
-                // Botón para descargar el certificado
-                const downloadButton = document.createElement("button");
-                downloadButton.textContent = "Descargar Certificado";
-                downloadButton.className = "download-button"; // Clase CSS para diseño
-                downloadButton.addEventListener("click", () => {
+                // === CONSULTA BLOQUEO POR ALUMNO/SESIÓN (justo antes de crear el downloadButton) ===
+                let certLocked = false;
+
+                // 1) Tomar el sessionId que guardaste en resultsMap
+                const sessionId = highestResult.sessionId || "";
+
+                // 2) Cargar identificadores del alumno (customID / rut) para buscarlo en la sesión
+                const userDoc = await db.collection("users").doc(auth.currentUser.uid).get();
+                const myCID = userDoc.exists ? (userDoc.data().customID || "") : "";  // ya usas customID arriba para LinkedIn
+                const myRUT = userDoc.exists ? (userDoc.data().rut || "") : "";       // idem
+
+                // 3) Si hay sesión, leer el doc de esa sesión y buscar a este alumno
+                if (sessionId) {
+                  const sSnap = await db.collection("inscripciones").doc(sessionId).get();
+                  if (sSnap.exists) {
+                    const arr = Array.isArray(sSnap.data().inscriptions) ? sSnap.data().inscriptions : [];
+                    const me  = arr.find(p => (myCID && p.customID === myCID) || (myRUT && p.rut === myRUT));
+                    certLocked = me?.certDownloadLocked === true;  // ← si true, está bloqueado
+                  }
+                }
+
+                // 4) Crear contenedor de botones (como ya haces)
+                const buttonContainer = document.createElement("div");
+                buttonContainer.className = "button-container";
+
+                // 5) SOLO crear el botón de descarga si NO está bloqueado
+                if (!certLocked) {
+                  const downloadButton = document.createElement("button");
+                  downloadButton.textContent = "Descargar Certificado";
+                  downloadButton.className = "download-button";
+                  downloadButton.addEventListener("click", () => {
                     console.log("Intentando generar certificado para:", evaluationId);
                     generateCertificateFromPDF(auth.currentUser.email, evaluationId, highestResult.score, approvalDate);
-                });
+                  });
+                  buttonContainer.appendChild(downloadButton);
+                }
 
                 // Botón de añadir a LinkedIn
                 const linkedInButton = document.createElement("button");
