@@ -1111,140 +1111,223 @@ if (logoutButton) {
     logoutButton.addEventListener('click', logoutUser);
 }
 
+// === Dashboard Usuario ===
+// Generar certificado (con bloqueo por alumno/sesión + link clickeable)
 const generateCertificateFromPDF = async (userName, evaluationID, score, approvalDate) => {
-    try {
-        console.log("Certificado solicitado para ID:", evaluationID); // Verificar el ID recibido
+  try {
+    console.log("Certificado solicitado para ID:", evaluationID);
 
-        const userData = await loadUserData();
-        if (!userData) throw new Error("Datos del usuario no disponibles.");
+    // ---------- 0) BLOQUEO DURO: NO PERMITIR DESCARGA SI ESTÁ BLOQUEADA PARA ESTE ALUMNO ----------
+    const user = auth.currentUser;
+    if (!user) throw new Error("Usuario no autenticado.");
 
-        const { name: userNameDB, rut, company, customID } = userData;
+    // Tomar el último intento del alumno para esta evaluación (para obtener sessionId)
+    const respSnap = await db.collection('responses')
+      .where('userId', '==', user.uid)
+      .where('evaluationId', '==', evaluationID)
+      .orderBy('timestamp', 'desc')
+      .limit(1)
+      .get();
 
-        // Obtener el nombre de la evaluación, plantilla y campo ID desde Firestore
-        const evaluationDoc = await db.collection('evaluations').doc(evaluationID).get();
-        if (!evaluationDoc.exists) throw new Error("La evaluación no existe.");
-        
-        const evaluationData = evaluationDoc.data();
-        const evaluationName = evaluationData.name;
-        const evaluationTime = evaluationData.timeEvaluation;
-        const certificateTemplate = evaluationData.certificateTemplate || "plantilla.pdf"; // Plantilla por defecto
-        const evaluationIDNumber = evaluationData.ID || "00"; // Campo 'ID' específico de la evaluación
+    const lastResp   = !respSnap.empty ? respSnap.docs[0].data() : null;
+    const sessionId  = lastResp?.sessionId || null;
 
-        console.log("Evaluación encontrada:", evaluationName);
-        console.log("Plantilla utilizada:", certificateTemplate);
+    // Identificadores del alumno
+    const userDoc  = await db.collection('users').doc(user.uid).get();
+    if (!userDoc.exists) throw new Error("No se encontró el perfil del usuario.");
+    const { name: userNameDB, rut, company, customID } = userDoc.data();
 
-        // Convertir approvalDate a un formato válido y extraer el año
-        const convertDateToValidFormat = (dateString) => {
-            const [day, month, year] = dateString.split('-');
-            return `${year}-${month}-${day}`;
-        };
-
-        let year;
-        if (approvalDate) {
-            const validDate = convertDateToValidFormat(approvalDate);
-            year = new Date(validDate).getFullYear();
-        } else {
-            year = new Date().getFullYear(); // Año actual como respaldo
+    if (sessionId) {
+      const sSnap = await db.collection('inscripciones').doc(sessionId).get();
+      if (sSnap.exists) {
+        const arr = Array.isArray(sSnap.data().inscriptions) ? sSnap.data().inscriptions : [];
+        const me  = arr.find(p =>
+          (customID && p.customID === customID) ||
+          (rut && p.rut === rut)
+        );
+        if (me?.certDownloadLocked === true) {
+          alert("Descarga de certificado bloqueada por el instructor.");
+          return; // 🔒 bloqueo duro
         }
-
-        console.log("Año de Aprobación:", year);
-
-        // Generar el ID del certificado dinámico
-        const certificateID = `${evaluationIDNumber}${customID}${year}`;
-        console.log("ID del Certificado:", certificateID);
-
-        // Cargar el PDF base (plantilla específica o por defecto)
-        const existingPdfBytes = await fetch(certificateTemplate).then(res => res.arrayBuffer());
-        const pdfDoc = await PDFLib.PDFDocument.load(existingPdfBytes);
-        const pages = pdfDoc.getPages();
-        const firstPage = pages[0];
-
-        // Dimensiones de la página
-        const { width, height } = firstPage.getSize();
-
-        // Registrar fontkit
-        pdfDoc.registerFontkit(fontkit);
-
-        // Cargar fuentes personalizadas
-        const monotypeFontBytes = await fetch("fonts/MonotypeCorsiva.ttf").then(res => res.arrayBuffer());
-        const perpetuaFontBytes = await fetch("fonts/Perpetua.ttf").then(res => res.arrayBuffer());
-        const perpetuaItalicFontBytes = await fetch("fonts/PerpetuaItalic.ttf").then(res => res.arrayBuffer());
-
-        const monotypeFont = await pdfDoc.embedFont(monotypeFontBytes);
-        const perpetuaFont = await pdfDoc.embedFont(perpetuaFontBytes);
-        const perpetuaItalicFont = await pdfDoc.embedFont(perpetuaItalicFontBytes);
-
-        // Función para centrar texto
-        const centerText = (text, y, font, size) => {
-            const textWidth = font.widthOfTextAtSize(text, size);
-            const x = (width - textWidth) / 2;
-            firstPage.drawText(text, { x, y, size, font, color: PDFLib.rgb(0, 0, 0) });
-        };
-
-        // Función para ajustar texto a líneas
-        const maxWidth2 = width - 100; // Márgenes de 50 px a cada lado
-        const wrapText = (text, font, fontSize, maxWidth) => {
-            const words = text.split(' ');
-            const lines = [];
-            let currentLine = '';
-        
-            words.forEach(word => {
-                const testLine = currentLine ? `${currentLine} ${word}` : word;
-                const textWidth = font.widthOfTextAtSize(testLine, fontSize);
-        
-                if (textWidth <= maxWidth) {
-                    currentLine = testLine;
-                } else {
-                    lines.push(currentLine);
-                    currentLine = word;
-                }
-            });
-        
-            if (currentLine) lines.push(currentLine);
-            return lines;
-        };
-
-        // Texto centrado
-        centerText(`${userNameDB}`, height - 295, monotypeFont, 35);
-        centerText(`RUT: ${rut}`, height - 340, perpetuaItalicFont, 19);
-        centerText(`Empresa: ${company}`, height - 360, perpetuaItalicFont, 19);
-
-        // Texto centrado con ajuste de líneas
-        const lines = wrapText(evaluationName, monotypeFont, 34, maxWidth2);
-        let yPosition = height - 448;
-
-        lines.forEach(line => {
-            centerText(line, yPosition, monotypeFont, 34);
-            yPosition -= 40;
-        });
-
-        // Texto posicionado manualmente
-        firstPage.drawText(`Fecha de Aprobación: ${approvalDate}`, {
-            x: 147, y: height - 548, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
-        });
-
-        firstPage.drawText(`Duración del Curso: ${evaluationTime}`, {
-            x: 157, y: height - 562, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
-        });
-
-        // Texto ID dinámico del certificado
-        firstPage.drawText(`ID: ${certificateID}`, {
-            x: 184, y: height - 576, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
-        });
-
-        // Exportar el PDF modificado
-        const pdfBytes = await pdfDoc.save();
-        const blob = new Blob([pdfBytes], { type: "application/pdf" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = `Certificado_${evaluationName}.pdf`;
-        link.click();
-        console.log("Certificado generado con éxito:", evaluationName);
-
-    } catch (error) {
-        console.error("Error al generar el certificado:", error);
-        alert("Hubo un problema al generar el certificado. Por favor, inténtalo nuevamente.");
+      }
     }
+    // ---------- FIN BLOQUEO DURO ----------
+
+    // ---------- 1) DATOS DE LA EVALUACIÓN ----------
+    const evaluationDoc = await db.collection('evaluations').doc(evaluationID).get();
+    if (!evaluationDoc.exists) throw new Error("La evaluación no existe.");
+
+    const evaluationData       = evaluationDoc.data();
+    const evaluationName       = evaluationData.name;
+    const evaluationTime       = evaluationData.timeEvaluation;
+    const certificateTemplate  = evaluationData.certificateTemplate || "plantilla.pdf";
+    const evaluationIDNumber   = evaluationData.ID || "00";
+
+    // ---------- 2) FECHA Y ID DE CERTIFICADO ----------
+    // Acepta Date o string ("dd-mm-yyyy" o "yyyy-mm-dd")
+    const parseToDate = (d) => {
+      if (d instanceof Date) return d;
+      if (typeof d === "string") {
+        if (/^\d{2}-\d{2}-\d{4}$/.test(d)) { // dd-mm-yyyy
+          const [dd, mm, yyyy] = d.split("-").map(Number);
+          return new Date(yyyy, mm - 1, dd);
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) { // yyyy-mm-dd
+          const [yyyy, mm, dd] = d.split("-").map(Number);
+          return new Date(yyyy, mm - 1, dd);
+        }
+      }
+      return new Date(); // fallback hoy
+    };
+    const pad2 = (n) => String(n).padStart(2, "0");
+    const toDDMMYYYY = (dateObj) =>
+      `${pad2(dateObj.getDate())}-${pad2(dateObj.getMonth() + 1)}-${dateObj.getFullYear()}`;
+
+    const apDate  = parseToDate(approvalDate);
+    const dateStr = toDDMMYYYY(apDate);
+    const year    = apDate.getFullYear();
+
+    // ID dinámico (mismo criterio que admin)
+    const certificateID = `${evaluationIDNumber}${customID}${year}`;
+
+    // ---------- 3) CARGA/EDICIÓN DEL PDF ----------
+    const tplBytes = await fetch(certificateTemplate).then(r => r.arrayBuffer());
+    const pdfDoc   = await PDFLib.PDFDocument.load(tplBytes);
+    pdfDoc.registerFontkit(fontkit);
+
+    // Fuentes
+    const monoBytes   = await fetch("fonts/MonotypeCorsiva.ttf").then(r => r.arrayBuffer());
+    const perpBytes   = await fetch("fonts/Perpetua.ttf").then(r => r.arrayBuffer());
+    const perpItBytes = await fetch("fonts/PerpetuaItalic.ttf").then(r => r.arrayBuffer());
+
+    const monotypeFont       = await pdfDoc.embedFont(monoBytes);
+    const perpetuaFont       = await pdfDoc.embedFont(perpBytes);
+    const perpetuaItalicFont = await pdfDoc.embedFont(perpItBytes);
+
+    // Página y helpers
+    const page = pdfDoc.getPages()[0];
+    const { width, height } = page.getSize();
+
+    const centerText = (txt, yPos, font, size) => {
+      const wTxt = font.widthOfTextAtSize(txt, size);
+      page.drawText(txt, { x: (width - wTxt) / 2, y: yPos, font, size, color: PDFLib.rgb(0, 0, 0) });
+    };
+
+    const wrapText = (txt, font, size, maxW) => {
+      const words = (txt || "").split(" ");
+      const lines = [];
+      let line = "";
+      for (const w of words) {
+        const test = line ? line + " " + w : w;
+        if (font.widthOfTextAtSize(test, size) <= maxW) {
+          line = test;
+        } else {
+          if (line) lines.push(line);
+          line = w;
+        }
+      }
+      if (line) lines.push(line);
+      return lines;
+    };
+
+    // ---------- 4) PINTAR CAMPOS ----------
+    centerText(`${userNameDB}`,              height - 295, monotypeFont,       35);
+    centerText(`RUT: ${rut || ""}`,          height - 340, perpetuaItalicFont, 19);
+    centerText(`Empresa: ${company || ""}`,  height - 360, perpetuaItalicFont, 19);
+
+    const maxW2 = width - 100;
+    const lines = wrapText(evaluationName, monotypeFont, 34, maxW2);
+    let y0 = height - 448;
+    for (const l of lines) {
+      centerText(l, y0, monotypeFont, 34);
+      y0 -= 40;
+    }
+
+    // NOTA: mismas posiciones que usas en admin (primera versión con link)
+    page.drawText(`Fecha de Aprobación: ${dateStr}`, {
+      x: 147, y: height - 534, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0)
+    });
+    page.drawText(`Duración del Curso: ${evaluationTime || ""}`, {
+      x: 157, y: height - 548, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0)
+    });
+    page.drawText(`ID: ${certificateID}`, {
+      x: 184, y: height - 562, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0)
+    });
+
+    // ---------- 5) ENLACE DE VERIFICACIÓN CLICKEABLE (una línea debajo del ID) ----------
+    const { PDFName, PDFArray, PDFNumber, PDFString } = PDFLib;
+
+    const idX   = 144;
+    const idY   = height - 562;
+    const vGap  = 14;           // igual que el salto vertical usado entre Duración e ID
+    const linkX = idX;
+    const linkY = idY - vGap;   // justo debajo del ID
+
+    const verifyUrl = `https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${encodeURIComponent(certificateID)}`;
+    const linkText  = `Verificar Autenticidad de Certificado`;
+    const linkSize  = 12;
+    const linkFont  = perpetuaFont;
+
+    // Texto del enlace (azul)
+    page.drawText(linkText, {
+      x: linkX, y: linkY, size: linkSize, font: linkFont, color: PDFLib.rgb(0, 0, 1)
+    });
+
+    // Subrayado fino (opcional)
+    const linkWidth = linkFont.widthOfTextAtSize(linkText, linkSize);
+    page.drawLine({
+      start: { x: linkX, y: linkY - 1 },
+      end:   { x: linkX + linkWidth, y: linkY - 1 },
+      thickness: 0.5,
+      color: PDFLib.rgb(0, 0, 1)
+    });
+
+    // Anotación PDF Link
+    const urlAction = pdfDoc.context.obj({
+      Type: PDFName.of('Action'),
+      S:    PDFName.of('URI'),
+      URI:  PDFString.of(verifyUrl)
+    });
+
+    const rectArr = pdfDoc.context.obj([
+      PDFNumber.of(linkX),
+      PDFNumber.of(linkY - 2),
+      PDFNumber.of(linkX + linkWidth),
+      PDFNumber.of(linkY + linkSize + 2)
+    ]);
+
+    const borderArr = pdfDoc.context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]);
+
+    const linkAnnotRef = pdfDoc.context.register(
+      pdfDoc.context.obj({
+        Type:    PDFName.of('Annot'),
+        Subtype: PDFName.of('Link'),
+        Rect:    rectArr,
+        Border:  borderArr,
+        A:       urlAction
+      })
+    );
+
+    let annots = page.node.lookup(PDFName.of('Annots'), PDFArray);
+    if (annots) {
+      annots.push(linkAnnotRef);
+    } else {
+      page.node.set(PDFName.of('Annots'), pdfDoc.context.obj([linkAnnotRef]));
+    }
+    // ---------- FIN ENLACE ----------
+
+    // ---------- 6) DESCARGA ----------
+    const pdfBytes = await pdfDoc.save();
+    const blob     = new Blob([pdfBytes], { type: "application/pdf" });
+    const a        = document.createElement("a");
+    a.href         = URL.createObjectURL(blob);
+    a.download     = `Certificado ${evaluationName} - ${userNameDB}.pdf`;
+    a.click();
+
+  } catch (error) {
+    console.error("Error generando certificado (usuario):", error);
+    alert("No se pudo generar el certificado. Revisa la consola.");
+  }
 };
 
 const loadUserData = async () => {
