@@ -1367,6 +1367,28 @@ function loadAllUsers() {
         tools.appendChild(lockInfo);
         ctrl.appendChild(tools);
 
+        // Lee estado inicial desde la sesión (ya tienes readParticipantState)
+        const { participant } = await readParticipantState(m.sessionId, u);
+        let certLocked = participant?.certDownloadLocked === true; // default: desbloqueada si no existe
+
+        // Botón bloquear/Desbloquear descarga de certificado
+        const certBtn = document.createElement("button");
+        certBtn.className = "btn-lock";
+        certBtn.style.background = "#6f42c1";
+        certBtn.style.color = "#fff";
+        certBtn.style.border = "none";
+        certBtn.style.borderRadius = "6px";
+        certBtn.style.padding = "6px 10px";
+        certBtn.textContent = certLocked ? "Desbloquear Descarga de Certificado" : "Bloquear Descarga de Certificado";
+        certBtn.addEventListener("click", async () => {
+          certLocked = !certLocked;
+          await setParticipantCertDownloadLocked(m.sessionId, u, certLocked);
+          certBtn.textContent = certLocked ? "Desbloquear Descarga de Certificado" : "Bloquear Descarga de Certificado";
+        });
+
+        // Inserta al lado del botón “Bloquear evaluación”
+        tools.appendChild(certBtn);
+
         evalDiv.appendChild(ctrl);
       })();
       
@@ -1820,6 +1842,23 @@ async function readParticipantState(sessionId, user) {
   return { participant, data };
 }
 
+async function setParticipantCertDownloadLocked(sessionId, user, locked) {
+  const ref = db.collection("inscripciones").doc(sessionId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const data = snap.data() || {};
+    const arr = Array.isArray(data.inscriptions) ? [...data.inscriptions] : [];
+    const idx = arr.findIndex(p =>
+      (user.customID && p.customID === user.customID) ||
+      (user.rut && p.rut === user.rut)
+    );
+    if (idx < 0) return;
+    arr[idx] = { ...arr[idx], certDownloadLocked: !!locked };
+    tx.update(ref, { inscriptions: arr });
+  });
+}
+
 // Lee objeto attendance del participante dentro de la sesión
 async function readAttendanceFromSession(sessionId, user) {
   const data = await fetchSessionDocById(sessionId);
@@ -1863,6 +1902,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
