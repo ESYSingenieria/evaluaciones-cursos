@@ -669,7 +669,6 @@ const loadResponses = async () => {
                 });
 
                 // Añadir botones al contenedor
-                buttonContainer.appendChild(downloadButton);
                 buttonContainer.appendChild(linkedInButton);
                 div.appendChild(buttonContainer);
             }
