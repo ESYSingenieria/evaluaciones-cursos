@@ -592,10 +592,6 @@ const loadResponses = async () => {
                   }
                 }
 
-                // 4) Crear contenedor de botones (como ya haces)
-                const buttonContainer = document.createElement("div");
-                buttonContainer.className = "button-container";
-
                 // 5) SOLO crear el botón de descarga si NO está bloqueado
                 if (!certLocked) {
                   const downloadButton = document.createElement("button");
