@@ -1231,14 +1231,19 @@ function loadAllUsers() {
       evalDiv.style.marginBottom = "8px";
       evalDiv.innerHTML = `<strong>${eName}</strong><br>`;
 
-      // 1) Botones de intento
+      const eName   = (allEvaluations[ev]?.name) || ev;
+      const allowed = (window.evalIdsByName && evalIdsByName[eName])
+        ? evalIdsByName[eName]
+        : new Set([ev]);
+
       const valids = allResponses
-        .filter(r => r.userId===u.id && r.evaluationId===ev && typeof r.result?.score==="number")
+        .filter(r => r.userId===u.id && allowed.has(r.evaluationId) && typeof r.result?.score==="number")
         .sort((a,b)=>a.timestamp - b.timestamp);
+      
       valids.forEach((r,i) => {
         const btn = document.createElement("button");
         btn.textContent = `Respuestas Intento ${i+1}`;
-        btn.onclick = () => downloadResponsePDFForAttempt(u.id, ev, i);
+        btn.onclick = () => downloadResponsePDFForAttempt(u.id, valids[i].evaluationId, i);
         evalDiv.appendChild(btn);
       });
 
@@ -1261,7 +1266,7 @@ function loadAllUsers() {
         const dateISO = toYYYYMMDD(passed.timestamp); // YYYY-MM-DD consistente
         const btnC = document.createElement("button");
         btnC.textContent = "Certificado de Aprobación";
-        btnC.onclick = () => generateCertificateForUser(u.id, ev, score, dateISO);
+        btnC.onclick = () => generateCertificateForUser(u.id, passed.evaluationId, score, dateISO);
         evalDiv.appendChild(btnC);
       }
 
@@ -1378,13 +1383,16 @@ function loadAllUsers() {
 // ───────────────────────────────────────────────────
 // 7) PDF de un solo intento (wrap + limpiar símbolos)
 async function downloadResponsePDFForAttempt(uid,ev,idx) {
+  const eName = (allEvaluations[ev]?.name) || (window.evalNameById?.[ev]) || ev;
+  const allowed = (window.evalIdsByName?.[eName]) ? window.evalIdsByName[eName] : new Set([ev]);
+
   const valids = allResponses
-    .filter(r=>r.userId===uid && r.evaluationId===ev && typeof r.result?.score==="number")
+    .filter(r => r.userId===uid && allowed.has(r.evaluationId) && typeof r.result?.score==="number")
     .sort((a,b)=>a.timestamp - b.timestamp);
-  if (!valids[idx]) {
-    alert("Intento no encontrado."); return;
-  }
-  await createSingleAttemptPDF(uid,ev,idx+1,valids[idx]);
+
+  if (!valids[idx]) { alert("Intento no encontrado."); return; }
+  const chosen = valids[idx];
+  await createSingleAttemptPDF(uid, chosen.evaluationId, idx+1, chosen);
 }
 
 async function createSingleAttemptPDF(uid,ev,intNum,r) {
@@ -1863,6 +1871,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
