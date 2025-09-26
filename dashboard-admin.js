@@ -81,6 +81,7 @@ auth.onAuthStateChanged(async user => {
     // Inicialización SOLO en la página admin
     if (isAdminPage) {
         await initializeData();
+        await autoLockIfThreeAttempts();  // ← NUEVO: aplica el auto-bloqueo si hay 3 intentos
         setupFiltersUI();
         loadAllUsers();
     }
@@ -150,6 +151,48 @@ async function listSessionsForCourseDate(courseKey, date) {
   const map = new Map();
   [...s1.docs, ...s2.docs].forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
   return [...map.values()];
+}
+
+// === Auto-bloqueo al acumular 3 intentos (por usuario-curso) ===
+// Usa el mismo criterio de "mismo curso" por NOMBRE que ya maneja el admin.
+function getIdSetForSameCourse(ev) {
+  const nm  = (window.evalNameById && evalNameById[ev]) || (allEvaluations[ev]?.name) || ev;
+  const set = (window.evalIdsByName && evalIdsByName[nm]) ? evalIdsByName[nm] : null;
+  return set ? new Set(set) : new Set([ev]);
+}
+
+async function autoLockIfThreeAttempts() {
+  const updates = [];
+  for (const u of allUsers) {
+    const meta = u.assignedCoursesMeta || {};
+    for (const k of Object.keys(meta)) {
+      const m  = meta[k] || {};
+      const ev = m.evaluationId || m.courseKey || k;
+      const sessionId = m.sessionId;
+      if (!sessionId) continue;
+
+      // Contar intentos con resultado (mismo criterio que usas en el admin)
+      const idSet = getIdSetForSameCourse(ev);
+      const attempts = allResponses
+        .filter(r => r.userId === u.id && idSet.has(r.evaluationId) && typeof r.result?.score === "number")
+        .length;
+
+      if (attempts >= 3) {
+        // Leer estado actual del participante
+        const st = await readParticipantState(sessionId, u); // ya existe en tu archivo
+        const isLocked = (st?.participant?.evaluationLocked !== false); // true si ya está bloqueada
+
+        // Si no está bloqueada, la bloqueamos
+        if (!isLocked) {
+          await setParticipantEvaluationLocked(sessionId, u, true); // ya existe en tu archivo
+          updates.push(`${u.name} • ${ev}`);
+        }
+      }
+    }
+  }
+  if (updates.length) {
+    console.log(`[autoLock] Evaluación bloqueada (>=3 intentos):\n - ${updates.join('\n - ')}`);
+  }
 }
 
 // Rellena el <select class="meta-variant"> con sesiones que coincidan con la FECHA dada
@@ -1870,6 +1913,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
