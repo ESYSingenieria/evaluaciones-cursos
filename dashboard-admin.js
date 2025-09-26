@@ -1225,12 +1225,12 @@ function loadAllUsers() {
     const summaryContainer = row.querySelector(".eval-summary");
     (u.assignedEvaluations || []).forEach(ev => {
       const eData = allEvaluations[ev] || {};
+      const eName   = (allEvaluations[ev]?.name) || ev;
       const evalDiv = document.createElement("div");
       evalDiv.className = "eval-item";
       evalDiv.style.marginBottom = "8px";
       evalDiv.innerHTML = `<strong>${eName}</strong><br>`;
 
-      const eName   = (allEvaluations[ev]?.name) || ev;
       const allowed = (window.evalIdsByName && evalIdsByName[eName])
         ? evalIdsByName[eName]
         : new Set([ev]);
@@ -1870,6 +1870,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
