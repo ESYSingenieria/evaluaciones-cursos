@@ -508,216 +508,153 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Cargar respuestas en dashboard.html
 const loadResponses = async () => {
-  const responsesContainer = document.getElementById('responsesList');
-  responsesContainer.innerHTML = ""; // Limpia el contenedor
+    const responsesContainer = document.getElementById('responsesList');
+    responsesContainer.innerHTML = ""; // Limpia el contenedor
 
-  try {
-    const user = auth.currentUser;
-    if (!user) throw new Error("Usuario no autenticado.");
+    try {
+        const user = auth.currentUser;
+        if (!user) throw new Error("Usuario no autenticado.");
 
-    // Perfil del usuario (lo reutilizamos varias veces)
-    const userDoc = await db.collection("users").doc(user.uid).get();
-    if (!userDoc.exists) {
-      responsesContainer.innerHTML = "<p>No se encontró tu perfil.</p>";
-      return;
-    }
-    const userData = userDoc.data() || {};
-    const myCID = userData.customID || "";
-    const myRUT = userData.rut || "";
-    const assignedCoursesMeta = userData.assignedCoursesMeta || {};
-
-    // Obtener respuestas del usuario
-    const snapshot = await db.collection('responses')
-      .where('userId', '==', user.uid)
-      .get();
-
-    if (snapshot.empty) {
-      responsesContainer.innerHTML = "<p>No tienes evaluaciones realizadas.</p>";
-      return;
-    }
-
-    // Map con el mejor resultado por evaluationId
-    const resultsMap = {};
-
-    for (const doc of snapshot.docs) {
-      const response = doc.data();
-      const result = await calculateResult(response.evaluationId, response.answers);
-
-      if (result) {
-        const evaluationId = response.evaluationId;
-        const sessionId    = response.sessionId || ""; // guarda el sessionId si viene
-
-        if (!resultsMap[evaluationId] || result.score > resultsMap[evaluationId].score) {
-          resultsMap[evaluationId] = {
-            score: result.score,
-            grade: result.grade,
-            timestamp: response.timestamp,
-            sessionId, // posible sesión del intento
-          };
-        }
-      }
-    }
-
-    // Mostrar los resultados con el puntaje más alto
-    for (const evaluationId in resultsMap) {
-      const evaluationDoc = await db.collection('evaluations').doc(evaluationId).get();
-      const evalData = evaluationDoc.exists ? evaluationDoc.data() : {};
-      const evaluationTitle = evalData.title || evalData.name || "Nombre no disponible";
-      const passingScore = (evalData.puntajeAprobacion ?? evalData.passingScore ?? 0);
-
-      const highestResult = resultsMap[evaluationId];
-
-      const div = document.createElement('div');
-      div.className = "result-item";
-      div.innerHTML = `
-        <h3>${evaluationTitle}</h3>
-        <p><strong>Puntaje:</strong> ${highestResult.score}</p>
-        <p><strong>Estado de Aprobación:</strong> ${highestResult.grade}</p>
-      `;
-
-      if (highestResult.score >= passingScore) {
-        const approvalDate = highestResult.timestamp
-          ? new Date(highestResult.timestamp.toDate()).toLocaleDateString()
-          : "Fecha no disponible";
-
-        // ---------- ¿ESTÁ BLOQUEADA LA DESCARGA PARA ESTE ALUMNO? ----------
-        // 1) Intento con el sessionId guardado al calcular el mejor resultado
-        let sessionId = highestResult.sessionId || null;
-
-        // 2) Si no hay sessionId, intenta resolverlo por metadatos del usuario
-        if (!sessionId && assignedCoursesMeta && typeof assignedCoursesMeta === 'object') {
-          for (const k of Object.keys(assignedCoursesMeta)) {
-            const mm = assignedCoursesMeta[k];
-            if (mm && (mm.evaluationId === evaluationId || mm.courseKey === evaluationId)) {
-              sessionId = mm.sessionId || null;
-              break;
-            }
-          }
-        }
-
-        // 3) Si aún no hay sessionId, busca en responses (sin índices compuestos)
-        if (!sessionId) {
-          const snap = await db.collection('responses')
+        // Obtener respuestas del usuario desde Firestore
+        const snapshot = await db.collection('responses')
             .where('userId', '==', user.uid)
-            .where('evaluationId', '==', evaluationId)
             .get();
 
-          let latest = null;
-          snap.forEach(d => {
-            const r = d.data();
-            const ts = r?.timestamp;
-            const ms = ts?.toMillis ? ts.toMillis() : (typeof ts === 'number' ? ts : (Date.parse(ts) || 0));
-            if (!latest || ms > (latest.ms || 0)) latest = { ...r, ms };
-          });
-          sessionId = latest?.sessionId || null;
+        if (snapshot.empty) {
+            responsesContainer.innerHTML = "<p>No tienes evaluaciones realizadas.</p>";
+            return;
         }
 
-        let certLocked = false;
-        if (sessionId) {
-          const sSnap = await db.collection("inscripciones").doc(sessionId).get();
-          if (sSnap.exists) {
-            const arr = Array.isArray(sSnap.data().inscriptions) ? sSnap.data().inscriptions : [];
-            const me  = arr.find(p =>
-              (myCID && p.customID === myCID) ||
-              (myRUT && p.rut === myRUT)
-            );
-            certLocked = me?.certDownloadLocked === true;
-          }
-        }
-        // ---------- FIN chequeo bloqueo ----------
+        const resultsMap = {};
 
-        // Contenedor de botones
-        const buttonContainer = document.createElement("div");
-        buttonContainer.className = "button-container";
+        for (const doc of snapshot.docs) {
+            const response = doc.data();
+            const result = await calculateResult(response.evaluationId, response.answers);
 
-        // Crear botón de descarga SOLO si NO está bloqueado
-        if (!certLocked) {
-          const downloadButton = document.createElement("button");
-          downloadButton.textContent = "Descargar Certificado";
-          downloadButton.className = "download-button";
-          downloadButton.addEventListener("click", () => {
-            console.log("Intentando generar certificado para:", evaluationId);
-            generateCertificateFromPDF(
-              auth.currentUser.email,
-              evaluationId,
-              highestResult.score,
-              approvalDate
-            );
-          });
-          buttonContainer.appendChild(downloadButton);
+            if (result) {
+                const evaluationId = response.evaluationId;
+
+                // Si no existe una entrada para este evaluationId o el puntaje es mayor, actualizamos
+                if (!resultsMap[evaluationId] || result.score > resultsMap[evaluationId].score) {
+                    resultsMap[evaluationId] = {
+                        score: result.score,
+                        grade: result.grade,
+                        timestamp: response.timestamp,
+                    };
+                }
+            }
         }
 
-        // Botón de añadir a LinkedIn (siempre visible)
-        const linkedInButton = document.createElement("button");
-        linkedInButton.textContent = "Añadir a LinkedIn";
-        linkedInButton.className = "linkedin-button";
-        linkedInButton.addEventListener("click", async () => {
-          try {
-            // Usamos datos ya leídos: myCID y highestResult.timestamp
-            const evaluationDoc2 = await db.collection("evaluations").doc(evaluationId).get();
-            const evaluationData = evaluationDoc2.exists ? evaluationDoc2.data() : null;
-            if (!evaluationData) {
-              alert("No se pudo encontrar la evaluación asociada.");
-              return;
+        // Mostrar los resultados con el puntaje más alto
+        for (const evaluationId in resultsMap) {
+            const evaluationDoc = await db.collection('evaluations').doc(evaluationId).get();
+            const evaluationTitle = evaluationDoc.exists ? evaluationDoc.data().title : "Nombre no disponible";
+            const passingScore = evaluationDoc.data().puntajeAprobacion;
+
+            const highestResult = resultsMap[evaluationId];
+            const div = document.createElement('div');
+            div.className = "result-item";
+            div.innerHTML = `
+                <h3>${evaluationTitle}</h3>
+                <p><strong>Puntaje:</strong> ${highestResult.score}</p>
+                <p><strong>Estado de Aprobación:</strong> ${highestResult.grade}</p>
+            `;
+
+            if (highestResult.score >= passingScore) {
+                const approvalDate = highestResult.timestamp 
+                    ? new Date(highestResult.timestamp.toDate()).toLocaleDateString()
+                    : "Fecha no disponible";
+
+                // Crear contenedor para los botones
+                const buttonContainer = document.createElement("div");
+                buttonContainer.className = "button-container"; // Clase del CSS para diseño
+
+                // Botón para descargar el certificado
+                const downloadButton = document.createElement("button");
+                downloadButton.textContent = "Descargar Certificado";
+                downloadButton.className = "download-button"; // Clase CSS para diseño
+                downloadButton.addEventListener("click", () => {
+                    console.log("Intentando generar certificado para:", evaluationId);
+                    generateCertificateFromPDF(auth.currentUser.email, evaluationId, highestResult.score, approvalDate);
+                });
+
+                // Botón de añadir a LinkedIn
+                const linkedInButton = document.createElement("button");
+                linkedInButton.textContent = "Añadir a LinkedIn";
+                linkedInButton.className = "linkedin-button"; // Clase CSS para diseño
+                linkedInButton.addEventListener("click", async () => {
+                    try {
+                        const userDoc = await db.collection("users").doc(auth.currentUser.uid).get();
+                        const customID = userDoc.exists ? userDoc.data().customID : "defaultID";
+
+                        const evaluationDoc = await db.collection("evaluations").doc(evaluationId).get();
+                        const evaluationData = evaluationDoc.exists ? evaluationDoc.data() : null;
+
+                        if (!evaluationData) {
+                            alert("No se pudo encontrar la evaluación asociada.");
+                            return;
+                        }
+
+                        const year = new Date(highestResult.timestamp.toDate()).getFullYear();
+                        const certificateID = `${evaluationData.ID}${customID}${year}`;
+
+                        // Buscar el certificado por su ID
+                        const certificateDoc = await db.collection("certificates").doc(certificateID).get();
+                        if (!certificateDoc.exists) {
+                            alert("Certificado no encontrado.");
+                            return;
+                        }
+
+                        const certificateData = certificateDoc.data();
+
+                        // Obtener fechas de expedición y caducidad
+                        const issuedDate = new Date(certificateData.issuedDate); // Fecha de expedición
+                        // **Nueva lógica**: calcular fecha de expiración solo si `lastDate` existe
+                        let expirationDate = null;
+                        if (evaluationData.lastDate !== undefined && evaluationData.lastDate !== null) {
+                            expirationDate = new Date(issuedDate);
+                            expirationDate.setMonth(expirationDate.getMonth() + evaluationData.lastDate);
+                        }
+
+        // Construir URL de LinkedIn con formato correcto
+        let linkedInUrl = "https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME" +
+                          `&name=${encodeURIComponent(certificateData.courseName)}` +
+                          `&organizationId=66227493` +  // ID de la empresa (ESYS) en LinkedIn
+                          `&issueYear=${issuedDate.getFullYear()}` +
+                          `&issueMonth=${issuedDate.getMonth() + 1}`;
+        
+        // Si hay fecha de expiración calculada, incluirla en la URL
+        if (expirationDate) {
+            linkedInUrl += `&expirationYear=${expirationDate.getFullYear()}` +
+                           `&expirationMonth=${expirationDate.getMonth() + 1}`;
+        }
+        
+        // Continuar construyendo la URL con el enlace de verificación y el ID
+        linkedInUrl += `&certUrl=${encodeURIComponent(`https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${certificateID}`)}` +
+                       `&certId=${encodeURIComponent(certificateID)}`;
+
+        // Redirigir a LinkedIn con el enlace generado
+        window.open(linkedInUrl, "_blank");
+                        
+                    } catch (error) {
+                        console.error("Error al añadir a LinkedIn:", error);
+                        alert("Hubo un problema al intentar añadir el certificado a LinkedIn.");
+                    }
+                });
+
+                // Añadir botones al contenedor
+                buttonContainer.appendChild(downloadButton);
+                buttonContainer.appendChild(linkedInButton);
+                div.appendChild(buttonContainer);
             }
 
-            const year = highestResult.timestamp
-              ? new Date(highestResult.timestamp.toDate()).getFullYear()
-              : new Date().getFullYear();
+            responsesContainer.appendChild(div);
+        }
 
-            const certificateID = `${evaluationData.ID}${myCID}${year}`;
-
-            // Buscar el certificado por su ID
-            const certificateDoc = await db.collection("certificates").doc(certificateID).get();
-            if (!certificateDoc.exists) {
-              alert("Certificado no encontrado.");
-              return;
-            }
-            const certificateData = certificateDoc.data();
-
-            // Fechas
-            const issuedDate = new Date(certificateData.issuedDate);
-            let expirationDate = null;
-            if (evaluationData.lastDate !== undefined && evaluationData.lastDate !== null) {
-              expirationDate = new Date(issuedDate);
-              expirationDate.setMonth(expirationDate.getMonth() + evaluationData.lastDate);
-            }
-
-            // URL LinkedIn
-            let linkedInUrl = "https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME" +
-                              `&name=${encodeURIComponent(certificateData.courseName)}` +
-                              `&organizationId=66227493` +
-                              `&issueYear=${issuedDate.getFullYear()}` +
-                              `&issueMonth=${issuedDate.getMonth() + 1}`;
-
-            if (expirationDate) {
-              linkedInUrl += `&expirationYear=${expirationDate.getFullYear()}` +
-                             `&expirationMonth=${expirationDate.getMonth() + 1}`;
-            }
-
-            linkedInUrl += `&certUrl=${encodeURIComponent(
-                              `https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${certificateID}`
-                            )}` +
-                           `&certId=${encodeURIComponent(certificateID)}`;
-
-            window.open(linkedInUrl, "_blank");
-          } catch (error) {
-            console.error("Error al añadir a LinkedIn:", error);
-            alert("Hubo un problema al intentar añadir el certificado a LinkedIn.");
-          }
-        });
-
-        buttonContainer.appendChild(linkedInButton);
-        div.appendChild(buttonContainer);
-      }
-
-      responsesContainer.appendChild(div);
+    } catch (error) {
+        console.error("Error cargando respuestas:", error);
+        responsesContainer.innerHTML = "<p>Hubo un problema al cargar tus resultados.</p>";
     }
-
-  } catch (error) {
-    console.error("Error cargando respuestas:", error);
-    responsesContainer.innerHTML = "<p>Hubo un problema al cargar tus resultados.</p>";
-  }
 };
 
 
@@ -1038,59 +975,7 @@ const calculateResult = async (evaluationId, userAnswers) => {
 
 
 
-// ¿La descarga está bloqueada para ESTE alumno en ESTA evaluación?
-async function isCertDownloadLockedForCurrentUser(evaluationId) {
-  const user = auth.currentUser;
-  if (!user) return false;
 
-  const uDoc = await db.collection('users').doc(user.uid).get();
-  if (!uDoc.exists) return false;
-
-  const { customID, rut, assignedCoursesMeta } = uDoc.data() || {};
-
-  // 1) Intento rápido por metadatos del usuario
-  let sessionId = null;
-  if (assignedCoursesMeta && typeof assignedCoursesMeta === 'object') {
-    for (const k of Object.keys(assignedCoursesMeta)) {
-      const mm = assignedCoursesMeta[k];
-      if (mm && (mm.evaluationId === evaluationId || mm.courseKey === evaluationId)) {
-        sessionId = mm.sessionId || null;
-        break;
-      }
-    }
-  }
-
-  // 2) Si no hay sessionId en meta, busca responses SIN orderBy/limit (evita índice)
-  if (!sessionId) {
-    const snap = await db.collection('responses')
-      .where('userId', '==', user.uid)
-      .where('evaluationId', '==', evaluationId)
-      .get();
-
-    let latest = null;
-    snap.forEach(d => {
-      const r = d.data();
-      const ts = r?.timestamp;
-      const ms = ts?.toMillis ? ts.toMillis() : (typeof ts === 'number' ? ts : (Date.parse(ts) || 0));
-      if (!latest || ms > (latest.ms || 0)) latest = { ...r, ms };
-    });
-    sessionId = latest?.sessionId || null;
-  }
-
-  if (!sessionId) return false;
-
-  // 3) Leer la sesión e identificar al alumno
-  const sSnap = await db.collection('inscripciones').doc(sessionId).get();
-  if (!sSnap.exists) return false;
-
-  const arr = Array.isArray(sSnap.data().inscriptions) ? sSnap.data().inscriptions : [];
-  const me  = arr.find(p =>
-    (customID && p.customID === customID) ||
-    (rut && p.rut === rut)
-  );
-
-  return me?.certDownloadLocked === true;
-}
 
 async function calculateAndHandleResult(userId, evaluationId, answers) {
     try {
@@ -1196,198 +1081,140 @@ if (logoutButton) {
     logoutButton.addEventListener('click', logoutUser);
 }
 
-// === Dashboard Usuario ===
-// Generar certificado (sin requerir índice compuesto; con bloqueo por alumno/sesión + link clickeable)
 const generateCertificateFromPDF = async (userName, evaluationID, score, approvalDate) => {
-  try {
-    console.log("Certificado solicitado para ID:", evaluationID);
+    try {
+        console.log("Certificado solicitado para ID:", evaluationID); // Verificar el ID recibido
 
-    // ---------- 0) USUARIO ----------
-    const user = auth.currentUser;
-    if (!user) throw new Error("Usuario no autenticado.");
+        const userData = await loadUserData();
+        if (!userData) throw new Error("Datos del usuario no disponibles.");
 
-    const userDoc = await db.collection('users').doc(user.uid).get();
-    if (!userDoc.exists) throw new Error("No se encontró el perfil del usuario.");
-    const { name: userNameDB, rut, company, customID, assignedCoursesMeta } = userDoc.data() || {};
+        const { name: userNameDB, rut, company, customID } = userData;
 
-    // ---------- 1) OBTENER sessionId SIN ÍNDICE COMPUESTO ----------
-    // 1.a) Primero, intenta por metadatos del usuario (más barato)
-    let sessionId = null;
-    if (assignedCoursesMeta && typeof assignedCoursesMeta === 'object') {
-      for (const k of Object.keys(assignedCoursesMeta)) {
-        const mm = assignedCoursesMeta[k];
-        if (mm && (mm.evaluationId === evaluationID || mm.courseKey === evaluationID)) {
-          sessionId = mm.sessionId || null;
-          break;
-        }
-      }
-    }
+        // Obtener el nombre de la evaluación, plantilla y campo ID desde Firestore
+        const evaluationDoc = await db.collection('evaluations').doc(evaluationID).get();
+        if (!evaluationDoc.exists) throw new Error("La evaluación no existe.");
+        
+        const evaluationData = evaluationDoc.data();
+        const evaluationName = evaluationData.name;
+        const evaluationTime = evaluationData.timeEvaluation;
+        const certificateTemplate = evaluationData.certificateTemplate || "plantilla.pdf"; // Plantilla por defecto
+        const evaluationIDNumber = evaluationData.ID || "00"; // Campo 'ID' específico de la evaluación
 
-    // 1.b) Si no está en meta, consulta 'responses' SIN orderBy/limit y elige el último en memoria
-    if (!sessionId) {
-      const snap = await db.collection('responses')
-        .where('userId', '==', user.uid)
-        .where('evaluationId', '==', evaluationID)
-        .get(); // <-- sin orderBy/limit => no requiere índice
+        console.log("Evaluación encontrada:", evaluationName);
+        console.log("Plantilla utilizada:", certificateTemplate);
 
-      let latest = null;
-      snap.forEach(d => {
-        const r = d.data();
-        const ts = r?.timestamp;
-        // Soporta Timestamp de Firestore o número/ISO
-        const ms = ts?.toMillis ? ts.toMillis() : (typeof ts === 'number' ? ts : (Date.parse(ts) || 0));
-        if (!latest || ms > (latest.ms || 0)) latest = { ...r, ms };
-      });
-      sessionId = latest?.sessionId || null;
-    }
+        // Convertir approvalDate a un formato válido y extraer el año
+        const convertDateToValidFormat = (dateString) => {
+            const [day, month, year] = dateString.split('-');
+            return `${year}-${month}-${day}`;
+        };
 
-    // ---------- 2) BLOQUEO DURO POR ALUMNO/SESIÓN ----------
-    if (sessionId) {
-      const sSnap = await db.collection('inscripciones').doc(sessionId).get();
-      if (sSnap.exists) {
-        const arr = Array.isArray(sSnap.data().inscriptions) ? sSnap.data().inscriptions : [];
-        const me  = arr.find(p =>
-          (customID && p.customID === customID) ||
-          (rut && p.rut === rut)
-        );
-        if (me?.certDownloadLocked === true) {
-          alert("Descarga de certificado bloqueada por el instructor.");
-          return; // 🔒 bloqueo
-        }
-      }
-    }
-
-    // ---------- 3) DATOS DE LA EVALUACIÓN ----------
-    const evaluationDoc = await db.collection('evaluations').doc(evaluationID).get();
-    if (!evaluationDoc.exists) throw new Error("La evaluación no existe.");
-
-    const evaluationData      = evaluationDoc.data();
-    const evaluationName      = evaluationData.name;
-    const evaluationTime      = evaluationData.timeEvaluation;
-    const certificateTemplate = evaluationData.certificateTemplate || "plantilla.pdf";
-    const evaluationIDNumber  = evaluationData.ID || "00";
-
-    // ---------- 4) FECHA E ID DINÁMICO ----------
-    const parseToDate = (d) => {
-      if (d instanceof Date) return d;
-      if (typeof d === "string") {
-        if (/^\d{2}-\d{2}-\d{4}$/.test(d)) { const [dd, mm, yyyy] = d.split("-").map(Number); return new Date(yyyy, mm - 1, dd); }
-        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) { const [yyyy, mm, dd] = d.split("-").map(Number); return new Date(yyyy, mm - 1, dd); }
-      }
-      return new Date();
-    };
-    const pad2 = (n) => String(n).padStart(2, "0");
-    const toDDMMYYYY = (d) => `${pad2(d.getDate())}-${pad2(d.getMonth()+1)}-${d.getFullYear()}`;
-
-    const apDate  = parseToDate(approvalDate);
-    const dateStr = toDDMMYYYY(apDate);
-    const year    = apDate.getFullYear();
-
-    const certificateID = `${evaluationIDNumber}${customID}${year}`;
-
-    // ---------- 5) CARGA/EDICIÓN DEL PDF ----------
-    const tplBytes = await fetch(certificateTemplate).then(r => r.arrayBuffer());
-    const pdfDoc   = await PDFLib.PDFDocument.load(tplBytes);
-    pdfDoc.registerFontkit(fontkit);
-
-    const monoBytes   = await fetch("fonts/MonotypeCorsiva.ttf").then(r => r.arrayBuffer());
-    const perpBytes   = await fetch("fonts/Perpetua.ttf").then(r => r.arrayBuffer());
-    const perpItBytes = await fetch("fonts/PerpetuaItalic.ttf").then(r => r.arrayBuffer());
-
-    const monotypeFont       = await pdfDoc.embedFont(monoBytes);
-    const perpetuaFont       = await pdfDoc.embedFont(perpBytes);
-    const perpetuaItalicFont = await pdfDoc.embedFont(perpItBytes);
-
-    const page = pdfDoc.getPages()[0];
-    const { width, height } = page.getSize();
-
-    const centerText = (txt, yPos, font, size) => {
-      const wTxt = font.widthOfTextAtSize(txt || "", size);
-      page.drawText(txt || "", { x: (width - wTxt) / 2, y: yPos, font, size, color: PDFLib.rgb(0, 0, 0) });
-    };
-
-    const wrapText = (txt, font, size, maxW) => {
-      const words = (txt || "").split(" ");
-      const lines = [];
-      let line = "";
-      for (const w of words) {
-        const test = line ? line + " " + w : w;
-        if (font.widthOfTextAtSize(test, size) <= maxW) {
-          line = test;
+        let year;
+        if (approvalDate) {
+            const validDate = convertDateToValidFormat(approvalDate);
+            year = new Date(validDate).getFullYear();
         } else {
-          if (line) lines.push(line);
-          line = w;
+            year = new Date().getFullYear(); // Año actual como respaldo
         }
-      }
-      if (line) lines.push(line);
-      return lines;
-    };
 
-    // Campos
-    centerText(`${userNameDB || ""}`,          height - 295, monotypeFont,       35);
-    centerText(`RUT: ${rut || ""}`,            height - 340, perpetuaItalicFont, 19);
-    centerText(`Empresa: ${company || ""}`,    height - 360, perpetuaItalicFont, 19);
+        console.log("Año de Aprobación:", year);
 
-    const maxW2 = width - 100;
-    const lines = wrapText(evaluationName, monotypeFont, 34, maxW2);
-    let y0 = height - 448;
-    for (const l of lines) { centerText(l, y0, monotypeFont, 34); y0 -= 40; }
+        // Generar el ID del certificado dinámico
+        const certificateID = `${evaluationIDNumber}${customID}${year}`;
+        console.log("ID del Certificado:", certificateID);
 
-    page.drawText(`Fecha de Aprobación: ${dateStr}`, {
-      x: 147, y: height - 534, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0)
-    });
-    page.drawText(`Duración del Curso: ${evaluationTime || ""}`, {
-      x: 157, y: height - 548, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0)
-    });
-    page.drawText(`ID: ${certificateID}`, {
-      x: 184, y: height - 562, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0)
-    });
+        // Cargar el PDF base (plantilla específica o por defecto)
+        const existingPdfBytes = await fetch(certificateTemplate).then(res => res.arrayBuffer());
+        const pdfDoc = await PDFLib.PDFDocument.load(existingPdfBytes);
+        const pages = pdfDoc.getPages();
+        const firstPage = pages[0];
 
-    // ---------- 6) ENLACE CLICKEABLE DE VERIFICACIÓN ----------
-    const { PDFName, PDFArray, PDFNumber, PDFString } = PDFLib;
+        // Dimensiones de la página
+        const { width, height } = firstPage.getSize();
 
-    const idX   = 144;
-    const idY   = height - 562;
-    const vGap  = 14;
-    const linkX = idX;
-    const linkY = idY - vGap;
+        // Registrar fontkit
+        pdfDoc.registerFontkit(fontkit);
 
-    const verifyUrl = `https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${encodeURIComponent(certificateID)}`;
-    const linkText  = `Verificar Autenticidad de Certificado`;
-    const linkSize  = 12;
-    const linkFont  = perpetuaFont;
+        // Cargar fuentes personalizadas
+        const monotypeFontBytes = await fetch("fonts/MonotypeCorsiva.ttf").then(res => res.arrayBuffer());
+        const perpetuaFontBytes = await fetch("fonts/Perpetua.ttf").then(res => res.arrayBuffer());
+        const perpetuaItalicFontBytes = await fetch("fonts/PerpetuaItalic.ttf").then(res => res.arrayBuffer());
 
-    page.drawText(linkText, { x: linkX, y: linkY, size: linkSize, font: linkFont, color: PDFLib.rgb(0, 0, 1) });
+        const monotypeFont = await pdfDoc.embedFont(monotypeFontBytes);
+        const perpetuaFont = await pdfDoc.embedFont(perpetuaFontBytes);
+        const perpetuaItalicFont = await pdfDoc.embedFont(perpetuaItalicFontBytes);
 
-    const linkWidth = linkFont.widthOfTextAtSize(linkText, linkSize);
-    page.drawLine({
-      start: { x: linkX, y: linkY - 1 }, end: { x: linkX + linkWidth, y: linkY - 1 },
-      thickness: 0.5, color: PDFLib.rgb(0, 0, 1)
-    });
+        // Función para centrar texto
+        const centerText = (text, y, font, size) => {
+            const textWidth = font.widthOfTextAtSize(text, size);
+            const x = (width - textWidth) / 2;
+            firstPage.drawText(text, { x, y, size, font, color: PDFLib.rgb(0, 0, 0) });
+        };
 
-    const urlAction = pdfDoc.context.obj({ Type: PDFName.of('Action'), S: PDFName.of('URI'), URI: PDFString.of(verifyUrl) });
-    const rectArr   = pdfDoc.context.obj([ PDFNumber.of(linkX), PDFNumber.of(linkY - 2), PDFNumber.of(linkX + linkWidth), PDFNumber.of(linkY + linkSize + 2) ]);
-    const borderArr = pdfDoc.context.obj([ PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0) ]);
+        // Función para ajustar texto a líneas
+        const maxWidth2 = width - 100; // Márgenes de 50 px a cada lado
+        const wrapText = (text, font, fontSize, maxWidth) => {
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = '';
+        
+            words.forEach(word => {
+                const testLine = currentLine ? `${currentLine} ${word}` : word;
+                const textWidth = font.widthOfTextAtSize(testLine, fontSize);
+        
+                if (textWidth <= maxWidth) {
+                    currentLine = testLine;
+                } else {
+                    lines.push(currentLine);
+                    currentLine = word;
+                }
+            });
+        
+            if (currentLine) lines.push(currentLine);
+            return lines;
+        };
 
-    const linkAnnotRef = pdfDoc.context.register(
-      pdfDoc.context.obj({ Type: PDFName.of('Annot'), Subtype: PDFName.of('Link'), Rect: rectArr, Border: borderArr, A: urlAction })
-    );
+        // Texto centrado
+        centerText(`${userNameDB}`, height - 295, monotypeFont, 35);
+        centerText(`RUT: ${rut}`, height - 340, perpetuaItalicFont, 19);
+        centerText(`Empresa: ${company}`, height - 360, perpetuaItalicFont, 19);
 
-    let annots = page.node.lookup(PDFName.of('Annots'), PDFArray);
-    if (annots) annots.push(linkAnnotRef); else page.node.set(PDFName.of('Annots'), pdfDoc.context.obj([linkAnnotRef]));
+        // Texto centrado con ajuste de líneas
+        const lines = wrapText(evaluationName, monotypeFont, 34, maxWidth2);
+        let yPosition = height - 448;
 
-    // ---------- 7) DESCARGA ----------
-    const pdfBytes = await pdfDoc.save();
-    const blob     = new Blob([pdfBytes], { type: "application/pdf" });
-    const a        = document.createElement("a");
-    a.href         = URL.createObjectURL(blob);
-    a.download     = `Certificado ${evaluationName} - ${userNameDB}.pdf`;
-    a.click();
+        lines.forEach(line => {
+            centerText(line, yPosition, monotypeFont, 34);
+            yPosition -= 40;
+        });
 
-  } catch (error) {
-    console.error("Error generando certificado (usuario):", error);
-    alert("No se pudo generar el certificado. Revisa la consola.");
-  }
+        // Texto posicionado manualmente
+        firstPage.drawText(`Fecha de Aprobación: ${approvalDate}`, {
+            x: 147, y: height - 548, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
+        });
+
+        firstPage.drawText(`Duración del Curso: ${evaluationTime}`, {
+            x: 157, y: height - 562, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
+        });
+
+        // Texto ID dinámico del certificado
+        firstPage.drawText(`ID: ${certificateID}`, {
+            x: 184, y: height - 576, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
+        });
+
+        // Exportar el PDF modificado
+        const pdfBytes = await pdfDoc.save();
+        const blob = new Blob([pdfBytes], { type: "application/pdf" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `Certificado_${evaluationName}.pdf`;
+        link.click();
+        console.log("Certificado generado con éxito:", evaluationName);
+
+    } catch (error) {
+        console.error("Error al generar el certificado:", error);
+        alert("Hubo un problema al generar el certificado. Por favor, inténtalo nuevamente.");
+    }
 };
 
 const loadUserData = async () => {
@@ -1963,3 +1790,5 @@ if (Array.isArray(standards)) {
     render(unique.slice(0, 12));
   }
 })();
+
+
