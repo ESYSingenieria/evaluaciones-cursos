@@ -467,6 +467,15 @@ const submitEvaluation = async (event) => {
 
         const userId = user.uid; // Define `userId` correctamente aquí
 
+        // Guardar respuestas reales en Firestore
+        await db.collection('responses').add({
+          userId: userId,
+          evaluationId: evaluationId,
+          sessionId,                                         // << guarda la sesión
+          answers: answers,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+
         form.innerHTML = `
             <p>Gracias por enviar tus respuestas. En el Dashboard puedes ver tus resultados.</p>
             <button id="backToDashboard" type="button">Volver al Dashboard</button>
@@ -989,34 +998,40 @@ const startTimer = (timeLimit) => {
     const timerInterval = setInterval(updateTimer, 1000);
 };
 
-// ✅ Reemplazo completo
-async function calculateAndHandleResult(userId, evaluationId, answers, sessionId) {
-  try {
-    // Calcula resultado
-    const result = await calculateResult(evaluationId, answers);
+const calculateResult = async (evaluationId, userAnswers) => {
+    try {
+        const doc = await db.collection('evaluations').doc(evaluationId).get();
+        if (!doc.exists) throw new Error("La evaluación no existe.");
 
-    // Guarda UNA sola vez en `responses` con todo lo que el admin necesita
-    const now = new Date();
-    await db.collection('responses').add({
-      userId,
-      evaluationId,
-      sessionId: sessionId || null,
-      answers,
-      result,  // << el panel admin filtra por esto
-      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-    });
+        const questions = doc.data().questions;
+        let correctCount = 0;
 
-    // Si aprobó, procede con el certificado
-    const evaluationDoc = await db.collection('evaluations').doc(evaluationId).get();
-    const passingScore = evaluationDoc.data()?.puntajeAprobacion ?? 0;
+        questions.forEach((question, index) => {
+            const userAnswer = (userAnswers[`question${index}`] || "").trim().toLowerCase();
+            const correctAnswer = question.correct.trim().toLowerCase();
 
-    if (result && result.score >= passingScore) {
-      await handleEvaluationApproval(userId, evaluationId, result, now);
+            if (userAnswer === correctAnswer) {
+                correctCount++;
+            }
+        });
+
+        const totalQuestions = questions.length;
+        const score = Math.round((correctCount*4)); // Porcentaje
+        
+        const passingScore = doc.data().puntajeAprobacion;  // Obtener puntaje de aprobación dinámico
+        let grade;
+        if (score >= passingScore) {
+            grade = "Aprobado";
+        } else {
+            grade = "Reprobado";
+        }
+        return { score, grade };
+        
+    } catch (error) {
+        console.error("Error al calcular el resultado:", error);
+        return null;
     }
-  } catch (err) {
-    console.error('Error al manejar el resultado de la evaluación:', err);
-  }
-}
+};
 
 
 
@@ -1948,4 +1963,3 @@ if (Array.isArray(standards)) {
     render(unique.slice(0, 12));
   }
 })();
-
