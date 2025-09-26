@@ -977,36 +977,34 @@ const calculateResult = async (evaluationId, userAnswers) => {
 
 
 
-async function calculateAndHandleResult(userId, evaluationId, answers) {
-    try {
-        // Llamar a calculateResult para calcular el puntaje
-        const result = await calculateResult(evaluationId, answers);
+// Reemplazo 1: aceptar sessionId y usarlo al guardar el resultado
+async function calculateAndHandleResult(userId, evaluationId, answers, sessionId) {
+  try {
+    // 1) Calcular puntaje/estado
+    const result = await calculateResult(evaluationId, answers);
 
-        // Registra el resultado en la colección `responses`
-        const timestamp = new Date();
-        await db.collection("responses").add({
-            userId,
-            evaluationId,
-            sessionId,     // << aquí también
-            answers,
-            result,
-            timestamp,
-        });
+    // 2) Registrar resultado en `responses`
+    const timestamp = new Date();
+    await db.collection("responses").add({
+      userId,
+      evaluationId,
+      sessionId: sessionId || null,  // <- AHORA sí se guarda correctamente
+      answers,
+      result,
+      timestamp,
+    });
 
-        // Obtener puntaje de aprobación de Firestore
-        const evaluationDoc = await db.collection('evaluations').doc(evaluationId).get();
-        const passingScore = evaluationDoc.data().puntajeAprobacion;
-        // Generar certificado solo si el puntaje alcanza o supera el mínimo de aprobación
-        if (result.score >= passingScore) {
-            console.log(`El usuario ${userId} aprobó la evaluación ${evaluationId}. Generando certificado...`);
-            await handleEvaluationApproval(userId, evaluationId, result, timestamp);
-        } else {
-            console.log(`El usuario ${userId} no aprobó la evaluación ${evaluationId}.`);
-        }
-    } catch (error) {
-        console.error("Error al manejar el resultado de la evaluación:", error);
+    // 3) Solo si aprueba, manejar certificado
+    const evaluationDoc = await db.collection('evaluations').doc(evaluationId).get();
+    const passingScore = evaluationDoc.data().puntajeAprobacion;
+    if (result.score >= passingScore) {
+      await handleEvaluationApproval(userId, evaluationId, result, timestamp);
     }
+  } catch (error) {
+    console.error("Error al manejar el resultado de la evaluación:", error);
+  }
 }
+
 
 async function handleEvaluationApproval(userId, evaluationId, result, timestamp) {
     try {
