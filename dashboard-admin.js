@@ -1225,7 +1225,6 @@ function loadAllUsers() {
     const summaryContainer = row.querySelector(".eval-summary");
     (u.assignedEvaluations || []).forEach(ev => {
       const eData = allEvaluations[ev] || {};
-      const eName = eData.name || ev;
       const evalDiv = document.createElement("div");
       evalDiv.className = "eval-item";
       evalDiv.style.marginBottom = "8px";
@@ -1871,6 +1870,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
