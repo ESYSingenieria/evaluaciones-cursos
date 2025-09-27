@@ -1206,6 +1206,73 @@ const generateCertificateFromPDF = async (userName, evaluationID, score, approva
             x: 184, y: height - 576, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
         });
 
+        // ---------- ENLACE CLICKEABLE DE VERIFICACIÓN (debajo del ID) ----------
+        const { PDFName, PDFArray, PDFNumber, PDFString } = PDFLib;
+
+        // Alineamos con el ID (x: 184) y bajamos una línea (14 pt)
+        const idX   = 184;
+        const idY   = height - 576;
+        const vGap  = 14;
+        const linkX = idX;
+        const linkY = idY - vGap;
+
+        const verifyUrl = `https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${encodeURIComponent(certificateID)}`;
+        const linkText  = `Verificar Autenticidad de Certificado`;
+        const linkSize  = 12;
+        const linkFont  = perpetuaFont;
+
+        // Texto azul subrayado
+        firstPage.drawText(linkText, {
+            x: linkX,
+            y: linkY,
+            size: linkSize,
+            font: linkFont,
+            color: PDFLib.rgb(0, 0, 1)
+        });
+
+        const linkWidth = linkFont.widthOfTextAtSize(linkText, linkSize);
+        firstPage.drawLine({
+            start: { x: linkX, y: linkY - 1 },
+            end:   { x: linkX + linkWidth, y: linkY - 1 },
+            thickness: 0.5,
+            color: PDFLib.rgb(0, 0, 1)
+        });
+
+        // Anotación de enlace (área clickeable)
+        const urlAction = pdfDoc.context.obj({
+            Type: PDFName.of('Action'),
+            S:    PDFName.of('URI'),
+            URI:  PDFString.of(verifyUrl)
+        });
+
+        const rectArr = pdfDoc.context.obj([
+            PDFNumber.of(linkX),
+            PDFNumber.of(linkY - 2),
+            PDFNumber.of(linkX + linkWidth),
+            PDFNumber.of(linkY + linkSize + 2)
+        ]);
+
+        const borderArr = pdfDoc.context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(0)]);
+
+        const linkAnnotRef = pdfDoc.context.register(
+            pdfDoc.context.obj({
+                Type:    PDFName.of('Annot'),
+                Subtype: PDFName.of('Link'),
+                Rect:    rectArr,
+                Border:  borderArr,
+                A:       urlAction
+            })
+        );
+
+        // Inserta la anotación en /Annots de la página
+        let annots = firstPage.node.lookup(PDFName.of('Annots'), PDFArray);
+        if (annots) {
+            annots.push(linkAnnotRef);
+        } else {
+            firstPage.node.set(PDFName.of('Annots'), pdfDoc.context.obj([linkAnnotRef]));
+        }
+        // ---------- FIN ENLACE CLICKEABLE ----------
+
         // Exportar el PDF modificado
         const pdfBytes = await pdfDoc.save();
         const blob = new Blob([pdfBytes], { type: "application/pdf" });
