@@ -1412,6 +1412,41 @@ function loadAllUsers() {
 
         tools.appendChild(lockBtn);
         tools.appendChild(lockInfo);
+
+        // === Botón Bloquear/Desbloquear Descarga de Certificado (por usuario-curso) ===
+        // Usa el mismo 'participant' que ya obtuviste con readParticipantState(sessionId, u)
+        let certLocked = participant?.certDownloadLocked === true;
+
+        const certBtn = document.createElement("button");
+        certBtn.className = "btn-lock";
+        certBtn.style.marginLeft   = "8px";
+        certBtn.style.background   = "#6f42c1";
+        certBtn.style.color        = "#fff";
+        certBtn.style.border       = "none";
+        certBtn.style.borderRadius = "6px";
+        certBtn.style.padding      = "6px 10px";
+
+        certBtn.textContent = certLocked
+          ? "Desbloquear Descarga de Certificado"
+          : "Bloquear Descarga de Certificado";
+
+        certBtn.addEventListener("click", async () => {
+          try {
+            const newLocked = !certLocked;
+            await setParticipantCertDownloadLocked(m.sessionId, u, newLocked);
+            certLocked = newLocked;
+            certBtn.textContent = certLocked
+              ? "Desbloquear Descarga de Certificado"
+              : "Bloquear Descarga de Certificado";
+          } catch (e) {
+            console.error("No se pudo actualizar certDownloadLocked:", e);
+            alert("No se pudo actualizar el bloqueo de descarga.");
+          }
+        });
+
+        // Lo dejamos junto al botón de evaluación
+        tools.appendChild(certBtn);
+
         ctrl.appendChild(tools);
 
         evalDiv.appendChild(ctrl);
@@ -1860,6 +1895,27 @@ async function setParticipantEvaluationLocked(sessionId, user, locked) {
   });
 }
 
+// Guarda el flag de bloqueo de descarga de certificado en la sesión (inscripciones)
+async function setParticipantCertDownloadLocked(sessionId, user, locked) {
+  const ref = db.collection("inscripciones").doc(sessionId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+
+    const data = snap.data() || {};
+    const arr  = Array.isArray(data.inscriptions) ? [...data.inscriptions] : [];
+
+    const idx = arr.findIndex(p =>
+      (user.customID && p.customID === user.customID) ||
+      (user.rut && p.rut === user.rut)
+    );
+    if (idx < 0) return;
+
+    arr[idx] = { ...arr[idx], certDownloadLocked: !!locked };
+    tx.update(ref, { inscriptions: arr });
+  });
+}
+
 // Lee participante + su bloqueo/asistencia (para pintar UI)
 async function readParticipantState(sessionId, user) {
   const snap = await db.collection("inscripciones").doc(sessionId).get();
@@ -1913,6 +1969,7 @@ async function setAttendanceSlot(sessionId, user, label, checked) {
     if (snapLegacy.exists) await up("inscriptions");
   }
 }
+
 
 
 
