@@ -1192,29 +1192,29 @@ const generateCertificateFromPDF = async (userName, evaluationID, score, approva
             yPosition -= 40;
         });
 
-        // Texto posicionado manualmente
+        // Texto posicionado manualmente (MISMAS COORDENADAS QUE ADMIN)
         firstPage.drawText(`Fecha de Aprobación: ${approvalDate}`, {
-            x: 147, y: height - 548, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
+            x: 147, y: height - 534, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
         });
 
         firstPage.drawText(`Duración del Curso: ${evaluationTime}`, {
-            x: 157, y: height - 562, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
+            x: 157, y: height - 548, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
         });
 
         // Texto ID dinámico del certificado
         firstPage.drawText(`ID: ${certificateID}`, {
-            x: 184, y: height - 576, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
+            x: 184, y: height - 562, size: 12, font: perpetuaFont, color: PDFLib.rgb(0, 0, 0),
         });
 
-        // ---------- ENLACE CLICKEABLE DE VERIFICACIÓN (debajo del ID) ----------
+        // ---------- ENLACE CLICKEABLE DE VERIFICACIÓN (igual que admin, una línea debajo del ID) ----------
         const { PDFName, PDFArray, PDFNumber, PDFString } = PDFLib;
 
-        // Alineamos con el ID (x: 184) y bajamos una línea (14 pt)
-        const idX   = 184;
-        const idY   = height - 576;
-        const vGap  = 14;
+        // Alineado con el ID del admin: x base 144, una línea (14 pt) debajo del ID
+        const idX   = 144;               // misma X que admin para ID/leyendas
+        const idY   = height - 562;      // Y del ID
+        const vGap  = 14;                // salto
         const linkX = idX;
-        const linkY = idY - vGap;
+        const linkY = idY - vGap;        // = height - 576
 
         const verifyUrl = `https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${encodeURIComponent(certificateID)}`;
         const linkText  = `Verificar Autenticidad de Certificado`;
