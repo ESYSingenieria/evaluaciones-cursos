@@ -507,154 +507,160 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Cargar respuestas en dashboard.html
+// === Dashboard Usuario ===
 const loadResponses = async () => {
-    const responsesContainer = document.getElementById('responsesList');
-    responsesContainer.innerHTML = ""; // Limpia el contenedor
+  const responsesContainer = document.getElementById('responsesList');
+  responsesContainer.innerHTML = "";
 
-    try {
-        const user = auth.currentUser;
-        if (!user) throw new Error("Usuario no autenticado.");
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Usuario no autenticado.");
 
-        // Obtener respuestas del usuario desde Firestore
-        const snapshot = await db.collection('responses')
-            .where('userId', '==', user.uid)
-            .get();
+    // 1) Trae todas las respuestas del usuario
+    const snapshot = await db.collection('responses')
+      .where('userId', '==', user.uid)
+      .get();
 
-        if (snapshot.empty) {
-            responsesContainer.innerHTML = "<p>No tienes evaluaciones realizadas.</p>";
-            return;
-        }
-
-        const resultsMap = {};
-
-        for (const doc of snapshot.docs) {
-            const response = doc.data();
-            const result = await calculateResult(response.evaluationId, response.answers);
-
-            if (result) {
-                const evaluationId = response.evaluationId;
-
-                // Si no existe una entrada para este evaluationId o el puntaje es mayor, actualizamos
-                if (!resultsMap[evaluationId] || result.score > resultsMap[evaluationId].score) {
-                    resultsMap[evaluationId] = {
-                        score: result.score,
-                        grade: result.grade,
-                        timestamp: response.timestamp,
-                    };
-                }
-            }
-        }
-
-        // Mostrar los resultados con el puntaje más alto
-        for (const evaluationId in resultsMap) {
-            const evaluationDoc = await db.collection('evaluations').doc(evaluationId).get();
-            const evaluationTitle = evaluationDoc.exists ? evaluationDoc.data().title : "Nombre no disponible";
-            const passingScore = evaluationDoc.data().puntajeAprobacion;
-
-            const highestResult = resultsMap[evaluationId];
-            const div = document.createElement('div');
-            div.className = "result-item";
-            div.innerHTML = `
-                <h3>${evaluationTitle}</h3>
-                <p><strong>Puntaje:</strong> ${highestResult.score}</p>
-                <p><strong>Estado de Aprobación:</strong> ${highestResult.grade}</p>
-            `;
-
-            if (highestResult.score >= passingScore) {
-                const approvalDate = highestResult.timestamp 
-                    ? new Date(highestResult.timestamp.toDate()).toLocaleDateString()
-                    : "Fecha no disponible";
-
-                // Crear contenedor para los botones
-                const buttonContainer = document.createElement("div");
-                buttonContainer.className = "button-container"; // Clase del CSS para diseño
-
-                // Botón para descargar el certificado
-                const downloadButton = document.createElement("button");
-                downloadButton.textContent = "Descargar Certificado";
-                downloadButton.className = "download-button"; // Clase CSS para diseño
-                downloadButton.addEventListener("click", () => {
-                    console.log("Intentando generar certificado para:", evaluationId);
-                    generateCertificateFromPDF(auth.currentUser.email, evaluationId, highestResult.score, approvalDate);
-                });
-
-                // Botón de añadir a LinkedIn
-                const linkedInButton = document.createElement("button");
-                linkedInButton.textContent = "Añadir a LinkedIn";
-                linkedInButton.className = "linkedin-button"; // Clase CSS para diseño
-                linkedInButton.addEventListener("click", async () => {
-                    try {
-                        const userDoc = await db.collection("users").doc(auth.currentUser.uid).get();
-                        const customID = userDoc.exists ? userDoc.data().customID : "defaultID";
-
-                        const evaluationDoc = await db.collection("evaluations").doc(evaluationId).get();
-                        const evaluationData = evaluationDoc.exists ? evaluationDoc.data() : null;
-
-                        if (!evaluationData) {
-                            alert("No se pudo encontrar la evaluación asociada.");
-                            return;
-                        }
-
-                        const year = new Date(highestResult.timestamp.toDate()).getFullYear();
-                        const certificateID = `${evaluationData.ID}${customID}${year}`;
-
-                        // Buscar el certificado por su ID
-                        const certificateDoc = await db.collection("certificates").doc(certificateID).get();
-                        if (!certificateDoc.exists) {
-                            alert("Certificado no encontrado.");
-                            return;
-                        }
-
-                        const certificateData = certificateDoc.data();
-
-                        // Obtener fechas de expedición y caducidad
-                        const issuedDate = new Date(certificateData.issuedDate); // Fecha de expedición
-                        // **Nueva lógica**: calcular fecha de expiración solo si `lastDate` existe
-                        let expirationDate = null;
-                        if (evaluationData.lastDate !== undefined && evaluationData.lastDate !== null) {
-                            expirationDate = new Date(issuedDate);
-                            expirationDate.setMonth(expirationDate.getMonth() + evaluationData.lastDate);
-                        }
-
-        // Construir URL de LinkedIn con formato correcto
-        let linkedInUrl = "https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME" +
-                          `&name=${encodeURIComponent(certificateData.courseName)}` +
-                          `&organizationId=66227493` +  // ID de la empresa (ESYS) en LinkedIn
-                          `&issueYear=${issuedDate.getFullYear()}` +
-                          `&issueMonth=${issuedDate.getMonth() + 1}`;
-        
-        // Si hay fecha de expiración calculada, incluirla en la URL
-        if (expirationDate) {
-            linkedInUrl += `&expirationYear=${expirationDate.getFullYear()}` +
-                           `&expirationMonth=${expirationDate.getMonth() + 1}`;
-        }
-        
-        // Continuar construyendo la URL con el enlace de verificación y el ID
-        linkedInUrl += `&certUrl=${encodeURIComponent(`https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${certificateID}`)}` +
-                       `&certId=${encodeURIComponent(certificateID)}`;
-
-        // Redirigir a LinkedIn con el enlace generado
-        window.open(linkedInUrl, "_blank");
-                        
-                    } catch (error) {
-                        console.error("Error al añadir a LinkedIn:", error);
-                        alert("Hubo un problema al intentar añadir el certificado a LinkedIn.");
-                    }
-                });
-
-                // Añadir botones al contenedor
-                buttonContainer.appendChild(downloadButton);
-                buttonContainer.appendChild(linkedInButton);
-                div.appendChild(buttonContainer);
-            }
-
-            responsesContainer.appendChild(div);
-        }
-
-    } catch (error) {
-        console.error("Error cargando respuestas:", error);
-        responsesContainer.innerHTML = "<p>Hubo un problema al cargar tus resultados.</p>";
+    if (snapshot.empty) {
+      responsesContainer.innerHTML = "<p>No tienes evaluaciones realizadas.</p>";
+      return;
     }
+
+    // 2) Elige el mejor puntaje por evaluationId y guarda también su sessionId
+    const resultsMap = {};
+    for (const doc of snapshot.docs) {
+      const r = doc.data();
+      const calc = await calculateResult(r.evaluationId, r.answers);
+      if (!calc) continue;
+
+      const evaluationId = r.evaluationId;
+      const sessionId    = r.sessionId || "";
+      if (!resultsMap[evaluationId] || calc.score > resultsMap[evaluationId].score) {
+        resultsMap[evaluationId] = {
+          score: calc.score,
+          grade: calc.grade,
+          timestamp: r.timestamp,
+          sessionId,
+        };
+      }
+    }
+
+    // 3) Pinta cada resultado y decide si mostrar el botón de descarga
+    for (const evaluationId in resultsMap) {
+      const evalSnap = await db.collection('evaluations').doc(evaluationId).get();
+      const evaluationData  = evalSnap.exists ? evalSnap.data() : null;
+      const evaluationTitle = evaluationData ? (evaluationData.title || evaluationData.name || "Nombre no disponible") : "Nombre no disponible";
+      const passingScore    = evaluationData ? evaluationData.puntajeAprobacion : 0;
+
+      const best = resultsMap[evaluationId];
+
+      const div = document.createElement('div');
+      div.className = "result-item";
+      div.innerHTML = `
+        <h3>${evaluationTitle}</h3>
+        <p><strong>Puntaje:</strong> ${best.score}</p>
+        <p><strong>Estado de Aprobación:</strong> ${best.grade}</p>
+      `;
+
+      if (best.score >= passingScore) {
+        const approvalDate = best.timestamp
+          ? new Date(best.timestamp.toDate()).toLocaleDateString()
+          : "Fecha no disponible";
+
+        const buttonContainer = document.createElement("div");
+        buttonContainer.className = "button-container";
+
+        // === LEE EL BLOQUEO DE DESCARGA EN LA SESIÓN ===
+        let certLocked = false;
+        try {
+          const userDoc = await db.collection("users").doc(user.uid).get();
+          const { customID = "", rut = "" } = userDoc.exists ? userDoc.data() : {};
+
+          if (best.sessionId) {
+            const sSnap = await db.collection("inscripciones").doc(best.sessionId).get();
+            if (sSnap.exists) {
+              const arr = Array.isArray(sSnap.data().inscriptions) ? sSnap.data().inscriptions : [];
+              const me  = arr.find(p =>
+                (customID && p.customID === customID) || (rut && p.rut === rut)
+              );
+              certLocked = me?.certDownloadLocked === true; // 🔒
+            }
+          }
+        } catch(e) {
+          console.warn("No se pudo leer estado de bloqueo de certificado:", e);
+        }
+
+        // === SOLO CREA EL BOTÓN DE DESCARGA SI NO ESTÁ BLOQUEADO ===
+        if (!certLocked) {
+          const downloadButton = document.createElement("button");
+          downloadButton.textContent = "Descargar Certificado";
+          downloadButton.className   = "download-button";
+          downloadButton.addEventListener("click", () => {
+            console.log("Intentando generar certificado para:", evaluationId);
+            generateCertificateFromPDF(auth.currentUser.email, evaluationId, best.score, approvalDate);
+          });
+          buttonContainer.appendChild(downloadButton);
+        }
+
+        // Botón Añadir a LinkedIn (igual que lo tienes)
+        const linkedInButton = document.createElement("button");
+        linkedInButton.textContent = "Añadir a LinkedIn";
+        linkedInButton.className   = "linkedin-button";
+        linkedInButton.addEventListener("click", async () => {
+          try {
+            const userDoc = await db.collection("users").doc(auth.currentUser.uid).get();
+            const customID = userDoc.exists ? userDoc.data().customID : "defaultID";
+
+            const evaluationDoc = await db.collection("evaluations").doc(evaluationId).get();
+            const evaluationData = evaluationDoc.exists ? evaluationDoc.data() : null;
+            if (!evaluationData) { alert("No se pudo encontrar la evaluación asociada."); return; }
+
+            const year = new Date(best.timestamp.toDate()).getFullYear();
+            const certificateID = `${evaluationData.ID}${customID}${year}`;
+
+            const certDoc = await db.collection("certificates").doc(certificateID).get();
+            if (!certDoc.exists) { alert("Certificado no encontrado."); return; }
+
+            const cData       = certDoc.data();
+            const issuedDate  = new Date(cData.issuedDate);
+            let expirationDate = null;
+            if (evaluationData.lastDate !== undefined && evaluationData.lastDate !== null) {
+              expirationDate = new Date(issuedDate);
+              expirationDate.setMonth(expirationDate.getMonth() + evaluationData.lastDate);
+            }
+
+            let linkedInUrl = "https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME" +
+              `&name=${encodeURIComponent(cData.courseName)}` +
+              `&organizationId=66227493` +
+              `&issueYear=${issuedDate.getFullYear()}` +
+              `&issueMonth=${issuedDate.getMonth() + 1}`;
+
+            if (expirationDate) {
+              linkedInUrl += `&expirationYear=${expirationDate.getFullYear()}` +
+                             `&expirationMonth=${expirationDate.getMonth() + 1}`;
+            }
+
+            linkedInUrl += `&certUrl=${encodeURIComponent(
+              `https://esysingenieria.github.io/evaluaciones-cursos/verificar.html?id=${certificateID}`
+            )}&certId=${encodeURIComponent(certificateID)}`;
+
+            window.open(linkedInUrl, "_blank");
+          } catch (error) {
+            console.error("Error al añadir a LinkedIn:", error);
+            alert("Hubo un problema al intentar añadir el certificado a LinkedIn.");
+          }
+        });
+
+        buttonContainer.appendChild(linkedInButton);
+        div.appendChild(buttonContainer);
+      }
+
+      responsesContainer.appendChild(div);
+    }
+  } catch (error) {
+    console.error("Error cargando respuestas:", error);
+    responsesContainer.innerHTML = "<p>Hubo un problema al cargar tus resultados.</p>";
+  }
 };
 
 
