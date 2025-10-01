@@ -373,6 +373,7 @@
     if (tpl === 'decision') return renderDecisionSrcdoc(data, completeKey);
     if (tpl === 'numeric')  return renderNumericSrcdoc(data, completeKey);
     if (tpl === 'mcq')      return renderMcqSrcdoc(data, completeKey);
+    if (tpl === 'mcq_multi')return renderMcqMultiSrcdoc(data, completeKey);  // ← NUEVO
     if (tpl === '__raw')    return wrapRawHtml(data.html || '');
     return basicCard(`No se reconoce la plantilla "${tpl}".`);
   }
@@ -496,6 +497,94 @@
           out.textContent = ok ? '✅ Correcto' : '❌ Incorrecto';
           out.className = ok ? 'ok' : 'bad';
           if (ok && parent && parent.__markLessonCompleted) { try { parent.__markLessonCompleted(${JSON.stringify(key)}); } catch(e){} }
+        };
+      <\/script>
+    </body></html>`;
+  }
+
+  function renderMcqMultiSrcdoc({
+    questions = [],
+    shuffleQ = true,
+    shuffleChoices = true,
+    passMin = 0,         // si > 0, manda sobre passPct
+    passPct = 0,         // ej 0.7 = 70%
+    showPerQuestion = true,
+    allowRetry = true
+  } = {}, key) {
+
+    // util para barajar índices
+    function shuf(arr){ return arr.slice().sort(()=>Math.random()-0.5); }
+
+    const qIdxs = shuffleQ ? shuf(questions.map((_,i)=>i)) : questions.map((_,i)=>i);
+
+    // construir HTML de todas las preguntas (con barajado de alternativas y flags de correctas ya aplicados)
+    const blocks = qIdxs.map((qi, qnShown) => {
+      const q = questions[qi] || {};
+      const cIdxs = shuffleChoices ? shuf((q.choices||[]).map((_,i)=>i)) : (q.choices||[]).map((_,i)=>i);
+      const radios = cIdxs.map(ci => {
+        const ch = q.choices[ci];
+        const isCorrect = !!ch.correct;
+        // guardamos si la opción mostrada es correcta en data-c="1|0"
+        return `<label style="display:block;margin:6px 0">
+          <input type="radio" name="q${qnShown}" data-c="${isCorrect ? 1 : 0}">
+          ${escapeHtml(ch.text)}
+        </label>`;
+      }).join('');
+      return `
+        <div class="qblock" data-q="${qnShown}" style="margin:16px 0">
+          <h3 style="margin:0 0 6px">${qnShown+1}. ${escapeHtml(q.question || '')}</h3>
+          ${radios}
+          ${showPerQuestion ? `<p class="qfb muted" id="fb${qnShown}"></p>` : ``}
+        </div>
+      `;
+    }).join('');
+
+    const total = questions.length;
+    const rule = (passMin > 0) ? `${passMin} correctas` : (passPct > 0 ? `${Math.round(passPct*100)}%` : `todas correctas`);
+
+    return `<!doctype html><html lang="es"><head>${baseHead()}</head><body>
+      <div class="wrap"><div class="card">
+        <h2>Cuestionario</h2>
+        <p class="muted">Aprobación requerida: ${escapeHtml(rule)}.</p>
+        <div id="quiz">${blocks}</div>
+        <button id="check" class="btn" style="margin-top:8px">Revisar</button>
+        ${allowRetry ? '<button id="retry" class="btn" style="margin-left:8px;display:none">Reintentar</button>' : ''}
+        <p id="final" class="muted" style="margin-top:8px"></p>
+      </div></div>
+      <script>
+        function evalQuiz(){
+          let ok = 0;
+          const qblocks = document.querySelectorAll('.qblock');
+          qblocks.forEach((blk, i) => {
+            const pick = blk.querySelector('input[type=radio]:checked');
+            const correct = pick && pick.dataset.c === '1';
+            if (correct) ok++;
+            const fb = document.getElementById('fb'+i);
+            if (fb) fb.textContent = correct ? '✅ Correcto' : '❌ Incorrecto';
+            if (fb) fb.className = correct ? 'ok' : 'bad';
+          });
+          const final = document.getElementById('final');
+          const total = ${total};
+          const passMin = ${+passMin};
+          const passPct = ${+passPct};
+          const need = passMin > 0 ? passMin : (passPct > 0 ? Math.ceil(total * passPct) : total);
+          const passed = ok >= need;
+          final.textContent = (passed ? '✅ ' : '❌ ') + ('Resultado: ' + ok + '/' + total + ' (mínimo para aprobar: ' + need + ')');
+          final.className = passed ? 'ok' : 'bad';
+          if (passed && parent && parent.__markLessonCompleted) {
+            try { parent.__markLessonCompleted(${JSON.stringify(key)}); } catch(e){}
+          }
+          const retry = document.getElementById('retry');
+          if (retry) retry.style.display = '';
+        }
+
+        document.getElementById('check').onclick = evalQuiz;
+        const retry = document.getElementById('retry');
+        if (retry) retry.onclick = ()=>{
+          // limpiar selecciones y feedback
+          document.querySelectorAll('input[type=radio]:checked').forEach(i=>i.checked=false);
+          document.querySelectorAll('.qfb').forEach(p=>{ p.textContent=''; p.className='muted'; });
+          const final = document.getElementById('final'); final.textContent=''; final.className='muted';
         };
       <\/script>
     </body></html>`;
