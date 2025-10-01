@@ -506,10 +506,7 @@
     questions = [],
     shuffleQ = true,
     shuffleChoices = true,
-    passMin = 0,         // si > 0, manda sobre passPct
-    passPct = 0,         // ej 0.7 = 70%
-    showPerQuestion = true,
-    allowRetry = true
+    showPerQuestion = true
   } = {}, key) {
 
     // util para barajar índices
@@ -517,14 +514,13 @@
 
     const qIdxs = shuffleQ ? shuf(questions.map((_,i)=>i)) : questions.map((_,i)=>i);
 
-    // construir HTML de todas las preguntas (con barajado de alternativas y flags de correctas ya aplicados)
+    // construir HTML de todas las preguntas (con barajado de alternativas)
     const blocks = qIdxs.map((qi, qnShown) => {
       const q = questions[qi] || {};
       const cIdxs = shuffleChoices ? shuf((q.choices||[]).map((_,i)=>i)) : (q.choices||[]).map((_,i)=>i);
       const radios = cIdxs.map(ci => {
         const ch = q.choices[ci];
         const isCorrect = !!ch.correct;
-        // guardamos si la opción mostrada es correcta en data-c="1|0"
         return `<label style="display:block;margin:6px 0">
           <input type="radio" name="q${qnShown}" data-c="${isCorrect ? 1 : 0}">
           ${escapeHtml(ch.text)}
@@ -539,20 +535,17 @@
       `;
     }).join('');
 
-    const total = questions.length;
-    const rule = (passMin > 0) ? `${passMin} correctas` : (passPct > 0 ? `${Math.round(passPct*100)}%` : `todas correctas`);
-
     return `<!doctype html><html lang="es"><head>${baseHead()}</head><body>
       <div class="wrap"><div class="card">
-        <h2>Cuestionario</h2>
-        <p class="muted">Aprobación requerida: ${escapeHtml(rule)}.</p>
+        <h2>Cuestionario de práctica</h2>
         <div id="quiz">${blocks}</div>
         <button id="check" class="btn" style="margin-top:8px">Revisar</button>
-        ${allowRetry ? '<button id="retry" class="btn" style="margin-left:8px;display:none">Reintentar</button>' : ''}
         <p id="final" class="muted" style="margin-top:8px"></p>
       </div></div>
       <script>
+        let locked = false;
         function evalQuiz(){
+          if (locked) return;
           let ok = 0;
           const qblocks = document.querySelectorAll('.qblock');
           qblocks.forEach((blk, i) => {
@@ -560,32 +553,26 @@
             const correct = pick && pick.dataset.c === '1';
             if (correct) ok++;
             const fb = document.getElementById('fb'+i);
-            if (fb) fb.textContent = correct ? '✅ Correcto' : '❌ Incorrecto';
-            if (fb) fb.className = correct ? 'ok' : 'bad';
+            if (fb) { fb.textContent = correct ? '✅ Correcto' : '❌ Incorrecto'; fb.className = correct ? 'ok' : 'bad'; }
           });
+
+          // Deshabilitar todos los radios y el botón para impedir reintento
+          document.querySelectorAll('input[type=radio]').forEach(r=>r.disabled = true);
+          const btn = document.getElementById('check');
+          btn.disabled = true;
+          locked = true;
+
+          // Mensaje final solo informativo (sin puntaje/porcentajes)
           const final = document.getElementById('final');
-          const total = ${total};
-          const passMin = ${+passMin};
-          const passPct = ${+passPct};
-          const need = passMin > 0 ? passMin : (passPct > 0 ? Math.ceil(total * passPct) : total);
-          const passed = ok >= need;
-          final.textContent = (passed ? '✅ ' : '❌ ') + ('Resultado: ' + ok + '/' + total + ' (mínimo para aprobar: ' + need + ')');
-          final.className = passed ? 'ok' : 'bad';
-          if (passed && parent && parent.__markLessonCompleted) {
-            try { parent.__markLessonCompleted(${JSON.stringify(key)}); } catch(e){}
-          }
-          const retry = document.getElementById('retry');
-          if (retry) retry.style.display = '';
+          final.textContent = 'Revisión completada.';
+          final.className = 'muted';
+
+          // IMPORTANTE: no marcamos "completado" aquí (actividad de práctica)
+          // Si algún día quisieras marcar completado igual, podrías llamar:
+          // if (parent && parent.__markLessonCompleted) { try { parent.__markLessonCompleted(${JSON.stringify(key)}); } catch(e){} }
         }
 
         document.getElementById('check').onclick = evalQuiz;
-        const retry = document.getElementById('retry');
-        if (retry) retry.onclick = ()=>{
-          // limpiar selecciones y feedback
-          document.querySelectorAll('input[type=radio]:checked').forEach(i=>i.checked=false);
-          document.querySelectorAll('.qfb').forEach(p=>{ p.textContent=''; p.className='muted'; });
-          const final = document.getElementById('final'); final.textContent=''; final.className='muted';
-        };
       <\/script>
     </body></html>`;
   }
