@@ -755,10 +755,34 @@
     box.scrollTop = box.scrollHeight;
   }
 
+  // --- loader robusto por si la lib no está (o fue bloqueada) ---
+  async function loadTransformersIfMissing() {
+    if (window.transformers) return;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.15.0/dist/transformers.min.js';
+      s.defer = true;
+      s.crossOrigin = 'anonymous';
+      s.onload = resolve;
+      s.onerror = () => {
+        // Fallback a otro CDN
+        const s2 = document.createElement('script');
+        s2.src = 'https://unpkg.com/@xenova/transformers@2.15.0/dist/transformers.min.js';
+        s2.crossOrigin = 'anonymous';
+        s2.onload = resolve;
+        s2.onerror = reject;
+        document.head.appendChild(s2);
+      };
+      document.head.appendChild(s);
+    });
+  }
+
   async function ensureASR(){
     if (asr || asrLoading) return;
+    // NUEVO: intenta cargar la lib si no está
+    await loadTransformersIfMissing();
     if (!window.transformers) {
-      alert('No se pudo cargar la librería de STT. Asegura el <script> de transformers en el HTML.');
+      alert('No se pudo cargar la librería de STT (transformers). Revisa bloqueadores o conexión.');
       throw new Error('transformers not loaded');
     }
     asrLoading = true;
