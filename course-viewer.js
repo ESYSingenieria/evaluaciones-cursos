@@ -226,6 +226,8 @@
     const activityView = document.getElementById('activityView');
     if (activityView) activityView.style.display = 'none';
     els.player.style.display = '';
+    // [LOCAL STT] mostrar panel (Opción B)
+    if (window.__showLocalSTTPane) window.__showLocalSTTPane(true);
 
     // 1) Elegir URL (acepta alias) + rompe caché para evitar playlists viejas
     const raw = pickLessonSrc(lesson);
@@ -306,6 +308,10 @@
     if (HLS) { try { HLS.destroy(); } catch {} HLS = null; }
     video.removeAttribute('src');
     video.style.display = 'none';
+
+    // [LOCAL STT] apagar y ocultar en actividades
+    if (window.__stopLocalSTTIfRunning) window.__stopLocalSTTIfRunning();
+    if (window.__showLocalSTTPane) window.__showLocalSTTPane(false);
 
     // Mostrar activity view
     const view  = document.getElementById('activityView');
@@ -695,5 +701,186 @@
     // Enlaza a tus páginas existentes
     els.manualBtn.href = `manual.html?course=${encodeURIComponent(idOrSlug)}`;
     els.evalBtn.href   = `evaluation.html?course=${encodeURIComponent(idOrSlug)}`;
+  }
+})();
+
+// ======================================================
+// STT LOCAL (WebAudio + AudioWorklet + Transformers.js)
+// ======================================================
+(function(){
+  // Refs UI (existen en el HTML que agregaste en el panel derecho)
+  const pane = document.getElementById('localSTTPane');
+  const btnStart = document.getElementById('localSTTStart');
+  const btnStop  = document.getElementById('localSTTStop');
+  const selModel = document.getElementById('localSTTModel');
+  const cap = document.getElementById('localSTTCap');
+  const box = document.getElementById('localSTTBox');
+  const bar = document.getElementById('localSTTBar');
+  const prog = document.getElementById('localSTTProg');
+
+  if (!pane || !btnStart || !btnStop || !selModel || !box || !bar || !prog) return;
+
+  // Helpers globales para que tus funciones (playLesson/showActivity) solo "muestren/paren"
+  window.__showLocalSTTPane = (show) => { pane.style.display = show ? '' : 'none'; };
+  window.__stopLocalSTTIfRunning = stopAll;
+
+  // Detección de capacidad
+  const hasWebGPU = !!navigator.gpu;
+  cap.textContent = hasWebGPU ? 'WebGPU disponible' : 'Sin WebGPU (puede ir más lento)';
+
+  // Estado interno
+  let ctx = null, src = null, workletNode = null;
+  let asr = null, asrLoading = false, asrBusy = false;
+  let buffer = new Float32Array(0);
+  const SR_TARGET = 16000;
+  const SEG_SEC = 5;
+  const SEG_SAMPLES = SR_TARGET * SEG_SEC;
+
+  // UI
+  btnStart.onclick = startAll;
+  btnStop.onclick  = stopAll;
+
+  function setProgress(pct, label){
+    const v = Math.max(0, Math.min(100, Math.round(pct)));
+    bar.style.width = v + '%';
+    prog.textContent = (label ? label + ' ' : '') + v + '%';
+  }
+  function logLine(text){
+    const t = Math.floor((els?.player?.currentTime) || 0);
+    const mm = String(Math.floor(t/60)).padStart(2,'0');
+    const ss = String(t%60).padStart(2,'0');
+    const p = document.createElement('p');
+    p.textContent = `[${mm}:${ss}] ${text}`;
+    box.appendChild(p);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  async function ensureASR(){
+    if (asr || asrLoading) return;
+    if (!window.transformers) {
+      alert('No se pudo cargar la librería de STT. Asegura el <script> de transformers en el HTML.');
+      throw new Error('transformers not loaded');
+    }
+    asrLoading = true;
+    setProgress(1, 'Preparando…');
+
+    const { pipeline, env } = window.transformers;
+    env.backends.onnx = hasWebGPU ? 'webgpu' : 'wasm';
+    env.allowLocalModels = true;
+    env.useBrowserCache = true;
+
+    const modelId = selModel.value || 'Xenova/whisper-tiny';
+    asr = await pipeline('automatic-speech-recognition', modelId, {
+      quantized: true,
+      progress_callback: (ev) => {
+        if (ev && ev.loaded && ev.total) {
+          setProgress((ev.loaded/ev.total)*100, 'Descargando');
+        } else if (ev && ev.status && /loading model/i.test(ev.status)) {
+          setProgress(10, 'Cargando');
+        }
+      }
+    });
+    setProgress(100, 'Listo');
+    asrLoading = false;
+  }
+
+  // AudioWorklet que baja a 16 kHz mono
+  async function attachAudio(){
+    if (ctx) return; // ya montado
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+
+    const workletCode = `
+      class Down16k extends AudioWorkletProcessor {
+        constructor(){ super(); this._ratio = sampleRate / 16000; }
+        process(inputs){
+          const ch0 = inputs[0][0];
+          if (!ch0) return true;
+          const ratio = this._ratio;
+          const outLen = Math.floor(ch0.length / ratio);
+          const out = new Float32Array(outLen);
+          let o = 0, acc = 0, count = 0, r = 0;
+          for (let i=0; i<ch0.length; i++){
+            acc += ch0[i]; count++; r += 1;
+            if (r >= ratio){ out[o++] = acc / count; acc = 0; count = 0; r -= ratio; }
+          }
+          this.port.postMessage(out, [out.buffer]);
+          return true;
+        }
+      }
+      registerProcessor('down-16k', Down16k);
+    `;
+    const blob = new Blob([workletCode], { type:'application/javascript' });
+    const url = URL.createObjectURL(blob);
+    await ctx.audioWorklet.addModule(url);
+
+    // Fuente = tu <video> existente
+    src = ctx.createMediaElementSource(els.player);
+    workletNode = new AudioWorkletNode(ctx, 'down-16k');
+    workletNode.port.onmessage = (e) => {
+      const chunk = e.data;
+      const merged = new Float32Array(buffer.length + chunk.length);
+      merged.set(buffer, 0); merged.set(chunk, buffer.length);
+      buffer = merged;
+      if (!asrBusy && buffer.length >= SEG_SAMPLES) {
+        const seg = buffer.slice(0, SEG_SAMPLES);
+        buffer = buffer.slice(SEG_SAMPLES);
+        transcribeSegment(seg);
+      }
+    };
+
+    // Conectar solo a worklet (no al destino, para no tocar el audio del usuario)
+    src.connect(workletNode);
+    // Si quisieras forzar silencio del video por los parlantes:
+    // els.player.muted = true;
+  }
+
+  async function transcribeSegment(float32){
+    try{
+      if (!asr) return;
+      asrBusy = true;
+      const result = await asr(float32, {
+        chunk_length_s: SEG_SEC,
+        return_timestamps: false
+      });
+      const txt = (result && (result.text || result)) || '';
+      if (txt.trim()) logLine(txt.trim());
+    } catch(e){
+      console.warn('ASR error', e);
+    } finally{
+      asrBusy = false;
+    }
+  }
+
+  async function startAll(){
+    try{
+      btnStart.disabled = true;
+      btnStop.disabled = false;
+      await ensureASR();
+      await attachAudio();
+      if (ctx?.state === 'suspended') await ctx.resume();
+      setProgress(100, 'Listo');
+      if (!hasWebGPU) {
+        const p = document.createElement('p');
+        p.className='muted';
+        p.textContent = 'Sin WebGPU: puede ir más lento en este dispositivo.';
+        box.appendChild(p);
+      }
+    } catch(e){
+      alert('No se pudo iniciar la transcripción local.');
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+    }
+  }
+
+  function stopAll(){
+    try{
+      asrBusy = false;
+      if (src) { try{ src.disconnect(); }catch{} src = null; }
+      if (workletNode) { try{ workletNode.disconnect(); }catch{} workletNode = null; }
+      if (ctx) { try{ ctx.close(); }catch{} ctx = null; }
+    } finally {
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+    }
   }
 })();
