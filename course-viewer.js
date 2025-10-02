@@ -745,8 +745,11 @@
     bar.style.width = v + '%';
     prog.textContent = (label ? label + ' ' : '') + v + '%';
   }
+  
   function logLine(text){
-    const t = Math.floor((els?.player?.currentTime) || 0);
+    // Usar el <video id="player"> directamente (no dependemos de "els")
+    const playerEl = document.getElementById('player');
+    const t = Math.floor((playerEl?.currentTime) || 0);
     const mm = String(Math.floor(t/60)).padStart(2,'0');
     const ss = String(t%60).padStart(2,'0');
     const p = document.createElement('p');
@@ -755,26 +758,18 @@
     box.scrollTop = box.scrollHeight;
   }
 
-  // --- loader robusto por si la lib no está (o fue bloqueada) ---
+  // Cargar transformers si falta (ESM dinámico + fallback)
   async function loadTransformersIfMissing() {
     if (window.transformers) return;
-    await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.15.0/dist/transformers.min.js';
-      s.defer = true;
-      s.crossOrigin = 'anonymous';
-      s.onload = resolve;
-      s.onerror = () => {
-        // Fallback a otro CDN
-        const s2 = document.createElement('script');
-        s2.src = 'https://unpkg.com/@xenova/transformers@2.15.0/dist/transformers.min.js';
-        s2.crossOrigin = 'anonymous';
-        s2.onload = resolve;
-        s2.onerror = reject;
-        document.head.appendChild(s2);
-      };
-      document.head.appendChild(s);
-    });
+    try {
+      window.transformers = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.15.0');
+      return;
+    } catch {}
+    try {
+      window.transformers = await import('https://unpkg.com/@xenova/transformers@2.15.0');
+      return;
+    } catch {}
+    // si ambos fallan, nos quedamos sin lib
   }
 
   async function ensureASR(){
@@ -837,8 +832,11 @@
     const url = URL.createObjectURL(blob);
     await ctx.audioWorklet.addModule(url);
 
-    // Fuente = tu <video> existente
-    src = ctx.createMediaElementSource(els.player);
+    // Fuente = tu <video> existente (sin usar "els")
+    const playerEl = document.getElementById('player');
+    if (!playerEl) throw new Error('No se encontró el <video id="player">');
+    src = ctx.createMediaElementSource(playerEl);
+
     workletNode = new AudioWorkletNode(ctx, 'down-16k');
     workletNode.port.onmessage = (e) => {
       const chunk = e.data;
@@ -855,7 +853,7 @@
     // Conectar solo a worklet (no al destino, para no tocar el audio del usuario)
     src.connect(workletNode);
     // Si quisieras forzar silencio del video por los parlantes:
-    // els.player.muted = true;
+    // playerEl.muted = true;
   }
 
   async function transcribeSegment(float32){
