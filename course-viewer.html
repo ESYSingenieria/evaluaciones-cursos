@@ -70,25 +70,6 @@
       .layout{grid-template-columns: 1fr}
       .sidebar{max-height:none}
     }
-
-    /* --- Layout 2 columnas: video | panel derecho --- */
-    .player-two{
-      display:grid;
-      grid-template-columns:minmax(0,1fr) 360px; /* izq: video | der: panel */
-      gap:14px;
-      align-items:start;
-    }
-    @media (max-width:1100px){
-      .player-two{ grid-template-columns:1fr; } /* en móvil se apila */
-    }
-    .player-main{ min-width:0; } /* evita overflow del video */
-    #sidePane{
-      border:1px solid var(--b);
-      border-radius:12px;
-      background:#fff;
-      padding:10px;
-    }
-
   </style>
 
   <!-- Firebase (compat) igual que en tu proyecto -->
@@ -101,18 +82,6 @@
 
   <!-- hls.js para HLS en navegadores sin soporte nativo -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-
-  <!-- Cargar ESM y exponerlo como window.transformers -->
-  <script type="module">
-    try {
-      const t = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.15.0');
-      window.transformers = t;
-    } catch (e) {
-      // Fallback segundo CDN
-      const t2 = await import('https://unpkg.com/@xenova/transformers@2.15.0');
-      window.transformers = t2;
-    }
-  </script>
 
   <!-- Script de esta página -->
   <script src="course-viewer.js" defer></script>
@@ -155,60 +124,22 @@
           <a id="backToDashboard" href="dashboard.html">← Volver</a>
         </div>
 
-        <!-- NUEVO contenedor a 2 columnas (izq: tu player; der: panel STT local) -->
-        <div class="player-two">
-          <!-- COLUMNA IZQUIERDA: TU CÓDIGO ORIGINAL TAL CUAL -->
-          <div class="player-main">
-            <div class="player-wrap">
-              <video id="player" controls playsinline crossorigin="anonymous"></video>
-              <div class="watermark" id="wm"></div>
-            </div>
+        <div class="player-wrap">
+          <video id="player" controls playsinline crossorigin="anonymous"></video>
+          <div class="watermark" id="wm"></div>
+        </div>
 
-            <!-- Vista de Actividad (se muestra cuando type === 'activity') -->
-            <div id="activityView" style="display:none; margin-top:10px;">
-              <div id="activityBody" style="border:1px solid var(--b); border-radius:10px; padding:10px; background:#f8fafc;">
-                <iframe id="activityFrame" style="width:100%; height:60vh; border:0; border-radius:8px; display:none;"></iframe>
-                <div id="activityHtml" style="display:none;"></div>
-                <a id="activityOpen" class="btn" href="#" target="_blank" rel="noopener" style="display:none;">Abrir actividad</a>
-              </div>
-            </div>
-
-            <div class="meta">
-              <div class="chips" id="tags"></div>
-            </div>
+        <!-- Vista de Actividad (se muestra cuando type === 'activity') -->
+        <div id="activityView" style="display:none; margin-top:10px;">
+          <div id="activityBody" style="border:1px solid var(--b); border-radius:10px; padding:10px; background:#f8fafc;">
+            <iframe id="activityFrame" style="width:100%; height:60vh; border:0; border-radius:8px; display:none;"></iframe>
+            <div id="activityHtml" style="display:none;"></div>
+            <a id="activityOpen" class="btn" href="#" target="_blank" rel="noopener" style="display:none;">Abrir actividad</a>
           </div>
+        </div>
 
-          <!-- COLUMNA DERECHA: Panel de TRANSCRIPCIÓN LOCAL (modelo en navegador, opción B) -->
-          <aside id="sidePane">
-            <div id="localSTTPane" style="display:none; margin-top:0;">
-              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-                <strong>Transcripción local (beta)</strong>
-                <span id="localSTTCap" class="muted" style="margin-left:auto;"></span>
-              </div>
-
-              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-                <label class="muted">Modelo:
-                  <select id="localSTTModel">
-                    <option value="Xenova/whisper-tiny">Ligero (recomendado)</option>
-                    <option value="Xenova/whisper-base">Estándar</option>
-                  </select>
-                </label>
-                <button id="localSTTStart" class="btn">Activar transcripción local (≈50 MB)</button>
-                <button id="localSTTStop" class="btn" style="background:#64748b;">Apagar STT</button>
-              </div>
-
-              <div style="display:flex;align-items:center;gap:8px; margin:6px 0;">
-                <div style="flex:1;height:10px;border:1px solid var(--b);border-radius:999px;overflow:hidden;background:#f1f5f9">
-                  <div id="localSTTBar" style="height:100%;width:0;background:#0ea5e9;"></div>
-                </div>
-                <small id="localSTTProg" class="muted">0%</small>
-              </div>
-
-              <div id="localSTTBox" style="height:45vh; overflow:auto; border:1px solid var(--b); border-radius:10px; padding:10px; background:#f8fafc;">
-                <p class="muted">Pulsa “Activar…” para descargar el modelo (se cachea). Nada se envía a servidores.</p>
-              </div>
-            </div>
-          </aside>
+        <div class="meta">
+          <div class="chips" id="tags"></div>
         </div>
       </section>
     </div>
