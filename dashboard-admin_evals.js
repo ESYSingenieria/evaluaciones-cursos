@@ -513,7 +513,7 @@ function makeLessonRow(l = { title:'', hlsUrl:'', duration:'' }, mi = 0, li = 0)
   return row;
 }
 
-function makeActivityRow(a = { title:'', activityKind:'html', template:'', activityUrl:'', activityHtml:'', requireComplete:false }, mi = 0, li = 0){
+function makeActivityRow(a = { title:'', template:'mcq_multi', data:{}, requireComplete:false }, mi = 0, li = 0){
   const row = document.createElement('div');
   row.className = 'panel-card';
   row.style.margin = '6px 0';
@@ -521,10 +521,9 @@ function makeActivityRow(a = { title:'', activityKind:'html', template:'', activ
   row.dataset.li = String(li);
   row.dataset.type = 'activity';
 
-  const kind = a.activityKind || 'html';
-  const tpl  = a.template || '';
-  const url  = a.activityUrl || '';
-  const raw  = a.activityHtml || '';
+  // defaults
+  const tpl = a.template || 'mcq_multi';   // valor interno que el viewer espera
+  const data = a.data || {};
 
   row.innerHTML = `
     <div style="display:flex; gap:8px; align-items:center;">
@@ -541,33 +540,15 @@ function makeActivityRow(a = { title:'', activityKind:'html', template:'', activ
       <div class="field">
         <label>Tipo de actividad</label>
         <select class="act-kind">
-          <option value="html" ${kind==='html'?'selected':''}>HTML / Plantilla</option>
-          <option value="link" ${kind==='link'?'selected':''}>Enlace externo</option>
-          <option value="form" ${kind==='form'?'selected':''}>Formulario</option>
-          <option value="file" ${kind==='file'?'selected':''}>Archivo</option>
+          <option value="mcq_multi" ${tpl==='mcq_multi'?'selected':''}>Quizz</option>
+          <option value="numeric" ${tpl==='numeric'?'selected':''}>Ejercicio numérico</option>
+          <option value="decision" ${tpl==='decision'?'selected':''}>Simulación en terreno</option>
         </select>
       </div>
 
-      <div class="field full act-when-html" style="${kind==='html'?'':'display:none'}">
-        <label>Plantilla</label>
-        <select class="act-template">
-          <option value="">(Elegir)</option>
-          <option value="quiz-mcq" ${tpl==='quiz-mcq'?'selected':''}>Quiz MCQ</option>
-          <option value="quiz-mcq-multi" ${tpl==='quiz-mcq-multi'?'selected':''}>Quiz MCQ múltiple</option>
-          <option value="decision" ${tpl==='decision'?'selected':''}>Decisión</option>
-          <option value="text-html" ${tpl==='text-html'?'selected':''}>HTML pegado</option>
-        </select>
-        <div class="meta-help">Si eliges "HTML pegado", pega abajo el contenido.</div>
-      </div>
-
-      <div class="field full act-when-link" style="${(kind==='link' || kind==='form' || kind==='file')?'':'display:none'}">
-        <label>URL (link/form/archivo)</label>
-        <input type="text" class="act-url" placeholder="https://..." value="${url}">
-      </div>
-
-      <div class="field full act-when-raw" style="${(kind==='html' && tpl==='text-html')?'':'display:none'}">
-        <label>HTML de la actividad</label>
-        <textarea class="act-html" placeholder="&lt;div&gt;...&lt;/div&gt;">${raw || ''}</textarea>
+      <!-- Aquí se inyectan los campos de la plantilla elegida -->
+      <div class="field full">
+        <div class="act-config"></div>
       </div>
 
       <div class="field">
@@ -575,7 +556,197 @@ function makeActivityRow(a = { title:'', activityKind:'html', template:'', activ
       </div>
     </div>
   `;
+
+  // Render inicial de los campos de la plantilla elegida
+  renderActivityConfig(row, tpl, data);
   return row;
+}
+
+function renderActivityConfig(row, tpl, data={}){
+  const host = row.querySelector('.act-config');
+  host.innerHTML = ''; // limpia
+
+  if (tpl === 'mcq_multi'){
+    host.appendChild(buildQuizConfig(data));
+  } else if (tpl === 'numeric'){
+    host.appendChild(buildNumericConfig(data));
+  } else if (tpl === 'decision'){
+    host.appendChild(buildDecisionConfig(data));
+  }
+}
+
+/* ---------- Quizz (mcq_multi) ---------- */
+/* data = { questions:[{question, choices:[{text,correct}]}], shuffleQ, shuffleChoices, showPerQuestion } */
+function buildQuizConfig(d = {}){
+  const wrap = document.createElement('div');
+  wrap.className = 'q-card';
+
+  const questions = Array.isArray(d.questions) && d.questions.length ? d.questions : [{ question:'', choices:[{text:'',correct:false}] }];
+
+  wrap.innerHTML = `
+    <div class="q-sub">Preguntas del quizz</div>
+    <div class="quiz-questions"></div>
+    <div style="display:flex; gap:8px; margin-top:6px;">
+      <button type="button" class="small-btn small-add quiz-add-q">+ Agregar pregunta</button>
+      <label style="margin-left:auto;"><input type="checkbox" class="quiz-shufq" ${d.shuffleQ!==false?'checked':''}> Barajar preguntas</label>
+      <label><input type="checkbox" class="quiz-shufc" ${d.shuffleChoices!==false?'checked':''}> Barajar alternativas</label>
+      <label><input type="checkbox" class="quiz-showfb" ${d.showPerQuestion!==false?'checked':''}> Feedback por pregunta</label>
+    </div>
+  `;
+
+  const list = wrap.querySelector('.quiz-questions');
+  function addQuestion(q = { question:'', choices:[{text:'',correct:false}] }){
+    const idx = list.querySelectorAll(':scope > .panel-card').length;
+    const card = document.createElement('div');
+    card.className = 'panel-card';
+    card.innerHTML = `
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+        <strong>Pregunta ${idx+1}</strong>
+        <button type="button" class="small-btn small-del quiz-del-q" style="margin-left:auto;">Eliminar</button>
+      </div>
+      <div class="field">
+        <input type="text" class="quiz-q-text" placeholder="Texto de la pregunta" value="${q.question || ''}">
+      </div>
+      <div class="quiz-choices"></div>
+      <button type="button" class="small-btn small-add quiz-add-choice">+ Alternativa</button>
+    `;
+    const cList = card.querySelector('.quiz-choices');
+
+    function addChoice(c = {text:'', correct:false}){
+      const row = document.createElement('div');
+      row.className = 'q-row';
+      row.innerHTML = `
+        <input type="text" class="quiz-choice-text" placeholder="Texto de alternativa" value="${c.text || ''}">
+        <label style="display:flex; gap:4px; align-items:center;">
+          <input type="radio" name="quiz-correct-${idx}" ${c.correct ? 'checked':''}> Correcta
+        </label>
+        <button type="button" class="small-btn q-del-opt">Quitar</button>
+      `;
+      row.querySelector('.q-del-opt').onclick = ()=> row.remove();
+      cList.appendChild(row);
+    }
+
+    (q.choices || [{text:'',correct:false}]).forEach(addChoice);
+    card.querySelector('.quiz-add-choice').onclick = ()=> addChoice({text:'',correct:false});
+    card.querySelector('.quiz-del-q').onclick = ()=> card.remove();
+    list.appendChild(card);
+  }
+
+  questions.forEach(addQuestion);
+  wrap.querySelector('.quiz-add-q').onclick = ()=> addQuestion({ question:'', choices:[{text:'',correct:false}] });
+
+  return wrap;
+}
+
+/* ---------- Ejercicio numérico ---------- */
+/* data = { prompt, unit, solution, tolAbs, tolPct }  (tolPct = 0.1 equivale a 10%) */
+function buildNumericConfig(d = {}){
+  const wrap = document.createElement('div');
+  wrap.className = 'q-card';
+  wrap.innerHTML = `
+    <div class="grid">
+      <div class="field full">
+        <label>Enunciado</label>
+        <textarea class="num-prompt" rows="3" placeholder="Describe el ejercicio">${d.prompt || ''}</textarea>
+      </div>
+      <div class="field"><label>Unidad</label><input type="text" class="num-unit" value="${d.unit || ''}" placeholder="A, V, °C, %"></div>
+      <div class="field"><label>Solución</label><input type="number" step="any" class="num-solution" value="${d.solution ?? ''}"></div>
+      <div class="field"><label>Tolerancia (± absoluta)</label><input type="number" step="any" class="num-tolabs" value="${d.tolAbs ?? 0}"></div>
+      <div class="field"><label>Tolerancia (% sobre solución)</label><input type="number" step="any" class="num-tolpct" value="${ (d.tolPct ? (d.tolPct*100) : 0) }"></div>
+    </div>
+  `;
+  return wrap;
+}
+
+/* ---------- Simulación en terreno (decision) ---------- */
+/* data = { prompt, options:[{text, feedback, correct}], allowRetry } */
+function buildDecisionConfig(d = {}){
+  const wrap = document.createElement('div');
+  wrap.className = 'q-card';
+  wrap.innerHTML = `
+    <div class="field full">
+      <label>Escenario</label>
+      <textarea class="dec-prompt" rows="3" placeholder="Describe la situación a evaluar">${d.prompt || ''}</textarea>
+    </div>
+    <div class="q-sub">Opciones</div>
+    <div class="dec-opts"></div>
+    <div style="display:flex; gap:8px; align-items:center; margin-top:6px;">
+      <button type="button" class="small-btn small-add dec-add-opt">+ Opción</button>
+      <label style="margin-left:auto;"><input type="checkbox" class="dec-retry" ${d.allowRetry!==false?'checked':''}> Permitir reintento</label>
+    </div>
+  `;
+  const list = wrap.querySelector('.dec-opts');
+
+  function addOpt(o = { text:'', feedback:'', correct:false }){
+    const row = document.createElement('div');
+    row.className = 'panel-card';
+    row.innerHTML = `
+      <div class="field"><input type="text" class="dec-text" placeholder="Texto de la opción" value="${o.text || ''}"></div>
+      <div class="field full"><input type="text" class="dec-fb" placeholder="Feedback" value="${o.feedback || ''}"></div>
+      <label style="display:flex; gap:6px; align-items:center; margin:6px 0;"><input type="checkbox" class="dec-correct" ${o.correct ? 'checked':''}> Marcar como correcta</label>
+      <button type="button" class="small-btn small-del">Quitar</button>
+    `;
+    row.querySelector('.small-del').onclick = ()=> row.remove();
+    list.appendChild(row);
+  }
+
+  (d.options && d.options.length ? d.options : [{text:'',feedback:'',correct:true}]).forEach(addOpt);
+  wrap.querySelector('.dec-add-opt').onclick = ()=> addOpt({text:'',feedback:'',correct:false});
+  return wrap;
+}
+
+function readActivityDataFromUI(row){
+  const tpl = row.querySelector('.act-kind')?.value || 'mcq_multi';
+
+  if (tpl === 'mcq_multi'){
+    const wrap = row.querySelector('.act-config');
+    const questions = [];
+    wrap.querySelectorAll('.quiz-questions > .panel-card').forEach(card=>{
+      const question = card.querySelector('.quiz-q-text')?.value.trim() || '';
+      const choices = [];
+      const name = card.querySelector('input[type=radio][name^="quiz-correct-"]')?.name || '';
+      const picks = card.querySelectorAll('.quiz-choices .q-row');
+      let correctIdx = -1;
+      picks.forEach((r, i)=>{
+        const text = r.querySelector('.quiz-choice-text')?.value.trim() || '';
+        const isCorrect = r.querySelector(`input[type=radio][name="${name}"]`)?.checked || false;
+        if (text) choices.push({ text, correct: isCorrect });
+        if (isCorrect) correctIdx = i;
+      });
+      if (question && choices.length) questions.push({ question, choices });
+    });
+    const shuffleQ = !!row.querySelector('.quiz-shufq')?.checked;
+    const shuffleChoices = !!row.querySelector('.quiz-shufc')?.checked;
+    const showPerQuestion = !!row.querySelector('.quiz-showfb')?.checked;
+    return { template: 'mcq_multi', data: { questions, shuffleQ, shuffleChoices, showPerQuestion } };
+  }
+
+  if (tpl === 'numeric'){
+    const wrap = row.querySelector('.act-config');
+    const prompt  = wrap.querySelector('.num-prompt')?.value || '';
+    const unit    = wrap.querySelector('.num-unit')?.value || '';
+    const solution= parseFloat(wrap.querySelector('.num-solution')?.value || '');
+    const tolAbs  = parseFloat(wrap.querySelector('.num-tolabs')?.value || '0') || 0;
+    const tolPct  = (parseFloat(wrap.querySelector('.num-tolpct')?.value || '0') || 0) / 100; // UI en %
+    return { template: 'numeric', data: { prompt, unit, solution, tolAbs, tolPct } };
+  }
+
+  if (tpl === 'decision'){
+    const wrap = row.querySelector('.act-config');
+    const prompt = wrap.querySelector('.dec-prompt')?.value || '';
+    const allowRetry = !!wrap.querySelector('.dec-retry')?.checked;
+    const options = [];
+    wrap.querySelectorAll('.dec-opts > .panel-card').forEach(r=>{
+      const text = r.querySelector('.dec-text')?.value || '';
+      const feedback = r.querySelector('.dec-fb')?.value || '';
+      const correct = !!r.querySelector('.dec-correct')?.checked;
+      if (text) options.push({ text, feedback, correct });
+    });
+    return { template: 'decision', data: { prompt, options, allowRetry } };
+  }
+
+  // fallback
+  return { template: 'mcq_multi', data: {} };
 }
 
 function collectModulesEditor(){
@@ -586,24 +757,21 @@ function collectModulesEditor(){
     const lessons = [];
     box.querySelectorAll('.lessons > .panel-card').forEach((row)=>{
       const rowType = row.dataset.type || 'video';
-      if (rowType === 'activity'){
-        const title  = row.querySelector('.act-title')?.value.trim() || '';
-        const kind   = row.querySelector('.act-kind')?.value || 'html';
-        const tpl    = row.querySelector('.act-template')?.value || '';
-        const url    = row.querySelector('.act-url')?.value.trim() || '';
-        const html   = row.querySelector('.act-html')?.value || '';
-        const req    = !!row.querySelector('.act-require')?.checked;
 
-        const activity = { type:'activity', title, activityKind: kind, requireComplete: req };
-        if (kind === 'html'){
-          if (tpl === 'text-html') activity.activityHtml = html;
-          else if (tpl) activity.template = tpl;
-        } else {
-          if (url) activity.activityUrl = url;
-        }
-        if (title || activity.activityHtml || activity.template || activity.activityUrl){
-          lessons.push(activity);
-        }
+      if (rowType === 'activity'){
+        const title = row.querySelector('.act-title')?.value.trim() || '';
+        const { template, data } = readActivityDataFromUI(row);
+        const req = !!row.querySelector('.act-require')?.checked;
+
+        // lo que el viewer espera:
+        const activity = {
+          type: 'activity',
+          activityKind: 'html',
+          title, template, data,
+          requireComplete: req
+        };
+        if (title || (data && Object.keys(data).length)) lessons.push(activity);
+
       } else {
         const ltitle = row.querySelector('.les-title')?.value.trim() || '';
         const dur    = row.querySelector('.les-duration')?.value.trim() || '';
@@ -798,19 +966,19 @@ document.addEventListener('click', (e)=>{
   if (e.target?.classList?.contains('lesson-del')){
     e.target.closest('.panel-card')?.remove();
   }
-  document.addEventListener('change', (e)=>{
-    const row = e.target.closest('.panel-card');
-    if (!row) return;
+});
 
-    if (e.target.classList.contains('act-kind') || e.target.classList.contains('act-template')){
-      const kind = row.querySelector('.act-kind')?.value || 'html';
-      const tpl  = row.querySelector('.act-template')?.value || '';
-      // visibilidad
-      const wh = row.querySelector('.act-when-html'); if (wh) wh.style.display = (kind==='html') ? '' : 'none';
-      const wl = row.querySelector('.act-when-link'); if (wl) wl.style.display = (kind==='link'||kind==='form'||kind==='file') ? '' : 'none';
-      const wr = row.querySelector('.act-when-raw');  if (wr) wr.style.display = (kind==='html' && tpl==='text-html') ? '' : 'none';
-    }
-  });
+document.addEventListener('change', (e)=>{
+  const row = e.target.closest('.panel-card');
+  if (!row) return;
+
+  // Cambia plantilla: vuelve a pintar los campos
+  if (e.target.classList.contains('act-kind')){
+    const tpl = row.querySelector('.act-kind')?.value || 'mcq_multi';
+    // conserva lo digitado si ya existía data:
+    const ex = readActivityDataFromUI(row); // lee lo que hubiese
+    renderActivityConfig(row, tpl, ex.data || {});
+  }
 });
 
 // ===== Acciones (creados) =====
@@ -1933,6 +2101,7 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
 
