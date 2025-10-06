@@ -414,6 +414,7 @@ async function fillForm(docId, data){
   renumberQuestions();
   await loadRecordedForEditor(docId);
 }
+
 function collectArrayFrom(sel){
   const out = [];
   $$(sel+' input[type="text"]').forEach(i=>{ const v=i.value.trim(); if(v) out.push(v); });
@@ -526,15 +527,46 @@ async function loadRecordedForEditor(docId){
   const toggle = document.getElementById('asyncToggle');
   const modsWrap = document.getElementById('modsPanel');
   if (!toggle || !modsWrap) return;
-  try{
-    const snap = await firebase.firestore().collection('recordedCourses').doc(docId).get();
-    const exists = snap.exists;
-    toggle.checked = exists || (docId || '').endsWith('_asincronico');
-    renderModulesEditor(exists ? (snap.data().modules || []) : []);
-  }catch(e){
-    console.warn('No se pudo cargar recordedCourses/', docId, e);
+
+  const db  = firebase.firestore();
+  const col = db.collection('recordedCourses');
+
+  let found = null;
+
+  // 1) Exacto
+  let snap = await col.doc(docId).get().catch(()=>null);
+  if (snap && snap.exists) found = { id: snap.id, ...(snap.data()||{}) };
+
+  // 2) Variantes comunes de casing (si no apareció)
+  if (!found){
+    const variants = [docId.toLowerCase(), docId.toUpperCase()];
+    for (const v of variants){
+      if (v === docId) continue;
+      const s = await col.doc(v).get().catch(()=>null);
+      if (s && s.exists){ found = { id: s.id, ...(s.data()||{}) }; break; }
+    }
+  }
+
+  // 3) Fallback por slug (id tal cual y versión sanitizada)
+  if (!found){
+    const slugCands = [docId, (typeof sanitizeDocId==='function' ? sanitizeDocId(docId) : docId.toLowerCase())];
+    for (const sl of slugCands){
+      const q = await col.where('slug','==', sl).limit(1).get().catch(()=>null);
+      if (q && !q.empty){ const d = q.docs[0]; found = { id: d.id, ...(d.data()||{}) }; break; }
+    }
+  }
+
+  // Pintar
+  if (found){
+    toggle.checked = true;
+    renderModulesEditor(Array.isArray(found.modules) ? found.modules : []);
+    // guarda el id real encontrado para que al guardar actualices ese doc
+    document.getElementById('docIdInput')?.setAttribute('data-recorded-id', found.id);
+  }else{
+    // no existe aún: deja vacío pero marca según heurística
     toggle.checked = (docId || '').endsWith('_asincronico');
     renderModulesEditor([]);
+    document.getElementById('docIdInput')?.removeAttribute('data-recorded-id');
   }
 }
 
@@ -715,6 +747,10 @@ async function saveEvaluation(){
     try{
       const isAsync = document.getElementById('asyncToggle')?.checked;
       if (isAsync){
+        const recId =
+          document.getElementById('docIdInput')?.getAttribute('data-recorded-id') // si ya existía con otro casing
+          || docId; // si no existía, crea con el docId actual
+        
         const rec = {
           title,                              // mismo título del curso
           slug: sanitizeDocId(docId),         // te permite acceder por slug si quisieras
@@ -1676,6 +1712,7 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
 
