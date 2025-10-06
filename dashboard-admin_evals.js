@@ -378,6 +378,7 @@ function rowChip(value=''){
   wrap.querySelector('button').addEventListener('click', ()=>wrap.remove());
   return wrap;
 }
+
 function clearForm(){
   ['docIdInput','idInput','nameInput','descInput','manualUrlInput',
    'certificateTmplInput','imageUrlInput','imageBadgeInput','timeHoursInput','scoreInput']
@@ -386,7 +387,8 @@ function clearForm(){
   $('#standardsList').innerHTML = '';
   $('#questionsList').innerHTML = '';
 }
-function fillForm(docId, data){
+
+async function fillForm(docId, data){
   setVal('docIdInput', docId || '');
   setVal('idInput', data.ID ?? '');
   setVal('nameInput', data.name ?? '');
@@ -410,6 +412,7 @@ function fillForm(docId, data){
   const qL = $('#questionsList'); qL.innerHTML = '';
   (data.questions || []).forEach(q => qL.appendChild(makeQuestion(q)));
   renumberQuestions();
+  await loadRecordedForEditor(docId);
 }
 function collectArrayFrom(sel){
   const out = [];
@@ -436,6 +439,142 @@ function collectQuestions(){
   return out;
 }
 
+// ===== Editor de MÓDULOS (asincrónicos) =====
+function renderModulesEditor(mods = []) {
+  const wrap = document.getElementById('modulesListEditor');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  (mods || []).forEach((m, mi) => wrap.appendChild(makeModuleCard(m, mi)));
+  if (!(mods || []).length) wrap.appendChild(makeModuleCard({ title: '', lessons: [] }, 0));
+}
+
+function makeModuleCard(m = { title:'', lessons:[] }, mi = 0){
+  const box = document.createElement('div');
+  box.className = 'panel-card';
+  box.style.margin = '8px 0';
+  box.dataset.mi = String(mi);
+  box.innerHTML = `
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+      <strong>Módulo ${mi+1}</strong>
+      <button type="button" class="small-btn small-del mod-del" style="margin-left:auto;">Eliminar módulo</button>
+    </div>
+    <div class="field full">
+      <label>Título del módulo</label>
+      <input type="text" class="mod-title" placeholder="Ej. Introducción" value="${m.title || ''}">
+    </div>
+    <div class="field full">
+      <label>Lecciones</label>
+      <div class="lessons"></div>
+      <button type="button" class="small-btn small-add mod-add-lesson">+ Agregar video</button>
+    </div>
+  `;
+  const list = box.querySelector('.lessons');
+  (m.lessons || []).forEach((l, li) => list.appendChild(makeLessonRow(l, mi, li)));
+  return box;
+}
+
+function makeLessonRow(l = { title:'', hlsUrl:'', duration:'' }, mi = 0, li = 0){
+  const row = document.createElement('div');
+  row.className = 'panel-card';
+  row.style.margin = '6px 0';
+  row.dataset.mi = String(mi);
+  row.dataset.li = String(li);
+  row.innerHTML = `
+    <div style="display:flex; gap:8px; align-items:center;">
+      <strong>Lección ${li+1}</strong>
+      <button type="button" class="small-btn small-del lesson-del" style="margin-left:auto;">Eliminar</button>
+    </div>
+    <div class="grid">
+      <div class="field">
+        <label>Título</label>
+        <input type="text" class="les-title" placeholder="Ej. Presentación" value="${l.title || ''}">
+      </div>
+      <div class="field">
+        <label>Duración (texto corto)</label>
+        <input type="text" class="les-duration" placeholder="10 min" value="${l.duration || ''}">
+      </div>
+      <div class="field full">
+        <label>URL HLS (master.m3u8)</label>
+        <input type="text" class="les-hls" placeholder="https://.../master.m3u8" value="${l.hlsUrl || ''}">
+      </div>
+    </div>
+  `;
+  return row;
+}
+
+function collectModulesEditor(){
+  const out = [];
+  const boxes = document.querySelectorAll('#modulesListEditor > .panel-card');
+  boxes.forEach((box, mi)=>{
+    const title = box.querySelector('.mod-title')?.value.trim() || '';
+    const lessons = [];
+    box.querySelectorAll('.lessons > .panel-card').forEach((row)=>{
+      const ltitle = row.querySelector('.les-title')?.value.trim() || '';
+      const dur    = row.querySelector('.les-duration')?.value.trim() || '';
+      const hls    = row.querySelector('.les-hls')?.value.trim() || '';
+      // viewer acepta varios alias, pero usaremos hlsUrl (pickLessonSrc ya lo contempla)
+      // course-viewer usa title/duration y busca hlsUrl/hlsURL/hls/url (ver pickLessonSrc)
+      if (ltitle || hls) lessons.push({ title: ltitle, duration: dur, hlsUrl: hls });
+    });
+    if (title || lessons.length) out.push({ title, lessons });
+  });
+  return out;
+}
+
+// Cargar módulos si existe recordedCourses/{docId}
+async function loadRecordedForEditor(docId){
+  const toggle = document.getElementById('asyncToggle');
+  const modsWrap = document.getElementById('modsPanel');
+  if (!toggle || !modsWrap) return;
+  try{
+    const snap = await firebase.firestore().collection('recordedCourses').doc(docId).get();
+    const exists = snap.exists;
+    toggle.checked = exists || (docId || '').endsWith('_asincronico');
+    renderModulesEditor(exists ? (snap.data().modules || []) : []);
+  }catch(e){
+    console.warn('No se pudo cargar recordedCourses/', docId, e);
+    toggle.checked = (docId || '').endsWith('_asincronico');
+    renderModulesEditor([]);
+  }
+}
+
+// Tabs Evaluación / Módulos
+document.addEventListener('click', (e)=>{
+  if (e.target?.id === 'tabEval' || e.target?.id === 'tabMods'){
+    const evalP = document.getElementById('evalPanel');
+    const modsP = document.getElementById('modsPanel');
+    const be = document.getElementById('tabEval');
+    const bm = document.getElementById('tabMods');
+    if (e.target.id === 'tabEval'){
+      evalP.style.display = ''; modsP.style.display = 'none';
+      be.classList.add('tab-on'); bm.classList.remove('tab-on');
+    }else{
+      evalP.style.display = 'none'; modsP.style.display = '';
+      bm.classList.add('tab-on'); be.classList.remove('tab-on');
+    }
+  }
+
+  // Agregar/eliminar módulos y lecciones (delegación)
+  if (e.target?.id === 'btnAddModule'){
+    const wrap = document.getElementById('modulesListEditor');
+    const mi = wrap.querySelectorAll(':scope > .panel-card').length;
+    wrap.appendChild(makeModuleCard({ title:'', lessons:[] }, mi));
+  }
+  if (e.target?.classList?.contains('mod-del')){
+    const box = e.target.closest('.panel-card'); box?.remove();
+  }
+  if (e.target?.classList?.contains('mod-add-lesson')){
+    const box = e.target.closest('.panel-card');
+    const list = box.querySelector('.lessons');
+    const li = list.querySelectorAll(':scope > .panel-card').length;
+    const mi = parseInt(box.dataset.mi || '0', 10);
+    list.appendChild(makeLessonRow({ title:'', duration:'', hlsUrl:'' }, mi, li));
+  }
+  if (e.target?.classList?.contains('lesson-del')){
+    e.target.closest('.panel-card')?.remove();
+  }
+});
+
 // ===== Acciones (creados) =====
 document.addEventListener('click', async (e)=>{
   const btnEdit = e.target.closest('.act-edit');
@@ -446,7 +585,7 @@ document.addEventListener('click', async (e)=>{
     const card = btnEdit.closest('.course-card');
     const docId = card.getAttribute('data-doc');
     const found = allEvaluations.find(x=>x.docId===docId);
-    fillForm(docId, found?.data || {});
+    await fillForm(docId, found?.data || {});
     $('#editorTitle').textContent = 'Editar curso';
     openEditor('Editar curso');
   }
@@ -571,6 +710,23 @@ async function saveEvaluation(){
 
   try{
     await firebase.firestore().collection('evaluations').doc(docId).set(payload, { merge:false });
+    
+    // Si es asincrónico, persistir los módulos en recordedCourses/{docId}
+    try{
+      const isAsync = document.getElementById('asyncToggle')?.checked;
+      if (isAsync){
+        const rec = {
+          title,                              // mismo título del curso
+          slug: sanitizeDocId(docId),         // te permite acceder por slug si quisieras
+          modules: collectModulesEditor()     // del editor nuevo
+          // puedes agregar description o tags si más tarde añades esos campos al editor
+        };
+        await firebase.firestore().collection('recordedCourses').doc(docId).set(rec, { merge: true });
+      }
+    }catch(e){
+      console.warn('No se pudo guardar recordedCourses/', docId, e);
+    }
+    
     alert('✅ Guardado en evaluations/'+docId);
     closeEditor();
     await loadCreatedCourses();
@@ -1520,6 +1676,7 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
 
