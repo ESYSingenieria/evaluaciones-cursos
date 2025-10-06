@@ -447,6 +447,7 @@ function renderModulesEditor(mods = []) {
   wrap.innerHTML = '';
   (mods || []).forEach((m, mi) => wrap.appendChild(makeModuleCard(m, mi)));
   if (!(mods || []).length) wrap.appendChild(makeModuleCard({ title: '', lessons: [] }, 0));
+  enableDnD();
 }
 
 function makeModuleCard(m = { title:'', lessons:[] }, mi = 0){
@@ -466,11 +467,19 @@ function makeModuleCard(m = { title:'', lessons:[] }, mi = 0){
     <div class="field full">
       <label>Lecciones</label>
       <div class="lessons"></div>
-      <button type="button" class="small-btn small-add mod-add-lesson">+ Agregar video</button>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" class="small-btn small-add mod-add-lesson">+ Agregar lección</button>
+        <button type="button" class="small-btn small-add mod-add-activity" style="margin-left:auto;">+ Agregar actividad</button>
+      </div>
     </div>
   `;
   const list = box.querySelector('.lessons');
-  (m.lessons || []).forEach((l, li) => list.appendChild(makeLessonRow(l, mi, li)));
+  (m.lessons || []).forEach((l, li) => {
+    const isActivity =
+      (l.type === 'activity') ||
+      (!l.hlsUrl && !l.hlsURL && !l.hls && !l.publicUrl && !l.url && !l.video && (l.activityHtml || l.template));
+    list.appendChild(isActivity ? makeActivityRow(l, mi, li) : makeLessonRow(l, mi, li));
+  });
   return box;
 }
 
@@ -480,6 +489,7 @@ function makeLessonRow(l = { title:'', hlsUrl:'', duration:'' }, mi = 0, li = 0)
   row.style.margin = '6px 0';
   row.dataset.mi = String(mi);
   row.dataset.li = String(li);
+  row.dataset.type = 'video';
   row.innerHTML = `
     <div style="display:flex; gap:8px; align-items:center;">
       <strong>Lección ${li+1}</strong>
@@ -503,6 +513,71 @@ function makeLessonRow(l = { title:'', hlsUrl:'', duration:'' }, mi = 0, li = 0)
   return row;
 }
 
+function makeActivityRow(a = { title:'', activityKind:'html', template:'', activityUrl:'', activityHtml:'', requireComplete:false }, mi = 0, li = 0){
+  const row = document.createElement('div');
+  row.className = 'panel-card';
+  row.style.margin = '6px 0';
+  row.dataset.mi = String(mi);
+  row.dataset.li = String(li);
+  row.dataset.type = 'activity';
+
+  const kind = a.activityKind || 'html';
+  const tpl  = a.template || '';
+  const url  = a.activityUrl || '';
+  const raw  = a.activityHtml || '';
+
+  row.innerHTML = `
+    <div style="display:flex; gap:8px; align-items:center;">
+      <strong>Actividad ${li+1}</strong>
+      <button type="button" class="small-btn small-del lesson-del" style="margin-left:auto;">Eliminar</button>
+    </div>
+
+    <div class="grid">
+      <div class="field">
+        <label>Título</label>
+        <input type="text" class="act-title" placeholder="Ej. Quiz de repaso" value="${a.title || ''}">
+      </div>
+
+      <div class="field">
+        <label>Tipo de actividad</label>
+        <select class="act-kind">
+          <option value="html" ${kind==='html'?'selected':''}>HTML / Plantilla</option>
+          <option value="link" ${kind==='link'?'selected':''}>Enlace externo</option>
+          <option value="form" ${kind==='form'?'selected':''}>Formulario</option>
+          <option value="file" ${kind==='file'?'selected':''}>Archivo</option>
+        </select>
+      </div>
+
+      <div class="field full act-when-html" style="${kind==='html'?'':'display:none'}">
+        <label>Plantilla</label>
+        <select class="act-template">
+          <option value="">(Elegir)</option>
+          <option value="quiz-mcq" ${tpl==='quiz-mcq'?'selected':''}>Quiz MCQ</option>
+          <option value="quiz-mcq-multi" ${tpl==='quiz-mcq-multi'?'selected':''}>Quiz MCQ múltiple</option>
+          <option value="decision" ${tpl==='decision'?'selected':''}>Decisión</option>
+          <option value="text-html" ${tpl==='text-html'?'selected':''}>HTML pegado</option>
+        </select>
+        <div class="meta-help">Si eliges "HTML pegado", pega abajo el contenido.</div>
+      </div>
+
+      <div class="field full act-when-link" style="${(kind==='link' || kind==='form' || kind==='file')?'':'display:none'}">
+        <label>URL (link/form/archivo)</label>
+        <input type="text" class="act-url" placeholder="https://..." value="${url}">
+      </div>
+
+      <div class="field full act-when-raw" style="${(kind==='html' && tpl==='text-html')?'':'display:none'}">
+        <label>HTML de la actividad</label>
+        <textarea class="act-html" placeholder="&lt;div&gt;...&lt;/div&gt;">${raw || ''}</textarea>
+      </div>
+
+      <div class="field">
+        <label><input type="checkbox" class="act-require" ${a.requireComplete ? 'checked':''}> Requerir completar para desbloquear la siguiente</label>
+      </div>
+    </div>
+  `;
+  return row;
+}
+
 function collectModulesEditor(){
   const out = [];
   const boxes = document.querySelectorAll('#modulesListEditor > .panel-card');
@@ -510,16 +585,83 @@ function collectModulesEditor(){
     const title = box.querySelector('.mod-title')?.value.trim() || '';
     const lessons = [];
     box.querySelectorAll('.lessons > .panel-card').forEach((row)=>{
-      const ltitle = row.querySelector('.les-title')?.value.trim() || '';
-      const dur    = row.querySelector('.les-duration')?.value.trim() || '';
-      const hls    = row.querySelector('.les-hls')?.value.trim() || '';
-      // viewer acepta varios alias, pero usaremos hlsUrl (pickLessonSrc ya lo contempla)
-      // course-viewer usa title/duration y busca hlsUrl/hlsURL/hls/url (ver pickLessonSrc)
-      if (ltitle || hls) lessons.push({ title: ltitle, duration: dur, hlsUrl: hls });
+      const rowType = row.dataset.type || 'video';
+      if (rowType === 'activity'){
+        const title  = row.querySelector('.act-title')?.value.trim() || '';
+        const kind   = row.querySelector('.act-kind')?.value || 'html';
+        const tpl    = row.querySelector('.act-template')?.value || '';
+        const url    = row.querySelector('.act-url')?.value.trim() || '';
+        const html   = row.querySelector('.act-html')?.value || '';
+        const req    = !!row.querySelector('.act-require')?.checked;
+
+        const activity = { type:'activity', title, activityKind: kind, requireComplete: req };
+        if (kind === 'html'){
+          if (tpl === 'text-html') activity.activityHtml = html;
+          else if (tpl) activity.template = tpl;
+        } else {
+          if (url) activity.activityUrl = url;
+        }
+        if (title || activity.activityHtml || activity.template || activity.activityUrl){
+          lessons.push(activity);
+        }
+      } else {
+        const ltitle = row.querySelector('.les-title')?.value.trim() || '';
+        const dur    = row.querySelector('.les-duration')?.value.trim() || '';
+        const hls    = row.querySelector('.les-hls')?.value.trim() || '';
+        if (ltitle || hls) lessons.push({ title: ltitle, duration: dur, hlsUrl: hls, requireComplete: true });
+      }
     });
     if (title || lessons.length) out.push({ title, lessons });
   });
   return out;
+}
+
+function enableDnD(){
+  const modWrap = document.getElementById('modulesListEditor');
+  if (!modWrap) return;
+
+  modWrap.querySelectorAll(':scope > .panel-card').forEach(card => { card.draggable = true; card.classList.add('dnd'); });
+  modWrap.querySelectorAll('.lessons > .panel-card').forEach(row => { row.draggable = true; row.classList.add('dnd'); });
+
+  let dragged = null;
+
+  modWrap.addEventListener('dragstart', (e)=>{
+    const el = e.target.closest('.panel-card');
+    if (!el) return;
+    dragged = el;
+    e.dataTransfer.effectAllowed = 'move';
+  });
+
+  modWrap.addEventListener('dragover', (e)=>{
+    if (!dragged) return;
+    const over = e.target.closest('.panel-card');
+    if (!over || over === dragged) return;
+    e.preventDefault();
+    const parent = over.parentElement;
+    const rect = over.getBoundingClientRect();
+    const before = (e.clientY - rect.top) < (rect.height / 2);
+    parent.insertBefore(dragged, before ? over : over.nextSibling);
+  });
+
+  modWrap.addEventListener('drop', ()=>{
+    dragged = null;
+    renumberModuleAndLessonHeaders();
+  });
+
+  function renumberModuleAndLessonHeaders(){
+    modWrap.querySelectorAll(':scope > .panel-card').forEach((mCard, mi)=>{
+      mCard.dataset.mi = String(mi);
+      const h = mCard.querySelector('strong'); if (h) h.textContent = `Módulo ${mi+1}`;
+      mCard.querySelectorAll('.lessons > .panel-card').forEach((row, li)=>{
+        row.dataset.li = String(li);
+        const h2 = row.querySelector('strong');
+        if (h2){
+          const isAct = (row.dataset.type === 'activity');
+          h2.textContent = `${isAct ? 'Actividad' : 'Lección'} ${li+1}`;
+        }
+      });
+    });
+  }
 }
 
 // Cargar módulos si existe recordedCourses/{docId}
@@ -646,8 +788,29 @@ document.addEventListener('click', (e)=>{
     const mi = parseInt(box.dataset.mi || '0', 10);
     list.appendChild(makeLessonRow({ title:'', duration:'', hlsUrl:'' }, mi, li));
   }
+  if (e.target?.classList?.contains('mod-add-activity')){
+    const box  = e.target.closest('.panel-card');
+    const list = box.querySelector('.lessons');
+    const li   = list.querySelectorAll(':scope > .panel-card').length;
+    const mi   = parseInt(box.dataset.mi || '0', 10);
+    list.appendChild(makeActivityRow({ title:'', activityKind:'html', template:'' }, mi, li));
+  }
   if (e.target?.classList?.contains('lesson-del')){
     e.target.closest('.panel-card')?.remove();
+  }
+});
+
+document.addEventListener('change', (e)=>{
+  const row = e.target.closest('.panel-card');
+  if (!row) return;
+
+  if (e.target.classList.contains('act-kind') || e.target.classList.contains('act-template')){
+    const kind = row.querySelector('.act-kind')?.value || 'html';
+    const tpl  = row.querySelector('.act-template')?.value || '';
+    // visibilidad
+    const wh = row.querySelector('.act-when-html'); if (wh) wh.style.display = (kind==='html') ? '' : 'none';
+    const wl = row.querySelector('.act-when-link'); if (wl) wl.style.display = (kind==='link'||kind==='form'||kind==='file') ? '' : 'none';
+    const wr = row.querySelector('.act-when-raw');  if (wr) wr.style.display = (kind==='html' && tpl==='text-html') ? '' : 'none';
   }
 });
 
@@ -816,7 +979,7 @@ async function saveEvaluation(){
           modules: collectModulesEditor()     // del editor nuevo
           // puedes agregar description o tags si más tarde añades esos campos al editor
         };
-        await firebase.firestore().collection('recordedCourses').doc(docId).set(rec, { merge: true });
+        await firebase.firestore().collection('recordedCourses').doc(recId).set(rec, { merge: true });
       }
     }catch(e){
       console.warn('No se pudo guardar recordedCourses/', docId, e);
@@ -1771,6 +1934,7 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
 
