@@ -570,6 +570,50 @@ async function loadRecordedForEditor(docId){
   }
 }
 
+// Copia recordedCourses/{originalId} -> recordedCourses/{newId} (con fallback por casing y slug)
+async function copyRecordedCourseWithFallback(originalId, newId, newTitle){
+  const db  = firebase.firestore();
+  const col = db.collection('recordedCourses');
+
+  let src = null;
+
+  // 1) DocId exacto
+  let s = await col.doc(originalId).get().catch(()=>null);
+  if (s && s.exists) src = s.data();
+
+  // 2) Variantes de casing
+  if (!src){
+    const variants = [originalId.toLowerCase(), originalId.toUpperCase()];
+    for (const v of variants){
+      if (v === originalId) continue;
+      const s2 = await col.doc(v).get().catch(()=>null);
+      if (s2 && s2.exists){ src = s2.data(); break; }
+    }
+  }
+
+  // 3) Fallback por slug
+  if (!src){
+    const slugCands = [originalId, (typeof sanitizeDocId==='function' ? sanitizeDocId(originalId) : originalId.toLowerCase())];
+    for (const sl of slugCands){
+      const qs = await col.where('slug','==', sl).limit(1).get().catch(()=>null);
+      if (qs && !qs.empty){ src = qs.docs[0].data(); break; }
+    }
+  }
+
+  // 4) Si no hay fuente, no hay nada que copiar
+  if (!src) return false;
+
+  // 5) Construir copia (conserva modules/description/tags, actualiza identificadores)
+  const copy = {
+    ...src,
+    slug: newId,
+    title: newTitle || src.title || newId
+  };
+
+  await col.doc(newId).set(copy, { merge: false });
+  return true;
+}
+
 // Tabs Evaluación / Módulos
 document.addEventListener('click', (e)=>{
   if (e.target?.id === 'tabEval' || e.target?.id === 'tabMods'){
@@ -625,14 +669,29 @@ document.addEventListener('click', async (e)=>{
     const card = btnCopy.closest('.course-card');
     const originalId = card.getAttribute('data-doc');
     try{
-      const snap = await firebase.firestore().collection('evaluations').doc(originalId).get();
+      // 1) Copiar evaluations/{originalId} -> {newId}
+      const evalRef = firebase.firestore().collection('evaluations').doc(originalId);
+      const snap = await evalRef.get();
       if(!snap.exists){ alert('No se encontró el curso a copiar.'); return; }
-      const data = snap.data();
+
+      const data  = snap.data();
       const newId = await nextVersionFromExact(originalId);
+
       await firebase.firestore().collection('evaluations').doc(newId).set(data, { merge:false });
-      alert('✅ Copiado como '+newId);
+
+      // 2) Copiar recordedCourses (si existe)
+      await copyRecordedCourseWithFallback(
+        originalId,
+        newId,
+        data.title || data.name || newId
+      );
+
+      alert('✅ Copiado como ' + newId);
       await loadCreatedCourses();
-    }catch(err){ console.error(err); alert('❌ Error al copiar: '+err.message); }
+    }catch(err){
+      console.error(err);
+      alert('❌ Error al copiar: ' + err.message);
+    }
   }
   if(btnDel){
     const card = btnDel.closest('.course-card');
@@ -1712,6 +1771,7 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
 
