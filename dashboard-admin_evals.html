@@ -274,6 +274,11 @@
           <input id="timeHoursInput" type="number" placeholder="16">
         </div>
 
+        <div class="field">
+          <label><input id="asyncToggle" type="checkbox"> Curso asincrónico</label>
+          <div class="meta-help">Si está activo, se habilita la pestaña "Módulos" y al guardar se crea/actualiza recordedCourses/{docId}.</div>
+        </div>
+
         <div class="field full">
           <label>Criterios de Aprobación (para página de verificación)</label>
           <div id="criteriaList"></div>
@@ -286,10 +291,26 @@
           <button id="btnAddStandard" class="small-btn small-add" type="button">+ Agregar norma</button>
         </div>
 
+        <!-- Tabs Evaluación / Módulos -->
         <div class="field full">
-          <label>Preguntas</label>
-          <div id="questionsList"></div>
-          <button id="btnAddQuestion" class="small-btn small-add" type="button">+ Agregar pregunta</button>
+          <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <button id="tabEval"  type="button" class="tab-item tab-on">Evaluación</button>
+            <button id="tabMods"  type="button" class="tab-item">Módulos</button>
+          </div>
+
+          <!-- Panel Evaluación (lo que ya tenías) -->
+          <div id="evalPanel">
+            <label>Evaluación</label>
+            <div id="questionsList"></div>
+            <button id="btnAddQuestion" class="small-btn small-add" type="button">+ Agregar pregunta</button>
+          </div>
+
+          <!-- Panel Módulos (nuevo) -->
+          <div id="modsPanel" style="display:none;">
+            <label>Módulos</label>
+            <div id="modulesListEditor" class="panel-card" style="padding:8px;"></div>
+            <button id="btnAddModule" class="small-btn small-add" type="button">+ Agregar módulo</button>
+          </div>
         </div>
       </div>
     </div>
