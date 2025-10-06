@@ -798,20 +798,19 @@ document.addEventListener('click', (e)=>{
   if (e.target?.classList?.contains('lesson-del')){
     e.target.closest('.panel-card')?.remove();
   }
-});
+  document.addEventListener('change', (e)=>{
+    const row = e.target.closest('.panel-card');
+    if (!row) return;
 
-document.addEventListener('change', (e)=>{
-  const row = e.target.closest('.panel-card');
-  if (!row) return;
-
-  if (e.target.classList.contains('act-kind') || e.target.classList.contains('act-template')){
-    const kind = row.querySelector('.act-kind')?.value || 'html';
-    const tpl  = row.querySelector('.act-template')?.value || '';
-    // visibilidad
-    const wh = row.querySelector('.act-when-html'); if (wh) wh.style.display = (kind==='html') ? '' : 'none';
-    const wl = row.querySelector('.act-when-link'); if (wl) wl.style.display = (kind==='link'||kind==='form'||kind==='file') ? '' : 'none';
-    const wr = row.querySelector('.act-when-raw');  if (wr) wr.style.display = (kind==='html' && tpl==='text-html') ? '' : 'none';
-  }
+    if (e.target.classList.contains('act-kind') || e.target.classList.contains('act-template')){
+      const kind = row.querySelector('.act-kind')?.value || 'html';
+      const tpl  = row.querySelector('.act-template')?.value || '';
+      // visibilidad
+      const wh = row.querySelector('.act-when-html'); if (wh) wh.style.display = (kind==='html') ? '' : 'none';
+      const wl = row.querySelector('.act-when-link'); if (wl) wl.style.display = (kind==='link'||kind==='form'||kind==='file') ? '' : 'none';
+      const wr = row.querySelector('.act-when-raw');  if (wr) wr.style.display = (kind==='html' && tpl==='text-html') ? '' : 'none';
+    }
+  });
 });
 
 // ===== Acciones (creados) =====
@@ -1934,6 +1933,7 @@ document.getElementById('btnStatsClose')?.addEventListener('click', ()=>{
   m.classList.remove('open');
   m.setAttribute('aria-hidden','true');
 });
+
 
 
 
