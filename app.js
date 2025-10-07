@@ -362,7 +362,7 @@ const loadEvaluations = async () => {
       buttonContainer.appendChild(manualButton);
 
       // --- Ver Curso (solo si es asincrónico) ---
-      const isAsync = doc.id.endsWith('_asincronico');
+      const isAsync = /_asincronico(?:$|\.v\d+$)/i.test(doc.id);
       if (isAsync) {
         const viewButton = document.createElement('button');
         viewButton.textContent = "Ver Curso";
