@@ -264,7 +264,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
     div.className = "inscription-container";
 
     if (isAsync) {
-      // ——— ASINCRÓNICO: primero correo + contraseña + Confirmar (solo valida/etiqueta, NO asigna/crea aún) ———
+      // ——— ASINCRÓNICO: precheck (valida/etiqueta; NO crea/NO asigna aquí) ———
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
 
@@ -276,35 +276,39 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
 
         <button type="button" id="precheck-${courseId}-${i}" class="btn btn-primary" style="margin:8px 0;">Confirmar</button>
 
+        <!-- Mensajes para cuenta existente -->
+        <div id="status-${courseId}-${i}" style="display:none; margin:6px 0; color:#0a7; font-weight:600;"></div>
+
+        <!-- Bloque solo para cuentas nuevas -->
         <div id="postconfirm-${courseId}-${i}" style="display:none; margin-top:8px;">
           <div class="ok-msg" style="color:#0a7; font-weight:600; margin-bottom:8px;"></div>
 
           <label for="name-${courseId}-${i}">Nombre:</label>
-          <input type="text" id="name-${courseId}-${i}" required>
+          <input type="text" id="name-${courseId}-${i}">
 
           <label for="rut-${courseId}-${i}">RUT:</label>
-          <input type="text" id="rut-${courseId}-${i}" required>
+          <input type="text" id="rut-${courseId}-${i}">
 
           <label for="company-${courseId}-${i}">Empresa (Opcional):</label>
           <input type="text" id="company-${courseId}-${i}">
         </div>
       `;
 
-      // Enlazar comportamiento del botón Confirmar (pre-check) y formato de RUT
       setTimeout(() => {
         const btn        = div.querySelector(`#precheck-${courseId}-${i}`);
         const emailInput = div.querySelector(`#email-${courseId}-${i}`);
         const passInput  = div.querySelector(`#password-${courseId}-${i}`);
+        const statusDiv  = div.querySelector(`#status-${courseId}-${i}`);
         const postBox    = div.querySelector(`#postconfirm-${courseId}-${i}`);
         const okMsg      = postBox.querySelector(".ok-msg");
+        const nameInput  = postBox.querySelector(`#name-${courseId}-${i}`);
         const rutInput   = postBox.querySelector(`#rut-${courseId}-${i}`);
 
-        // Formato de RUT en vivo
+        // Formato de RUT en vivo (solo si se muestra postBox)
         rutInput?.addEventListener("input", (e) => {
           e.target.value = formatRut(e.target.value);
         });
 
-        // Pre-check: valida si la cuenta existe y si la contraseña es correcta (si existe).
         btn?.addEventListener("click", async () => {
           const email = (emailInput.value || "")
             .toLowerCase()
@@ -322,7 +326,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
           const exists = await emailExistsInAuth(email);
 
           if (exists) {
-            // Verifica la contraseña para esa cuenta existente (no crea ni asigna aún)
+            // Verificar contraseña para confirmar identidad
             try {
               const testApp = firebase.apps.find(a => a.name === "checkpass") ||
                               firebase.initializeApp(firebase.app().options, "checkpass");
@@ -332,22 +336,27 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
               await testAuth.signOut();
               await testApp.delete();
 
-              // Marca como "cuenta existente validada": no se creará luego
-              okMsg.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
+              // ✅ Cuenta existente verificada
+              statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará al finalizar la inscripción.";
+              statusDiv.style.display = "";
               btn.disabled = true;
               emailInput.readOnly = true;
               passInput.readOnly  = true;
-              passInput.dataset.needsAccount = "0"; // el submit final solo asignará
+              passInput.dataset.needsAccount = "0";
+
+              // Asegura que el bloque de 'nueva cuenta' NO exija datos
+              postBox.style.display = "none";
+              nameInput.required = false;
+              rutInput.required  = false;
 
             } catch (err) {
               console.warn("Error de autenticación:", err);
               alert("La contraseña es incorrecta para esta cuenta existente.");
             }
-
             return;
           }
 
-          // Si la cuenta NO existe → permite completar datos (la creación se hará en el submit final)
+          // 🆕 Cuenta NO existe → permitir completar datos (se creará en el submit final)
           if (pwd.length < 6) {
             alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
             return;
@@ -355,10 +364,14 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
 
           okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
           postBox.style.display = "";
-          passInput.dataset.needsAccount = "1"; // el submit final creará la cuenta
+          passInput.dataset.needsAccount = "1";
           btn.disabled = true;
           emailInput.readOnly = true;
           passInput.readOnly  = true;
+
+          // Ahora sí, exige los datos
+          nameInput.required = true;
+          rutInput.required  = true;
         });
       }, 0);
 
@@ -519,16 +532,44 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
             });
 
             for (let i = 0; i < item.quantity; i++) {
-                let name = document.getElementById(`name-${courseId}-${i}`).value.trim();
-                let rut = document.getElementById(`rut-${courseId}-${i}`).value.trim();
-                let email = document.getElementById(`email-${courseId}-${i}`).value.trim();
-                let company = document.getElementById(`company-${courseId}-${i}`).value.trim() || null;
+                const email = (document.getElementById(`email-${courseId}-${i}`).value || "").trim().toLowerCase();
+                const passEl = document.getElementById(`password-${courseId}-${i}`);
+                const isAsync = /asincronico/i.test(item.id) || /asincronico/i.test(item.name || "");
+                const needCreate = isAsync && passEl && passEl.dataset.needsAccount === "1";
 
-                if (!name || !rut || !email) {
+                let name = "", rut = "", company = null;
+
+                if (isAsync && !needCreate) {
+                  // ✅ Asincrónico con cuenta existente verificada en el precheck:
+                  // no obligamos nombre/rut aquí (se asigna al final).
+                  // Puedes opcionalmente tomar valores si el admin los quiere registrar.
+                  const nameEl = document.getElementById(`name-${courseId}-${i}`);
+                  const rutEl  = document.getElementById(`rut-${courseId}-${i}`);
+                  const compEl = document.getElementById(`company-${courseId}-${i}`);
+                  name    = (nameEl?.value || "").trim();
+                  rut     = (rutEl?.value  || "").trim();
+                  company = (compEl?.value || "").trim() || null;
+
+                  if (!email) {
+                    alert(`Completa el correo para el inscrito ${i + 1} en ${item.name}.`);
+                    return;
+                  }
+
+                } else {
+                  // 🆕 Cuenta nueva (asincrónico) O curso NO asincrónico → datos obligatorios
+                  const nameEl = document.getElementById(`name-${courseId}-${i}`);
+                  const rutEl  = document.getElementById(`rut-${courseId}-${i}`);
+                  const compEl = document.getElementById(`company-${courseId}-${i}`);
+
+                  name    = (nameEl?.value || "").trim();
+                  rut     = (rutEl?.value  || "").trim();
+                  company = (compEl?.value || "").trim() || null;
+
+                  if (!name || !rut || !email) {
                     alert(`Completa todos los campos para el inscrito ${i + 1} en ${item.name}.`);
                     return;
+                  }
                 }
-
                 inscriptions.push({ name, rut, email, company });
             }
 
