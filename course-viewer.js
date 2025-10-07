@@ -65,7 +65,9 @@
       }
 
       // Elegir layout según tipo
-      if (courseParam.endsWith('_asincronico')) {
+      // Después (acepta .v2, .v3, etc.)
+      const isAsyncCourse = /_asincronico(?:$|\.v\d+$)/i.test(courseParam);
+      if (isAsyncCourse) {
         els.asyncLayout.style.display = '';
         els.liveLayout.style.display = 'none';
         await loadRecordedCourse(courseParam); // pinta videos + actividades
