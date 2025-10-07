@@ -187,10 +187,16 @@ async function getNextCustomId() {
   return String(next).padStart(3, "0") + "-"; // igual que admin
 }
 
-// Email válido (evita auth/invalid-email)
+// Email válido (evita auth/invalid-email): sanea y valida
 function isValidEmail(s) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s || "").trim());
+  const e = (s || "")
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, "") // caracteres invisibles
+    .replace(/\s+/g, "")                   // espacios
+    .trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 }
+
 
 // Última evaluación asincrónica por familia (70E/70B/SF6)
 async function findLatestAsyncEvaluationFor(item) {
@@ -222,17 +228,29 @@ async function findLatestAsyncEvaluationFor(item) {
   return latest;
 }
 
-// Comprobar existencia en Auth (principal y secundario)
+// Comprobar existencia en Auth (principal y secundario) y también en 'users'
 async function emailExistsInAuth(email) {
   try {
-    const m1 = await firebase.auth().fetchSignInMethodsForEmail(email);
+    const e = (email || "")
+      .toLowerCase()
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/\s+/g, "")
+      .trim();
+
+    if (!isValidEmail(e)) return false;
+
+    const m1 = await firebase.auth().fetchSignInMethodsForEmail(e).catch(() => []);
     const secondaryApp = firebase.apps.find(a => a.name === "secondary") ||
                          firebase.initializeApp(firebase.app().options, "secondary");
-    const m2 = await secondaryApp.auth().fetchSignInMethodsForEmail(email);
-    return (m1 && m1.length > 0) || (m2 && m2.length > 0);
+    const m2 = await secondaryApp.auth().fetchSignInMethodsForEmail(e).catch(() => []);
+
+    // chequeo adicional en la colección 'users'
+    const usersSnap = await db.collection("users").where("email", "==", e).limit(1).get();
+    const inUsers = !usersSnap.empty;
+
+    return (m1 && m1.length > 0) || (m2 && m2.length > 0) || inUsers;
   } catch(e) {
-    console.warn("fetchSignInMethods error:", e);
-    // si falla la red no asumimos existencia (el submit volverá a verificar)
+    console.warn("emailExistsInAuth error:", e);
     return false;
   }
 }
@@ -283,10 +301,14 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         rutInput?.addEventListener("input", e => { e.target.value = formatRut(e.target.value); });
 
         btn?.addEventListener("click", async () => {
-          const email = (emailInput.value || "").trim().toLowerCase();
+          const email = (emailInput.value || "")
+            .toLowerCase()
+            .replace(/[\u200B-\u200D\uFEFF]/g, "")
+            .replace(/\s+/g, "")
+            .trim();
           const pwd   = (passInput.value || "").trim();
+
           if (!isValidEmail(email)) { alert("Correo inválido."); return; }
-          if (pwd.length < 6) { alert("La contraseña debe tener mínimo 6 caracteres."); return; }
 
           const latestEval = await findLatestAsyncEvaluationFor(itemMeta || { id: courseId });
           if (!latestEval) { alert("No hay versión asincrónica disponible por ahora."); return; }
@@ -294,40 +316,60 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
           const exists = await emailExistsInAuth(email);
 
           if (exists) {
-            // Asignar curso y enviar a login
-            const userSnap = await db.collection("users").where("email","==",email).limit(1).get();
-            if (!userSnap.empty) {
-              const ref = userSnap.docs[0].ref;
-              const data = userSnap.docs[0].data();
-              const setE = new Set(data.assignedEvaluations || []);
-              setE.add(latestEval.id);
+            // Si la cuenta ya existe, intentamos autenticación con la contraseña ingresada
+            try {
+              const testApp = firebase.apps.find(a => a.name === "checkpass") ||
+                              firebase.initializeApp(firebase.app().options, "checkpass");
+              const testAuth = testApp.auth();
 
-              if (!data.customID) {
-                const cid = await getNextCustomId();
-                await ref.update({ assignedEvaluations: Array.from(setE), customID: cid });
+              await testAuth.signInWithEmailAndPassword(email, pwd);
+
+              // Contraseña correcta → asignar curso y redirigir
+              const userSnap = await db.collection("users").where("email","==",email).limit(1).get();
+              if (!userSnap.empty) {
+                const ref = userSnap.docs[0].ref;
+                const data = userSnap.docs[0].data();
+                const setE = new Set(data.assignedEvaluations || []);
+                setE.add(latestEval.id);
+
+                if (!data.customID) {
+                  const cid = await getNextCustomId();
+                  await ref.update({ assignedEvaluations: Array.from(setE), customID: cid });
+                } else {
+                  await ref.update({ assignedEvaluations: Array.from(setE) });
+                }
               } else {
-                await ref.update({ assignedEvaluations: Array.from(setE) });
+                const cid = await getNextCustomId();
+                await db.collection("users").add({
+                  email, name: "", rut: "", company: "",
+                  customID: cid, role: "user",
+                  assignedEvaluations: [latestEval.id],
+                  assignedCoursesMeta: {},
+                  createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
               }
-            } else {
-              const cid = await getNextCustomId();
-              await db.collection("users").add({
-                email, name: "", rut: "", company: "",
-                customID: cid, role: "user",
-                assignedEvaluations: [latestEval.id],
-                assignedCoursesMeta: {},
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-              });
-            }
 
-            alert("Curso asociado a tu cuenta. Inicia sesión para acceder.");
-            window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/index.html";
-            return;
+              alert("Curso asociado a tu cuenta. Inicia sesión para acceder.");
+              window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/index.html";
+              await testAuth.signOut();
+              await testApp.delete();
+              return;
+
+            } catch (err) {
+              console.error("Error verificando contraseña:", err);
+              alert("La contraseña es incorrecta para esta cuenta.");
+              return;
+            }
           }
 
-          // NO existe → muestra los otros campos (Nombre/RUT/Empresa) y marca que debe crear cuenta
+          // Si la cuenta NO existe → crear nueva
+          if (pwd.length < 6) {
+            alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
+            return;
+          }
           okMsg.textContent = "Cuenta nueva: completa tus datos para crearla.";
           postBox.style.display = "";
-          passInput.dataset.needsAccount = "1"; // lo leerá el submit
+          passInput.dataset.needsAccount = "1";
           btn.disabled = true;
           emailInput.readOnly = true;
           passInput.readOnly  = true;
@@ -335,7 +377,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
       }, 0);
 
     } else {
-      // ——— NO asincrónico: tu forma estándar ———
+      // ——— Cursos NO asincrónicos ———
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
         <label for="name-${courseId}-${i}">Nombre:</label>
