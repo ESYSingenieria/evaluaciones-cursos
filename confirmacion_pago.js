@@ -170,6 +170,8 @@ async function loadDates(courseId, selectId) {
 function generateInscriptionFields(courseId, quantity, container) {
     container.innerHTML = "";
 
+    const isAsync = courseId.toLowerCase().includes("asincronico");
+
     for (let i = 0; i < quantity; i++) {
         let div = document.createElement("div");
         div.className = "inscription-container";
@@ -187,6 +189,22 @@ function generateInscriptionFields(courseId, quantity, container) {
             <label for="company-${courseId}-${i}">Empresa (Opcional):</label>
             <input type="text" id="company-${courseId}-${i}">
         `;
+
+        // ✅ Solo para cursos asincrónicos: agregar campo de contraseña
+        if (isAsync) {
+            const passLabel = document.createElement("label");
+            passLabel.setAttribute("for", `password-${courseId}-${i}`);
+            passLabel.textContent = "Crea una contraseña para acceder a la plataforma:";
+            const passInput = document.createElement("input");
+            passInput.type = "password";
+            passInput.id = `password-${courseId}-${i}`;
+            passInput.minLength = 6;
+            passInput.required = true;
+
+            div.appendChild(passLabel);
+            div.appendChild(passInput);
+        }
+
         container.appendChild(div);
     }
 }
@@ -261,6 +279,90 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
             existingData.totalPagado += coursePrice;
 
             await courseRef.set(existingData, { merge: true });
+
+            // ✅ Si el curso es asincrónico, crear automáticamente el usuario
+            if (item.id.toLowerCase().includes("asincronico")) {
+                console.log(`🔁 Curso asincrónico detectado: ${item.name}`);
+
+                // Buscar la última versión asincrónica correspondiente
+                const evalsSnap = await db.collection("evaluations").get();
+                let latestEval = null;
+
+                evalsSnap.forEach(doc => {
+                    const nm = (doc.data().name || "").toLowerCase();
+                    const idl = (doc.id || "").toLowerCase();
+                    if (nm.includes("asincronico") && (nm.includes(item.id.split("_")[0]) || idl.includes(item.id.split("_")[0]))) {
+                        const m = nm.match(/\.v(\d+)/);
+                        const version = m ? parseInt(m[1]) : 1;
+                        if (!latestEval || version > latestEval.version) {
+                            latestEval = { id: doc.id, version, name: doc.data().name };
+                        }
+                    }
+                });
+
+                if (!latestEval) {
+                    console.warn("⚠️ No se encontró evaluación asincrónica para", item.name);
+                } else {
+                    // Crear usuario o asignar curso
+                    for (let i = 0; i < item.quantity; i++) {
+                        const name = document.getElementById(`name-${item.id}-${i}`).value.trim();
+                        const rut = document.getElementById(`rut-${item.id}-${i}`).value.trim();
+                        const email = document.getElementById(`email-${item.id}-${i}`).value.trim().toLowerCase();
+                        const company = document.getElementById(`company-${item.id}-${i}`).value.trim();
+                        const passwordField = document.getElementById(`password-${item.id}-${i}`);
+                        const password = passwordField ? passwordField.value.trim() : null;
+
+                        if (!password || password.length < 6) {
+                            alert(`La contraseña debe tener al menos 6 caracteres para ${name}.`);
+                            return;
+                        }
+
+                        const userSnap = await db.collection("users").where("email", "==", email).limit(1).get();
+
+                        if (userSnap.empty) {
+                            // Crear cuenta nueva
+                            try {
+                                const secondaryApp = firebase.initializeApp(firebase.app().options, "secondary");
+                                const secondaryAuth = secondaryApp.auth();
+                                const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+                                const uid = cred.user.uid;
+
+                                await db.collection("users").doc(uid).set({
+                                    email, name, rut, company,
+                                    role: "user",
+                                    assignedEvaluations: [latestEval.id],
+                                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                                });
+
+                                console.log(`🆕 Usuario asincrónico creado: ${email}`);
+                                await secondaryAuth.signOut();
+                                await secondaryApp.delete();
+
+                            } catch (err) {
+                                if (err.code === "auth/email-already-in-use") {
+                                    console.log(`👤 ${email} ya tiene cuenta, actualizando curso.`);
+                                    const existingUser = await db.collection("users").where("email", "==", email).limit(1).get();
+                                    const userRef = existingUser.docs[0].ref;
+                                    const userData = existingUser.docs[0].data();
+                                    const updated = new Set(userData.assignedEvaluations || []);
+                                    updated.add(latestEval.id);
+                                    await userRef.update({ assignedEvaluations: Array.from(updated) });
+                                } else {
+                                    console.error("❌ Error creando usuario:", err);
+                                }
+                            }
+                        } else {
+                            // Ya existía → solo asignar curso
+                            const userRef = userSnap.docs[0].ref;
+                            const userData = userSnap.docs[0].data();
+                            const updated = new Set(userData.assignedEvaluations || []);
+                            updated.add(latestEval.id);
+                            await userRef.update({ assignedEvaluations: Array.from(updated) });
+                            console.log(`✅ Curso asincrónico asignado a usuario existente: ${email}`);
+                        }
+                    }
+                }
+            }
         }
 
         // ✅ Cambiar el estado de la compra a "finalizada"
