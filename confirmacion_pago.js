@@ -166,47 +166,124 @@ async function loadDates(courseId, selectId) {
     }
 }
 
-// === Generar campos de inscripción dinámicos (con watcher robusto) ===
+// === Helpers iguales al admin ===
+
+// Formatear RUT: "11111111-1" -> "11.111.111-1"
+function formatRut(rut) {
+  const clean = (rut || "").toUpperCase().replace(/[^0-9K]/g, "");
+  const cuerpo = clean.slice(0, -1);
+  const dv     = clean.slice(-1);
+  const withDots = cuerpo.split("").reverse().join("")
+    .match(/.{1,3}/g)?.join(".")?.split("").reverse().join("") || "";
+  return withDots + (withDots ? "-" : "") + dv;
+}
+
+// Siguiente customID como en el admin: "001-", "002-", ...
+async function getNextCustomId() {
+  const snap = await db.collection("users").where("role", "==", "user").get();
+  let maxN = 0;
+  snap.forEach(d => {
+    const cid = (d.data().customID || "").trim();
+    const n = parseInt(cid, 10);
+    if (!isNaN(n) && n > maxN) maxN = n;
+  });
+  const next = (maxN + 1);
+  return String(next).padStart(3, "0") + "-"; // igual que admin
+}
+
+// Comprobar existencia en Auth (principal y secundario)
+async function emailExistsInAuth(email) {
+  try {
+    const m1 = await firebase.auth().fetchSignInMethodsForEmail(email);
+    const secondaryApp = firebase.apps.find(a => a.name === "secondary") ||
+                         firebase.initializeApp(firebase.app().options, "secondary");
+    const m2 = await secondaryApp.auth().fetchSignInMethodsForEmail(email);
+    return (m1 && m1.length > 0) || (m2 && m2.length > 0);
+  } catch(e) {
+    console.warn("fetchSignInMethods error:", e);
+    // si falla la red no asumimos existencia (el submit volverá a verificar)
+    return false;
+  }
+}
+
 function generateInscriptionFields(courseId, quantity, container) {
-    container.innerHTML = "";
+  container.innerHTML = "";
+  const isAsync = /asincronico/i.test(courseId);
 
-    const isAsync = /asincronico/i.test(courseId);
+  for (let i = 0; i < quantity; i++) {
+    const div = document.createElement("div");
+    div.className = "inscription-container";
+    div.innerHTML = `
+      <h3>Inscrito ${i + 1}</h3>
 
-    for (let i = 0; i < quantity; i++) {
-        const div = document.createElement("div");
-        div.className = "inscription-container";
-        div.innerHTML = `
-            <h3>Inscrito ${i + 1}</h3>
-            <label for="name-${courseId}-${i}">Nombre:</label>
-            <input type="text" id="name-${courseId}-${i}" required>
+      <label for="name-${courseId}-${i}">Nombre:</label>
+      <input type="text" id="name-${courseId}-${i}" required>
 
-            <label for="rut-${courseId}-${i}">RUT:</label>
-            <input type="text" id="rut-${courseId}-${i}" required>
+      <label for="rut-${courseId}-${i}">RUT:</label>
+      <input type="text" id="rut-${courseId}-${i}" required>
 
-            <label for="email-${courseId}-${i}">Correo Electrónico:</label>
-            <input type="email" id="email-${courseId}-${i}" required>
+      <label for="email-${courseId}-${i}">Correo Electrónico:</label>
+      <input type="email" id="email-${courseId}-${i}" required>
 
-            <label for="company-${courseId}-${i}">Empresa (Opcional):</label>
-            <input type="text" id="company-${courseId}-${i}">
-        `;
+      <label for="company-${courseId}-${i}">Empresa (Opcional):</label>
+      <input type="text" id="company-${courseId}-${i}">
+    `;
 
-        // 👉 Solo para asincrónicos: agregar campo de contraseña (se mostrará solo si NO existe cuenta)
-        if (isAsync) {
-            const passWrap = document.createElement("div");
-            passWrap.id = `passwrap-${courseId}-${i}`;
-            passWrap.innerHTML = `
-              <label for="password-${courseId}-${i}">Crea una contraseña para acceder a la plataforma:</label>
-              <input type="password" id="password-${courseId}-${i}" minlength="6" required>
-              <small id="passhint-${courseId}-${i}" style="display:block;color:#666;margin-top:6px;"></small>
-            `;
-            div.appendChild(passWrap);
+    // RUT con formato automático (igual admin)
+    setTimeout(() => {
+      const rutInput = div.querySelector(`#rut-${courseId}-${i}`);
+      if (rutInput) {
+        rutInput.addEventListener("input", e => {
+          const posEnd = e.target.selectionEnd;
+          e.target.value = formatRut(e.target.value);
+          try { e.target.setSelectionRange(e.target.value.length, e.target.value.length); } catch {}
+        });
+      }
+    }, 0);
 
-            // ⚠️ Importante: dispara el watcher en el siguiente “tick” para asegurar que los nodos existen
-            setTimeout(() => setupPasswordWatcher(courseId, i), 0);
+    // password solo para asincrónicos y SOLO si no existe cuenta
+    if (isAsync) {
+      const passWrap = document.createElement("div");
+      passWrap.id = `passwrap-${courseId}-${i}`;
+      passWrap.innerHTML = `
+        <label for="password-${courseId}-${i}">Crea una contraseña para acceder a la plataforma:</label>
+        <input type="password" id="password-${courseId}-${i}" minlength="6" required>
+        <small id="passhint-${courseId}-${i}" style="display:block;color:#666;margin-top:6px;"></small>
+      `;
+      div.appendChild(passWrap);
+
+      setTimeout(() => {
+        const emailInput = div.querySelector(`#email-${courseId}-${i}`);
+        const passInput  = div.querySelector(`#password-${courseId}-${i}`);
+        const hint       = div.querySelector(`#passhint-${courseId}-${i}`);
+
+        async function updatePwdVisibility() {
+          const email = (emailInput.value || "").trim().toLowerCase();
+          if (!email) { passWrap.style.display=""; passInput.required=true; passInput.dataset.skip="0"; hint.textContent=""; return; }
+          const exists = await emailExistsInAuth(email);
+          if (exists) {
+            passWrap.style.display = "none";
+            passInput.required = false;
+            passInput.value = "";
+            passInput.dataset.skip = "1"; // submit sabrá que NO debe crear usuario
+            hint.textContent = "";
+          } else {
+            passWrap.style.display = "";
+            passInput.required = true;
+            passInput.dataset.skip = "0";
+            hint.textContent = "Será tu contraseña para ingresar (mínimo 6 caracteres).";
+          }
         }
-
-        container.appendChild(div);
+        const deb = (fn,ms=350)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; };
+        emailInput.addEventListener("input", deb(updatePwdVisibility, 400));
+        emailInput.addEventListener("blur", updatePwdVisibility);
+        setTimeout(updatePwdVisibility, 150); // autofill
+        let tries = 0; const iv = setInterval(async ()=>{ tries++; await updatePwdVisibility(); if (tries>=6 || (emailInput.value||"").length>3) clearInterval(iv); }, 500);
+      }, 0);
     }
+
+    container.appendChild(div);
+  }
 }
 
 // === Detectar si el correo ya existe y mostrar/ocultar contraseña (con defensas y reintento) ===
@@ -351,121 +428,133 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
 
             await courseRef.set(existingData, { merge: true });
 
-            // ✅ Crear usuario o asignar evaluación si el curso es asincrónico
+                        // ✅ Crear usuario o asignar evaluación si el curso es asincrónico
             if (/asincronico/i.test(item.id) || /asincronico/i.test(item.name || "")) {
                 console.log(`🔁 Curso asincrónico detectado: ${item.name}`);
 
-                // Buscar la última versión asincrónica según familia
+                // Familia del curso
                 const idLower = item.id.toLowerCase();
                 const family =
                     idLower.includes("70e") ? "70e" :
                     idLower.includes("70b") ? "70b" :
                     (idLower.includes("sf6") || idLower.includes("gas")) ? "sf6" : null;
 
+                // Última versión asincrónica
                 const evalsSnap = await db.collection("evaluations").get();
                 let latestEval = null;
-
                 evalsSnap.forEach(doc => {
                     const nm = (doc.data()?.name || "").toLowerCase();
                     const idl = (doc.id || "").toLowerCase();
-
                     const isAsyncEval = nm.includes("asincronico") || idl.includes("asincronico");
                     if (!isAsyncEval) return;
-
                     const sameFamily =
                         (family === "70e" && (nm.includes("70e") || idl.includes("70e"))) ||
                         (family === "70b" && (nm.includes("70b") || idl.includes("70b"))) ||
                         (family === "sf6" && (nm.includes("sf6") || nm.includes("gas") || idl.includes("sf6") || idl.includes("gas"))) ||
                         (family === null);
-
                     if (!sameFamily) return;
-
-                    const matchVer = nm.match(/\.v(\d+)/) || idl.match(/\.v(\d+)/);
-                    const version = matchVer ? parseInt(matchVer[1], 10) : 1;
-                    if (!latestEval || version > latestEval.version) {
-                        latestEval = { id: doc.id, name: doc.data().name, version };
-                    }
+                    const m = nm.match(/\.v(\d+)\b/) || idl.match(/\.v(\d+)\b/);
+                    const v = m ? parseInt(m[1], 10) : 1;
+                    if (!latestEval || v > latestEval.version) latestEval = { id: doc.id, version: v, name: doc.data()?.name || doc.id };
                 });
 
                 if (!latestEval) {
-                    console.warn("⚠️ No se encontró evaluación asincrónica para", item.name);
+                    console.warn("⚠️ No se encontró evaluación asincrónica publicada para", item.name);
                 } else {
                     for (let i = 0; i < item.quantity; i++) {
                         const name    = document.getElementById(`name-${item.id}-${i}`).value.trim();
-                        const rut     = document.getElementById(`rut-${item.id}-${i}`).value.trim();
+                        const rutRaw  = document.getElementById(`rut-${item.id}-${i}`).value.trim();
+                        const rut     = formatRut(rutRaw); // igual admin
                         const email   = document.getElementById(`email-${item.id}-${i}`).value.trim().toLowerCase();
                         const company = document.getElementById(`company-${item.id}-${i}`).value.trim();
-                        const passField = document.getElementById(`password-${item.id}-${i}`);
-                        const needPassword = passField && passField.dataset.skip !== "1";
+                        const passInp = document.getElementById(`password-${item.id}-${i}`);
+                        const needPwd = passInp && passInp.dataset.skip !== "1";
 
-                        // 🔍 Verificación anti-duplicados: revisar en Auth principal y en Auth secundario
-                        const primaryMethods = await firebase.auth().fetchSignInMethodsForEmail(email).catch(()=>[]);
-                        const secondaryAppCheck = firebase.apps.find(a => a.name === "secondary") || firebase.initializeApp(firebase.app().options, "secondary");
-                        const secondaryAuthCheck = secondaryAppCheck.auth();
-                        const secondaryMethods = await secondaryAuthCheck.fetchSignInMethodsForEmail(email).catch(()=>[]);
-                        const existsInAuth = (primaryMethods?.length > 0) || (secondaryMethods?.length > 0);
+                        // ¿Existe en Auth?
+                        const exists = await emailExistsInAuth(email);
 
-                        if (!existsInAuth && needPassword) {
-                            const password = (passField.value || "").trim();
-                            if (password.length < 6) {
-                                alert(`La contraseña debe tener al menos 6 caracteres para ${name}.`);
-                                return;
-                            }
+                        if (!exists && needPwd) {
+                            // crear nuevo → necesitamos password
+                            const password = (passInp.value || "").trim();
+                            if (password.length < 6) { alert(`La contraseña debe tener al menos 6 caracteres para ${name}.`); return; }
 
-                            // Crear cuenta en Auth secundario (con fallback si justo aparece duplicado)
-                            let secondaryApp; let secondaryAuth;
+                            // customID igual admin
+                            const customID = await getNextCustomId();  // "001-", "002-", ...
+                            const secondaryApp  = firebase.apps.find(a => a.name === "secondary") || firebase.initializeApp(firebase.app().options, "secondary");
+                            const secondaryAuth = secondaryApp.auth();
+
                             try {
-                                secondaryApp  = firebase.apps.find(a => a.name === "secondary") || firebase.initializeApp(firebase.app().options, "secondary");
-                                secondaryAuth = secondaryApp.auth();
-
                                 const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
                                 const uid  = cred.user.uid;
 
                                 await db.collection("users").doc(uid).set({
                                     email, name, rut, company,
+                                    customID,                 // ← mismo campo que el admin crea
                                     role: "user",
                                     assignedEvaluations: [latestEval.id],
+                                    assignedCoursesMeta: {},  // en asincrónico no necesitas meta de sesión
                                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                                 });
 
-                                console.log(`🆕 Usuario asincrónico creado: ${email}`);
+                                console.log(`🆕 Usuario asincrónico creado: ${email} (customID ${customID})`);
                             } catch (err) {
                                 if (err?.code === "auth/email-already-in-use") {
-                                    // ⚠️ Carrera: mientras validábamos, alguien creó la cuenta → solo asignamos
-                                    const userSnap = await db.collection("users").where("email", "==", email).limit(1).get();
+                                    // carrera → tratar como existente
+                                    const userSnap = await db.collection("users").where("email","==",email).limit(1).get();
                                     if (!userSnap.empty) {
-                                        const ref = userSnap.docs[0].ref;
+                                        const ref  = userSnap.docs[0].ref;
                                         const data = userSnap.docs[0].data();
-                                        const setEval = new Set(data.assignedEvaluations || []);
-                                        setEval.add(latestEval.id);
-                                        await ref.update({ assignedEvaluations: Array.from(setEval) });
+                                        const setE = new Set(data.assignedEvaluations || []);
+                                        setE.add(latestEval.id);
+                                        await ref.update({ assignedEvaluations: Array.from(setE) });
                                         console.log(`✅ Cuenta ya existía; curso asignado: ${email}`);
                                     } else {
-                                        // Si por timing aún no hay doc en users, créalo espejo sin password
-                                        // (esto evita que quede sin acceso en tu plataforma)
-                                        console.warn(`⚠️ Auth existe pero no doc users para ${email}; creando doc espejo.`);
-                                        // NOTA: no tenemos uid aquí; opcionalmente podrías buscarlo con Admin SDK en backend.
+                                        // existe en Auth pero no en users → crear doc espejo con customID
+                                        const customID = await getNextCustomId();
+                                        await db.collection("users").add({
+                                            email, name, rut, company,
+                                            customID, role:"user",
+                                            assignedEvaluations:[latestEval.id],
+                                            assignedCoursesMeta:{},
+                                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                                        });
+                                        console.warn(`⚠️ Auth existía sin doc users; creado doc espejo para ${email}`);
                                     }
                                 } else {
                                     console.error("❌ Error creando usuario:", err);
                                 }
                             } finally {
-                                try { await secondaryAuth?.signOut(); } catch {}
-                                // No destruimos secondaryApp si lo usas más veces en el mismo submit
+                                try { await secondaryAuth.signOut(); } catch {}
                             }
+
                         } else {
-                            // 👤 Ya existe → asignar curso asincrónico
-                            const userSnap = await db.collection("users").where("email", "==", email).limit(1).get();
+                            // ya existe → NO pedimos password, solo asignamos
+                            const userSnap = await db.collection("users").where("email","==",email).limit(1).get();
                             if (!userSnap.empty) {
-                                const ref = userSnap.docs[0].ref;
+                                const ref  = userSnap.docs[0].ref;
                                 const data = userSnap.docs[0].data();
-                                const setEval = new Set(data.assignedEvaluations || []);
-                                setEval.add(latestEval.id);
-                                await ref.update({ assignedEvaluations: Array.from(setEval) });
+                                const setE = new Set(data.assignedEvaluations || []);
+                                setE.add(latestEval.id);
+
+                                // si el doc no tenía customID, asígnale uno nuevo (como en admin)
+                                if (!data.customID) {
+                                    const cid = await getNextCustomId();
+                                    await ref.update({ assignedEvaluations: Array.from(setE), customID: cid, rut: formatRut(data.rut || rut) });
+                                } else {
+                                    await ref.update({ assignedEvaluations: Array.from(setE), rut: formatRut(data.rut || rut) });
+                                }
                                 console.log(`✅ Curso asincrónico asignado a usuario existente: ${email}`);
                             } else {
-                                // Puede existir en Auth pero aún no tener doc en users → opcional: crearlo espejo
-                                console.warn(`⚠️ ${email} existe en Auth pero no en 'users'. Puedes crear doc espejo aquí si quieres.`);
+                                // existe en Auth pero NO hay doc users → crear doc espejo con customID
+                                const customID = await getNextCustomId();
+                                await db.collection("users").add({
+                                    email, name, rut, company,
+                                    customID, role:"user",
+                                    assignedEvaluations:[latestEval.id],
+                                    assignedCoursesMeta:{},
+                                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                                });
+                                console.warn(`⚠️ Auth existía sin doc users; creado doc espejo para ${email}`);
                             }
                         }
                     }
