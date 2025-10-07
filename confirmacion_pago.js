@@ -257,14 +257,14 @@ async function emailExistsInAuth(email) {
 
 function generateInscriptionFields(courseId, quantity, container, itemMeta = {}) {
   container.innerHTML = "";
-  const isAsync = /asincronico/i.test(courseId);
+  const isAsync = /asincronico/i.test(courseId) || /asincronico/i.test(itemMeta?.name || "");
 
   for (let i = 0; i < quantity; i++) {
     const div = document.createElement("div");
     div.className = "inscription-container";
 
     if (isAsync) {
-      // ——— ASINCRÓNICO: primero correo + contraseña + Confirmar ———
+      // ——— ASINCRÓNICO: primero correo + contraseña + Confirmar (solo valida/etiqueta, NO asigna/crea aún) ———
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
 
@@ -290,16 +290,21 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         </div>
       `;
 
+      // Enlazar comportamiento del botón Confirmar (pre-check) y formato de RUT
       setTimeout(() => {
-        const btn = div.querySelector(`#precheck-${courseId}-${i}`);
+        const btn        = div.querySelector(`#precheck-${courseId}-${i}`);
         const emailInput = div.querySelector(`#email-${courseId}-${i}`);
         const passInput  = div.querySelector(`#password-${courseId}-${i}`);
         const postBox    = div.querySelector(`#postconfirm-${courseId}-${i}`);
         const okMsg      = postBox.querySelector(".ok-msg");
         const rutInput   = postBox.querySelector(`#rut-${courseId}-${i}`);
 
-        rutInput?.addEventListener("input", e => { e.target.value = formatRut(e.target.value); });
+        // Formato de RUT en vivo
+        rutInput?.addEventListener("input", (e) => {
+          e.target.value = formatRut(e.target.value);
+        });
 
+        // Pre-check: valida si la cuenta existe y si la contraseña es correcta (si existe).
         btn?.addEventListener("click", async () => {
           const email = (emailInput.value || "")
             .toLowerCase()
@@ -308,68 +313,49 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
             .trim();
           const pwd   = (passInput.value || "").trim();
 
-          if (!isValidEmail(email)) { alert("Correo inválido."); return; }
+          if (!isValidEmail(email)) {
+            alert("Correo inválido.");
+            return;
+          }
 
-          const latestEval = await findLatestAsyncEvaluationFor(itemMeta || { id: courseId });
-          if (!latestEval) { alert("No hay versión asincrónica disponible por ahora."); return; }
-
+          // ¿Existe la cuenta?
           const exists = await emailExistsInAuth(email);
 
           if (exists) {
-            // Si la cuenta ya existe, intentamos autenticación con la contraseña ingresada
+            // Verifica la contraseña para esa cuenta existente (no crea ni asigna aún)
             try {
               const testApp = firebase.apps.find(a => a.name === "checkpass") ||
                               firebase.initializeApp(firebase.app().options, "checkpass");
               const testAuth = testApp.auth();
 
               await testAuth.signInWithEmailAndPassword(email, pwd);
-
-              // Contraseña correcta → asignar curso y redirigir
-              const userSnap = await db.collection("users").where("email","==",email).limit(1).get();
-              if (!userSnap.empty) {
-                const ref = userSnap.docs[0].ref;
-                const data = userSnap.docs[0].data();
-                const setE = new Set(data.assignedEvaluations || []);
-                setE.add(latestEval.id);
-
-                if (!data.customID) {
-                  const cid = await getNextCustomId();
-                  await ref.update({ assignedEvaluations: Array.from(setE), customID: cid });
-                } else {
-                  await ref.update({ assignedEvaluations: Array.from(setE) });
-                }
-              } else {
-                const cid = await getNextCustomId();
-                await db.collection("users").add({
-                  email, name: "", rut: "", company: "",
-                  customID: cid, role: "user",
-                  assignedEvaluations: [latestEval.id],
-                  assignedCoursesMeta: {},
-                  createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
-              }
-
-              alert("Curso asociado a tu cuenta. Inicia sesión para acceder.");
-              window.location.href = "https://esysingenieria.github.io/evaluaciones-cursos/index.html";
               await testAuth.signOut();
               await testApp.delete();
-              return;
+
+              // Marca como "cuenta existente validada": no se creará luego
+              okMsg.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
+              btn.disabled = true;
+              emailInput.readOnly = true;
+              passInput.readOnly  = true;
+              passInput.dataset.needsAccount = "0"; // el submit final solo asignará
 
             } catch (err) {
-              console.error("Error verificando contraseña:", err);
-              alert("La contraseña es incorrecta para esta cuenta.");
-              return;
+              console.warn("Error de autenticación:", err);
+              alert("La contraseña es incorrecta para esta cuenta existente.");
             }
+
+            return;
           }
 
-          // Si la cuenta NO existe → crear nueva
+          // Si la cuenta NO existe → permite completar datos (la creación se hará en el submit final)
           if (pwd.length < 6) {
             alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
             return;
           }
-          okMsg.textContent = "Cuenta nueva: completa tus datos para crearla.";
+
+          okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
           postBox.style.display = "";
-          passInput.dataset.needsAccount = "1";
+          passInput.dataset.needsAccount = "1"; // el submit final creará la cuenta
           btn.disabled = true;
           emailInput.readOnly = true;
           passInput.readOnly  = true;
@@ -377,7 +363,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
       }, 0);
 
     } else {
-      // ——— Cursos NO asincrónicos ———
+      // ——— NO asincrónico: formulario clásico ———
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
         <label for="name-${courseId}-${i}">Nombre:</label>
@@ -392,9 +378,12 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         <label for="company-${courseId}-${i}">Empresa (Opcional):</label>
         <input type="text" id="company-${courseId}-${i}">
       `;
+
       setTimeout(() => {
         const rutInput = div.querySelector(`#rut-${courseId}-${i}`);
-        rutInput?.addEventListener("input", e => e.target.value = formatRut(e.target.value));
+        rutInput?.addEventListener("input", (e) => {
+          e.target.value = formatRut(e.target.value);
+        });
       }, 0);
     }
 
