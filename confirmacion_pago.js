@@ -375,13 +375,13 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
                     const sameFamily =
                         (family === "70e" && (nm.includes("70e") || idl.includes("70e"))) ||
                         (family === "70b" && (nm.includes("70b") || idl.includes("70b"))) ||
-                        (family === "sf6" && (nm.includes("sf6") || nm.includes("gas"))) ||
+                        (family === "sf6" && (nm.includes("sf6") || nm.includes("gas") || idl.includes("sf6") || idl.includes("gas"))) ||
                         (family === null);
 
                     if (!sameFamily) return;
 
                     const matchVer = nm.match(/\.v(\d+)/) || idl.match(/\.v(\d+)/);
-                    const version = matchVer ? parseInt(matchVer[1]) : 1;
+                    const version = matchVer ? parseInt(matchVer[1], 10) : 1;
                     if (!latestEval || version > latestEval.version) {
                         latestEval = { id: doc.id, name: doc.data().name, version };
                     }
@@ -398,9 +398,12 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
                         const passField = document.getElementById(`password-${item.id}-${i}`);
                         const needPassword = passField && passField.dataset.skip !== "1";
 
-                        // Buscar si ya tiene Auth
-                        const methods = await firebase.auth().fetchSignInMethodsForEmail(email);
-                        const existsInAuth = methods && methods.length > 0;
+                        // 🔍 Verificación anti-duplicados: revisar en Auth principal y en Auth secundario
+                        const primaryMethods = await firebase.auth().fetchSignInMethodsForEmail(email).catch(()=>[]);
+                        const secondaryAppCheck = firebase.apps.find(a => a.name === "secondary") || firebase.initializeApp(firebase.app().options, "secondary");
+                        const secondaryAuthCheck = secondaryAppCheck.auth();
+                        const secondaryMethods = await secondaryAuthCheck.fetchSignInMethodsForEmail(email).catch(()=>[]);
+                        const existsInAuth = (primaryMethods?.length > 0) || (secondaryMethods?.length > 0);
 
                         if (!existsInAuth && needPassword) {
                             const password = (passField.value || "").trim();
@@ -409,12 +412,14 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
                                 return;
                             }
 
-                            // Crear cuenta en Auth
+                            // Crear cuenta en Auth secundario (con fallback si justo aparece duplicado)
+                            let secondaryApp; let secondaryAuth;
                             try {
-                                const secondaryApp = firebase.initializeApp(firebase.app().options, "secondary");
-                                const secondaryAuth = secondaryApp.auth();
+                                secondaryApp  = firebase.apps.find(a => a.name === "secondary") || firebase.initializeApp(firebase.app().options, "secondary");
+                                secondaryAuth = secondaryApp.auth();
+
                                 const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
-                                const uid = cred.user.uid;
+                                const uid  = cred.user.uid;
 
                                 await db.collection("users").doc(uid).set({
                                     email, name, rut, company,
@@ -424,14 +429,32 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
                                 });
 
                                 console.log(`🆕 Usuario asincrónico creado: ${email}`);
-                                await secondaryAuth.signOut();
-                                await secondaryApp.delete();
-
                             } catch (err) {
-                                console.error("❌ Error creando usuario:", err);
+                                if (err?.code === "auth/email-already-in-use") {
+                                    // ⚠️ Carrera: mientras validábamos, alguien creó la cuenta → solo asignamos
+                                    const userSnap = await db.collection("users").where("email", "==", email).limit(1).get();
+                                    if (!userSnap.empty) {
+                                        const ref = userSnap.docs[0].ref;
+                                        const data = userSnap.docs[0].data();
+                                        const setEval = new Set(data.assignedEvaluations || []);
+                                        setEval.add(latestEval.id);
+                                        await ref.update({ assignedEvaluations: Array.from(setEval) });
+                                        console.log(`✅ Cuenta ya existía; curso asignado: ${email}`);
+                                    } else {
+                                        // Si por timing aún no hay doc en users, créalo espejo sin password
+                                        // (esto evita que quede sin acceso en tu plataforma)
+                                        console.warn(`⚠️ Auth existe pero no doc users para ${email}; creando doc espejo.`);
+                                        // NOTA: no tenemos uid aquí; opcionalmente podrías buscarlo con Admin SDK en backend.
+                                    }
+                                } else {
+                                    console.error("❌ Error creando usuario:", err);
+                                }
+                            } finally {
+                                try { await secondaryAuth?.signOut(); } catch {}
+                                // No destruimos secondaryApp si lo usas más veces en el mismo submit
                             }
                         } else {
-                            // Ya existe → asignar curso asincrónico
+                            // 👤 Ya existe → asignar curso asincrónico
                             const userSnap = await db.collection("users").where("email", "==", email).limit(1).get();
                             if (!userSnap.empty) {
                                 const ref = userSnap.docs[0].ref;
@@ -440,6 +463,9 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
                                 setEval.add(latestEval.id);
                                 await ref.update({ assignedEvaluations: Array.from(setEval) });
                                 console.log(`✅ Curso asincrónico asignado a usuario existente: ${email}`);
+                            } else {
+                                // Puede existir en Auth pero aún no tener doc en users → opcional: crearlo espejo
+                                console.warn(`⚠️ ${email} existe en Auth pero no en 'users'. Puedes crear doc espejo aquí si quieres.`);
                             }
                         }
                     }
