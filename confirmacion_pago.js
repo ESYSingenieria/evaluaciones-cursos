@@ -166,7 +166,7 @@ async function loadDates(courseId, selectId) {
     }
 }
 
-// === Generar campos de inscripción dinámicos ===
+// === Generar campos de inscripción dinámicos (con watcher robusto) ===
 function generateInscriptionFields(courseId, quantity, container) {
     container.innerHTML = "";
 
@@ -190,7 +190,7 @@ function generateInscriptionFields(courseId, quantity, container) {
             <input type="text" id="company-${courseId}-${i}">
         `;
 
-        // 👉 Solo para asincrónicos: agregar campo de contraseña (visible solo si no existe cuenta)
+        // 👉 Solo para asincrónicos: agregar campo de contraseña (se mostrará solo si NO existe cuenta)
         if (isAsync) {
             const passWrap = document.createElement("div");
             passWrap.id = `passwrap-${courseId}-${i}`;
@@ -200,53 +200,76 @@ function generateInscriptionFields(courseId, quantity, container) {
               <small id="passhint-${courseId}-${i}" style="display:block;color:#666;margin-top:6px;"></small>
             `;
             div.appendChild(passWrap);
-            setupPasswordWatcher(courseId, i); // Detecta si el correo ya tiene cuenta
+
+            // ⚠️ Importante: dispara el watcher en el siguiente “tick” para asegurar que los nodos existen
+            setTimeout(() => setupPasswordWatcher(courseId, i), 0);
         }
 
         container.appendChild(div);
     }
 }
 
-// === Detectar si el correo ya existe y mostrar/ocultar contraseña ===
+// === Detectar si el correo ya existe y mostrar/ocultar contraseña (con defensas y reintento) ===
 function setupPasswordWatcher(courseId, i) {
     const emailInput = document.getElementById(`email-${courseId}-${i}`);
     const passWrap   = document.getElementById(`passwrap-${courseId}-${i}`);
     const passInput  = document.getElementById(`password-${courseId}-${i}`);
     const hint       = document.getElementById(`passhint-${courseId}-${i}`);
 
+    // Si aún no está montado (por timing), reintenta una vez más
+    if (!emailInput || !passWrap || !passInput) {
+        setTimeout(() => setupPasswordWatcher(courseId, i), 50);
+        return;
+    }
+
     async function checkEmail() {
         const email = (emailInput.value || "").trim().toLowerCase();
+
+        // Sin correo → mostramos password y lo requerimos por defecto
         if (!email) {
             passWrap.style.display = "";
             passInput.required = true;
             passInput.dataset.skip = "0";
-            hint.textContent = "";
+            if (hint) hint.textContent = "";
             return;
         }
 
         try {
             const methods = await firebase.auth().fetchSignInMethodsForEmail(email);
-            if (methods && methods.length > 0) {
-                // ✅ Ya existe → ocultar campo de contraseña
+            const exists = methods && methods.length > 0;
+
+            if (exists) {
+                // ✅ Ya existe → ocultar password y NO exigirlo
                 passWrap.style.display = "none";
                 passInput.required = false;
                 passInput.value = "";
-                passInput.dataset.skip = "1";
-                hint.textContent = "";
+                passInput.dataset.skip = "1"; // lo leerá el submit para no crear Auth
+                if (hint) hint.textContent = "";
             } else {
-                // 🚀 No existe → mostrar y exigir contraseña
+                // 🚀 No existe → mostrar y exigir password
                 passWrap.style.display = "";
                 passInput.required = true;
                 passInput.dataset.skip = "0";
-                hint.textContent = "Será tu contraseña para ingresar a la plataforma.";
+                if (hint) hint.textContent = "Será tu contraseña para ingresar a la plataforma (mínimo 6 caracteres).";
             }
         } catch (e) {
             console.error("Error verificando email:", e);
+            // En caso de error de red, mantenemos el campo visible y requerido para no bloquear el flujo
+            passWrap.style.display = "";
+            passInput.required = true;
+            passInput.dataset.skip = "0";
         }
     }
 
-    emailInput.addEventListener("input", debounce(checkEmail, 400));
+    // Debounce para no spamear a Auth
+    const debounced = debounce(checkEmail, 400);
+
+    // 🚦 Enlazar eventos solo si el nodo existe
+    emailInput.addEventListener("input", debounced);
     emailInput.addEventListener("blur", checkEmail);
+
+    // Chequeo inicial (autocompletado/navegadores)
+    setTimeout(checkEmail, 150);
 }
 
 function debounce(fn, ms=350) {
