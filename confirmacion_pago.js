@@ -265,15 +265,16 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
     div.className = "inscription-container";
 
     if (isAsync) {
-      // ——— ASINCRÓNICO: precheck (valida/etiqueta; NO crea/NO asigna aquí) ———
+      // ASINCRÓNICO: precheck (valida/etiqueta; NO crea/NO asigna aquí)
+      // NOTE: No ponemos `required` en el HTML. Lo gestionamos dinámicamente para evitar errores de validación en inputs ocultos.
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
 
         <label for="email-${courseId}-${i}">Correo Electrónico:</label>
-        <input type="email" id="email-${courseId}-${i}" required>
+        <input type="email" id="email-${courseId}-${i}">
 
         <label for="password-${courseId}-${i}">Contraseña:</label>
-        <input type="password" id="password-${courseId}-${i}" minlength="6" required>
+        <input type="password" id="password-${courseId}-${i}" minlength="6">
 
         <button type="button" id="precheck-${courseId}-${i}" class="btn btn-primary" style="margin:8px 0;">Confirmar</button>
 
@@ -295,6 +296,10 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         </div>
       `;
 
+      // Append first so querySelector encuentre los nodos
+      container.appendChild(div);
+
+      // pequeño timeout para asegurar montaje en DOM
       setTimeout(() => {
         const btn        = div.querySelector(`#precheck-${courseId}-${i}`);
         const emailInput = div.querySelector(`#email-${courseId}-${i}`);
@@ -305,143 +310,163 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         const nameInput  = postBox.querySelector(`#name-${courseId}-${i}`);
         const rutInput   = postBox.querySelector(`#rut-${courseId}-${i}`);
 
+        // formateo RUT mientras escribe (igual admin)
         rutInput?.addEventListener("input", (e) => {
-          e.target.value = formatRut(e.target.value);
+          try { e.target.value = formatRut(e.target.value); } catch(_) {}
         });
 
-        // === HANDLER COMPLETO DEL PRECHECK (tu bloque) ===
+        // defender: si inputs vienen con autocomplete del navegador, forzamos el estado inicial:
+        if (emailInput) {
+          emailInput.value = (emailInput.value || "").trim();
+        }
+        if (passInput) {
+          passInput.value = (passInput.value || "").trim();
+        }
+
+        // Helper local: limpiar estado del postBox (cuando se vuelve a editar)
+        function resetPostBox() {
+          if (!postBox) return;
+          postBox.style.display = "none";
+          okMsg.textContent = "";
+          if (nameInput) { nameInput.required = false; nameInput.value = nameInput.value || ""; }
+          if (rutInput)  { rutInput.required = false; rutInput.value = rutInput.value || ""; }
+          passInput.dataset.needsAccount = "0";
+        }
+
+        // Inicial reset
+        resetPostBox();
+        if (statusDiv) { statusDiv.style.display = "none"; statusDiv.textContent = ""; }
+
         btn?.addEventListener("click", async () => {
-          const email = (emailInput.value || "").normalize("NFKC").toLowerCase().replace(/\s+/g, "").trim();
-          const pwd   = (passInput.value || "").trim();
+          const email = (emailInput.value || "")
+            .normalize ? (emailInput.value || "").normalize("NFKC") : (emailInput.value || "");
+          const cleanEmail = (email || "").toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, "").trim();
+          const pwd = (passInput.value || "").trim();
 
-          if (!isValidEmail(email)) { alert("Correo inválido."); return; }
+          if (!isValidEmail(cleanEmail)) { alert("Correo inválido."); return; }
 
-          // 0) DEBUG: imprime config del runtime para confirmar proyecto
-          console.log("=== DEBUG precheck ===");
-          console.log("firebase.app().options:", firebase.app().options);
-          console.log("Using primary auth:", !!firebase.auth);
-
-          // 1) fetchSignInMethods en la app PRINCIPAL (no secondary)
-          let methods = [];
+          // Paso A: consultar métodos de Auth (principal + secundaria) — intentamos rápido
+          let existsViaMethods = false;
           try {
-            methods = await firebase.auth().fetchSignInMethodsForEmail(email);
-            console.log("fetchSignInMethods (primary) ->", methods);
+            const m1 = await firebase.auth().fetchSignInMethodsForEmail(cleanEmail).catch(() => []);
+            const secApp = firebase.apps.find(a => a.name === "secondary") || firebase.initializeApp(firebase.app().options, "secondary");
+            const m2 = await secApp.auth().fetchSignInMethodsForEmail(cleanEmail).catch(() => []);
+            existsViaMethods = (m1 && m1.length > 0) || (m2 && m2.length > 0);
+            // si se creó secApp aquí y no lo queremos mantener abierto, lo dejamos (no eliminar) porque puede usarse luego.
           } catch (e) {
-            console.warn("fetchSignInMethods error (primary):", e);
-            // no return — seguimos al probe
+            // no abortamos; pasamos al probe
+            console.warn("fetchSignInMethods error (precheck):", e);
           }
 
-          // 2) Si methods indica existencia → probe de contraseña
-          if (methods && methods.length > 0) {
-            try {
-              // sign-in probe usando una app temporal
-              const probeApp = firebase.apps.find(a => a.name === "checkpass") || firebase.initializeApp(firebase.app().options, "checkpass");
-              const probeAuth = probeApp.auth();
-              await probeAuth.signInWithEmailAndPassword(email, pwd);
-              await probeAuth.signOut();
-              await probeApp.delete();
-
-              statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
-              statusDiv.style.display = "";
-              btn.disabled = true;
-              emailInput.readOnly = true;
-              passInput.readOnly  = true;
-              passInput.dataset.needsAccount = "0";
-              postBox.style.display = "none";
-              if (nameInput) nameInput.required = false;
-              if (rutInput)  rutInput.required  = false;
-              return;
-            } catch (err) {
-              console.log("Sign-in probe error (existing methods):", err);
-              if (err?.code === "auth/wrong-password" || err?.code === "auth/invalid-login-credentials") {
-                alert("La contraseña es incorrecta para esta cuenta existente.");
-                return;
-              } else {
-                alert("No se pudo verificar la cuenta. Intenta nuevamente.");
-                return;
-              }
-            }
-          }
-
-          // 3) Si methods vacío → probablemente NO existe. Hacemos probe por si acaso.
-          //    (Algunos errores de método pueden hacer que methods == [] aunque la cuenta exista.)
+          // Paso B: probe de sign-in para distinguir existencia vs contraseña mala
           try {
-            const probeApp = firebase.apps.find(a => a.name === "checkpass") || firebase.initializeApp(firebase.app().options, "checkpass");
-            const probeAuth = probeApp.auth();
-            await probeAuth.signInWithEmailAndPassword(email, pwd);
-            await probeAuth.signOut();
-            await probeApp.delete();
+            const chkApp  = firebase.apps.find(a => a.name === "checkpass") || firebase.initializeApp(firebase.app().options, "checkpass");
+            const chkAuth = chkApp.auth();
 
-            // Si llegó aquí: pudo hacer sign-in aunque methods estaba vacío.
-            // Eso indica inconsistencia entre fetchSignInMethods y sign-in (probablemente proyecto mismatch).
-            console.warn("Sign-in succeeded despite empty fetchSignInMethods -> possible project mismatch. Treating as EXISTING.");
+            await chkAuth.signInWithEmailAndPassword(cleanEmail, pwd);
+
+            // Si llega aquí: EXISTE y contraseña correcta
+            await chkAuth.signOut();
+            try { await chkApp.delete(); } catch(_) {}
+
             statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
             statusDiv.style.display = "";
             btn.disabled = true;
             emailInput.readOnly = true;
             passInput.readOnly  = true;
             passInput.dataset.needsAccount = "0";
-            postBox.style.display = "none";
-            if (nameInput) nameInput.required = false;
-            if (rutInput)  rutInput.required  = false;
+
+            // Asegurar que el bloque de creación queda desactivado
+            resetPostBox();
             return;
-          } catch (err2) {
-            console.log("Sign-in probe error (methods empty):", err2);
-            // Si el error es wrong-password/invalid-login-credentials → cuenta existe, contraseña incorrecta
-            if (err2?.code === "auth/wrong-password" || err2?.code === "auth/invalid-login-credentials") {
+          } catch (err) {
+            const code = err?.code || "";
+
+            // Si sabemos que existe por métodos pero probe falló -> contraseña incorrecta
+            if (code === "auth/wrong-password" ||
+                (existsViaMethods && code === "auth/invalid-login-credentials")) {
               alert("La contraseña es incorrecta para esta cuenta existente.");
               return;
             }
 
-            // Si no hay métodos y el probe dice user-not-found -> claramente NO existe
-            if (err2?.code === "auth/user-not-found") {
-              if (pwd.length < 6) { alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres."); return; }
-              okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
-              postBox.style.display = "";
-              passInput.dataset.needsAccount = "1";
-              btn.disabled = true;
-              emailInput.readOnly = true;
-              passInput.readOnly  = true;
-              if (nameInput) nameInput.required = true;
-              if (rutInput)  rutInput.required  = true;
+            // Si sign-in devolvió user-not-found o no había métodos -> lo tratamos como NO existe y dejamos crear
+            if (code === "auth/user-not-found" || (!existsViaMethods && code === "auth/invalid-login-credentials")) {
+              // continuar al flujo de creación
+            } else {
+              console.warn("Sign-in probe error (precheck):", err);
+              alert("No se pudo verificar la cuenta. Intenta nuevamente.");
               return;
             }
+          }
 
-            // Otros errores → fallback
-            console.warn("Unhandled probe error:", err2);
-            alert("No se pudo verificar la cuenta. Intenta nuevamente.");
+          // Paso C: cuenta NO existe → habilitar creación (se hará en el submit final)
+          if (pwd.length < 6) {
+            alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
             return;
           }
+
+          okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
+          postBox.style.display = "";
+          passInput.dataset.needsAccount = "1";
+          btn.disabled = true;
+          emailInput.readOnly = true;
+          passInput.readOnly  = true;
+
+          // Marcar required SOLO mientras el postBox esté visible
+          if (nameInput)  { nameInput.required = true; }
+          if (rutInput)   { rutInput.required  = true; }
+
         });
-        // === FIN HANDLER ===
+
+        // Si el usuario edita el email o password después de precheck, resetear estado para permitir re-check
+        const undoOnChange = () => {
+          btn.disabled = false;
+          emailInput.readOnly = false;
+          passInput.readOnly = false;
+          passInput.dataset.needsAccount = "0";
+          if (statusDiv) { statusDiv.style.display = "none"; statusDiv.textContent = ""; }
+          resetPostBox();
+        };
+        emailInput.addEventListener("input", undoOnChange);
+        passInput.addEventListener("input", undoOnChange);
+
       }, 0);
 
     } else {
-      // ——— NO asincrónico: formulario clásico ———
+      // NO asincrónico: formulario clásico
+      // No colocamos required en el HTML; lo definimos en JS para evitar validación sobre inputs ocultos en otros bloques.
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
         <label for="name-${courseId}-${i}">Nombre:</label>
-        <input type="text" id="name-${courseId}-${i}" required>
+        <input type="text" id="name-${courseId}-${i}">
 
         <label for="rut-${courseId}-${i}">RUT:</label>
-        <input type="text" id="rut-${courseId}-${i}" required>
+        <input type="text" id="rut-${courseId}-${i}">
 
         <label for="email-${courseId}-${i}">Correo Electrónico:</label>
-        <input type="email" id="email-${courseId}-${i}" required>
+        <input type="email" id="email-${courseId}-${i}">
 
         <label for="company-${courseId}-${i}">Empresa (Opcional):</label>
         <input type="text" id="company-${courseId}-${i}">
       `;
 
+      container.appendChild(div);
+
       setTimeout(() => {
         const rutInput = div.querySelector(`#rut-${courseId}-${i}`);
+        const nameInput = div.querySelector(`#name-${courseId}-${i}`);
+        const emailInput = div.querySelector(`#email-${courseId}-${i}`);
+
+        // Marcar required porque aquí el bloque está siempre visible para cursos presenciales
+        if (nameInput)  nameInput.required = true;
+        if (rutInput)   rutInput.required = true;
+        if (emailInput) emailInput.required = true;
+
         rutInput?.addEventListener("input", (e) => {
-          e.target.value = formatRut(e.target.value);
+          try { e.target.value = formatRut(e.target.value); } catch(_) {}
         });
       }, 0);
     }
-
-    container.appendChild(div);
   }
 }
 
