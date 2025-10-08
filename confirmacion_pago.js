@@ -256,40 +256,29 @@ async function emailExistsInAuth(email) {
 }
 
 function generateInscriptionFields(courseId, quantity, container, itemMeta = {}) {
-  // —— CSS (se inyecta una sola vez) ————————————————————————————————
+  // ——— CSS para el selector y el tooltip (se inyecta una sola vez) ———
   if (!document.getElementById("confirm-ux-css")) {
     const css = document.createElement("style");
     css.id = "confirm-ux-css";
     css.textContent = `
-      /* Contenedor del selector */
-      .mode-toggle {
-        display:flex; align-items:center; gap:12px; flex-wrap:wrap;
-        position: relative;
-      }
-      /* Píldoras */
+      .mode-toggle { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
       .mode-option {
         display:flex; align-items:center; gap:8px;
         background:#f3f6fb; color:#1f2937;
         border:1px solid #e5e7eb; border-radius:9999px;
-        padding:6px 12px; cursor:pointer; user-select:none;
-        transition:all .15s ease;
+        padding:6px 12px; cursor:pointer; user-select:none; transition:all .15s ease;
       }
       .mode-option:hover { background:#eef2ff; border-color:#d1d5db; }
-      .mode-option.is-active {
-        background:#2563eb; color:#fff; border-color:#2563eb;
-        box-shadow:0 1px 0 rgba(0,0,0,.02), 0 1px 3px rgba(0,0,0,.06) inset;
-      }
-      .mode-option input[type="radio"] { /* oculto, pero accesible */
-        position:absolute; opacity:0; width:1px; height:1px; pointer-events:none;
-      }
-      /* Badge de información con tooltip */
+      .mode-option.is-active { background:#2563eb; color:#fff; border-color:#2563eb; }
+      .mode-option input[type="radio"] { position:absolute; opacity:0; width:1px; height:1px; pointer-events:none; }
+
       .info-badge {
         position:relative; display:inline-flex; width:22px; height:22px;
         align-items:center; justify-content:center;
         border-radius:9999px; background:#0ea5e9; color:#fff;
         font-weight:700; font-size:13px; cursor:help;
       }
-      .info-badge::after {
+      .info-badge::after{
         content:attr(data-tip);
         position:absolute; left:50%; transform:translateX(-50%) translateY(8px);
         bottom:-8px; opacity:0; pointer-events:none;
@@ -299,13 +288,10 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         box-shadow:0 10px 20px rgba(0,0,0,.18);
         transition:opacity .15s ease, transform .15s ease;
       }
-      .info-badge:hover::after {
-        opacity:1; transform:translateX(-50%) translateY(12px);
-      }
+      .info-badge:hover::after{ opacity:1; transform:translateX(-50%) translateY(12px); }
     `;
     document.head.appendChild(css);
   }
-  // ————————————————————————————————————————————————————————————————
 
   container.innerHTML = "";
   const isAsync =
@@ -316,7 +302,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
     div.className = "inscription-container";
 
     if (isAsync) {
-      // === ASINCRÓNICO: selector bonito + tooltip ===
+      // ——— ASINCRÓNICO ———
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
 
@@ -333,7 +319,6 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
 
           <span class="info-badge"
                 id="info-${courseId}-${i}"
-                aria-label="Información"
                 data-tip="Si escoges 'Cuenta nueva' pero el correo ya está registrado, la contraseña válida seguirá siendo la original.\nPara recuperarla ve a la página de inicio de sesión y usa '¿Olvidaste tu contraseña?'">
             ℹ
           </span>
@@ -364,8 +349,8 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
       `;
       container.appendChild(div);
 
+      // —— listeners y precheck ——
       setTimeout(() => {
-        // refs
         const modeExisting = div.querySelector(`#mode-existing-${courseId}-${i}`);
         const modeNew      = div.querySelector(`#mode-new-${courseId}-${i}`);
         const pillExisting = div.querySelector(`#pill-existing-${courseId}-${i}`);
@@ -380,9 +365,8 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         const nameInput  = postBox.querySelector(`#name-${courseId}-${i}`);
         const rutInput   = postBox.querySelector(`#rut-${courseId}-${i}`);
 
-        rutInput?.addEventListener("input",(e)=>{ e.target.value = formatRut(e.target.value); });
+        rutInput?.addEventListener("input", (e) => { e.target.value = formatRut(e.target.value); });
 
-        // helpers UI
         const showNewBox = () => {
           postBox.style.display = "";
           okMsg.textContent = "🆕 Cuenta nueva: completa tus datos. Esta cuenta se creará al finalizar la inscripción.";
@@ -401,83 +385,95 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
           statusDiv.style.display = "none";
           statusDiv.textContent = "";
         };
-
-        // estado inicial
-        hideNewBox(); clearStatus();
-
-        // toggle de estilo activo en píldoras
         const refreshPills = () => {
           pillExisting.classList.toggle("is-active", modeExisting.checked);
           pillNew.classList.toggle("is-active", modeNew.checked);
         };
+
+        // estado inicial
+        hideNewBox(); clearStatus(); refreshPills();
         modeExisting.addEventListener("change", () => { hideNewBox(); clearStatus(); refreshPills(); });
         modeNew.addEventListener("change", () => { showNewBox(); clearStatus(); refreshPills(); });
-        refreshPills();
 
-        // PRECHECK (igual que ya tenías: verifica y marca; NO crea ni asigna aquí)
+        // ——— PRECHECK corregido ———
         btn.addEventListener("click", async () => {
           const mode  = modeNew.checked ? "new" : "existing";
           const email = (emailInput.value || "")
             .normalize("NFKC").toLowerCase()
-            .replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g,"").trim();
+            .replace(/[\u200B-\u200D\uFEFF]/g, "")
+            .replace(/\s+/g, "")
+            .trim();
           const pwd   = (passInput.value || "").trim();
 
           clearStatus();
 
           if (!isValidEmail(email)) { alert("Correo inválido."); return; }
-          if (mode === "new" && pwd.length < 6) { alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres."); return; }
+
+          // CUENTA EXISTENTE → intenta login directamente
+          if (mode === "existing") {
+            try {
+              const app  = firebase.apps.find(a => a.name === "checkpass")
+                         || firebase.initializeApp(firebase.app().options, "checkpass");
+              const auth = app.auth();
+
+              await auth.signInWithEmailAndPassword(email, pwd);
+              await auth.signOut();
+              try { await app.delete(); } catch {}
+
+              statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
+              statusDiv.style.display = "";
+              passInput.dataset.needsAccount = "0";
+              hideNewBox();
+              return;
+
+            } catch (err) {
+              const code = err?.code || "";
+              if (code === "auth/wrong-password" || code === "auth/invalid-login-credentials") {
+                alert("La contraseña es incorrecta para esta cuenta existente.");
+              } else if (code === "auth/user-not-found") {
+                alert("El correo ingresado no está registrado en la plataforma.");
+              } else {
+                console.warn("Sign-in probe error:", err);
+                alert("No se pudo verificar la cuenta. Intenta nuevamente.");
+              }
+              return;
+            }
+          }
+
+          // CUENTA NUEVA → valida longitud y que no exista ya
+          if (pwd.length < 6) {
+            alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
+            return;
+          }
 
           try {
             const methods = await firebase.auth().fetchSignInMethodsForEmail(email);
             const exists  = Array.isArray(methods) && methods.length > 0;
 
-            if (mode === "existing") {
-              if (!exists) { alert("Ese correo no tiene cuenta en la plataforma. Cambia a 'Cuenta nueva' para crearla."); return; }
-              try {
-                const app = firebase.apps.find(a=>a.name==="checkpass") || firebase.initializeApp(firebase.app().options,"checkpass");
-                const auth = app.auth();
-                await auth.signInWithEmailAndPassword(email, pwd);
-                await auth.signOut();
-                try { await app.delete(); } catch {}
-
-                statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
-                statusDiv.style.display = "";
-                passInput.dataset.needsAccount = "0"; // no crear
-                hideNewBox();
-              } catch (err) {
-                const code = err?.code || "";
-                if (code === "auth/wrong-password" || code === "auth/invalid-login-credentials") {
-                  alert("La contraseña es incorrecta para esta cuenta existente.");
-                } else {
-                  alert("No se pudo verificar la cuenta. Intenta nuevamente.");
-                }
-              }
-              return;
-            }
-
-            // mode === "new"
             if (exists) {
               alert("Este correo ya está registrado. Si es tu cuenta, cambia a 'Cuenta existente' y valida tu contraseña.");
               hideNewBox();
               return;
             }
+
             showNewBox();
             statusDiv.textContent = "✅ Datos listos. Esta cuenta se creará al finalizar la inscripción.";
             statusDiv.style.display = "";
+
           } catch (e) {
-            console.warn("Precheck error:", e);
+            console.warn("Precheck (new) error:", e);
             alert("No se pudo verificar el correo ahora. Vuelve a intentar.");
           }
         });
 
-        // reset mensajes si editan
+        // limpiar mensajes si editan
         const resetOnEdit = () => { clearStatus(); };
         emailInput.addEventListener("input", resetOnEdit);
         passInput.addEventListener("input", resetOnEdit);
       }, 0);
 
     } else {
-      // === NO ASINCRÓNICO (igual que antes) ===
+      // ——— NO ASINCRÓNICO (campos simples como antes) ———
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
         <label for="name-${courseId}-${i}">Nombre:</label>
@@ -495,13 +491,9 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
       container.appendChild(div);
       setTimeout(() => {
         const rutInput = div.querySelector(`#rut-${courseId}-${i}`);
-        rutInput?.addEventListener("input",(e)=>{ e.target.value = formatRut(e.target.value); });
+        rutInput?.addEventListener("input", (e) => { e.target.value = formatRut(e.target.value); });
       }, 0);
-
-      continue;
     }
-
-    container.appendChild(div);
   }
 }
 
