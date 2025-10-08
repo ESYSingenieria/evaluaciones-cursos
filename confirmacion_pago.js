@@ -305,107 +305,93 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         const nameInput  = postBox.querySelector(`#name-${courseId}-${i}`);
         const rutInput   = postBox.querySelector(`#rut-${courseId}-${i}`);
 
-        // Formateo RUT en vivo solo si se muestra el bloque de nueva cuenta
         rutInput?.addEventListener("input", (e) => {
           e.target.value = formatRut(e.target.value);
         });
 
         btn?.addEventListener("click", async () => {
-          // Normalización fuerte del email
           const email = (emailInput.value || "")
             .normalize("NFKC")
             .toLowerCase()
-            .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width
-            .replace(/\s+/g, "")                   // espacios
+            .replace(/[\u200B-\u200D\uFEFF]/g, "")
+            .replace(/\s+/g, "")
             .trim();
-          const pwd   = (passInput.value || "").trim();
+          const pwd = (passInput.value || "").trim();
 
-          if (!isValidEmail(email)) {
-            alert("Correo inválido.");
-            return;
-          }
+          if (!isValidEmail(email)) { alert("Correo inválido."); return; }
 
-          // === Paso A: consulta rápida a Authentication (principal y secundaria)
+          // Paso A: consultar métodos de Auth (principal + secundaria)
           let existsViaMethods = false;
           try {
-            const m1 = await firebase.auth()
-              .fetchSignInMethodsForEmail(email)
-              .catch(() => []);
-            const secApp =
-              firebase.apps.find((a) => a.name === "secondary") ||
-              firebase.initializeApp(firebase.app().options, "secondary");
-            const m2 = await secApp
-              .auth()
-              .fetchSignInMethodsForEmail(email)
-              .catch(() => []);
+            const m1 = await firebase.auth().fetchSignInMethodsForEmail(email).catch(() => []);
+            const secApp = firebase.apps.find(a => a.name === "secondary")
+                        || firebase.initializeApp(firebase.app().options, "secondary");
+            const m2 = await secApp.auth().fetchSignInMethodsForEmail(email).catch(() => []);
             existsViaMethods = (m1 && m1.length > 0) || (m2 && m2.length > 0);
-          } catch (_) {
-            // seguimos al probe
-          }
+          } catch (_) { /* seguimos al probe */ }
 
-          // === Paso B: “probe” de sign-in para distinguir user-not-found vs wrong-password
-          // Si ya sabemos que existe por métodos, igual verificamos contraseña.
+          // Paso B: probe de sign-in para distinguir existencia vs contraseña mala
           try {
-            const chkApp =
-              firebase.apps.find((a) => a.name === "checkpass") ||
-              firebase.initializeApp(firebase.app().options, "checkpass");
+            const chkApp  = firebase.apps.find(a => a.name === "checkpass")
+                          || firebase.initializeApp(firebase.app().options, "checkpass");
             const chkAuth = chkApp.auth();
 
             await chkAuth.signInWithEmailAndPassword(email, pwd);
-            // Si llegó aquí: EXISTE y la contraseña es correcta
+            // Si llega aquí: EXISTE y contraseña correcta
             await chkAuth.signOut();
             await chkApp.delete();
 
-            // ✅ Cuenta EXISTENTE verificada (no crear ahora; se asignará en el submit)
-            statusDiv.textContent =
-              "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
+            statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
             statusDiv.style.display = "";
             btn.disabled = true;
             emailInput.readOnly = true;
-            passInput.readOnly = true;
+            passInput.readOnly  = true;
             passInput.dataset.needsAccount = "0";
 
-            // Asegura que el bloque de 'nueva cuenta' NO exija datos
             postBox.style.display = "none";
             if (nameInput) nameInput.required = false;
-            if (rutInput) rutInput.required = false;
+            if (rutInput)  rutInput.required  = false;
             return;
+
           } catch (err) {
             const code = err?.code || "";
-            if (existsViaMethods && code === "auth/wrong-password") {
-              // Existe en Auth, pero contraseña incorrecta
+            // En SDKs recientes, Firebase usa 'auth/invalid-login-credentials' para ambos casos.
+            // Interpretación:
+            // - Si Auth reportó métodos → el usuario existe; error => password incorrecta.
+            // - Si Auth NO reportó métodos → tratamos como user-not-found.
+            if (code === "auth/wrong-password" ||
+                (existsViaMethods && code === "auth/invalid-login-credentials")) {
               alert("La contraseña es incorrecta para esta cuenta existente.");
               return;
             }
-            if (code !== "auth/user-not-found" && code !== "auth/wrong-password") {
+            if (code === "auth/user-not-found" ||
+                (!existsViaMethods && code === "auth/invalid-login-credentials")) {
+              // Continuar al flujo de cuenta nueva (debajo)
+            } else {
               console.warn("Sign-in probe error:", err);
               alert("No se pudo verificar la cuenta. Intenta nuevamente.");
               return;
             }
-            // Si cae aquí con user-not-found y tampoco había métodos → tratamos como NO existente
           }
 
-          // === Paso C: cuenta NO existe → pedir datos para crear en el submit final
+          // Paso C: cuenta NO existe → habilitar creación (se hará en el submit final)
           if (pwd.length < 6) {
-            alert(
-              "Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres."
-            );
+            alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
             return;
           }
 
-          okMsg.textContent =
-            "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
+          okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
           postBox.style.display = "";
-          passInput.dataset.needsAccount = "1"; // el submit final CREARÁ la cuenta
+          passInput.dataset.needsAccount = "1";
           btn.disabled = true;
           emailInput.readOnly = true;
-          passInput.readOnly = true;
+          passInput.readOnly  = true;
 
-          // Ahora sí, estos datos son obligatorios
           if (nameInput) nameInput.required = true;
-          if (rutInput) rutInput.required = true;
+          if (rutInput)  rutInput.required  = true;
         });
       }, 0);
+
     } else {
       // ——— NO asincrónico: formulario clásico ———
       div.innerHTML = `
