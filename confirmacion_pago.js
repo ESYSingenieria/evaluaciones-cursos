@@ -310,17 +310,18 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         });
 
         btn?.addEventListener("click", async () => {
+          // Normalización fuerte del email
           const email = (emailInput.value || "")
             .normalize("NFKC")
             .toLowerCase()
-            .replace(/[\u200B-\u200D\uFEFF]/g, "")
-            .replace(/\s+/g, "")
+            .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width
+            .replace(/\s+/g, "")                   // espacios
             .trim();
-          const pwd = (passInput.value || "").trim();
+          const pwd   = (passInput.value || "").trim();
 
           if (!isValidEmail(email)) { alert("Correo inválido."); return; }
 
-          // Paso A: consultar métodos de Auth (principal + secundaria)
+          // 1) Consulta métodos (principal + secundaria) — informativo
           let existsViaMethods = false;
           try {
             const m1 = await firebase.auth().fetchSignInMethodsForEmail(email).catch(() => []);
@@ -330,14 +331,14 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
             existsViaMethods = (m1 && m1.length > 0) || (m2 && m2.length > 0);
           } catch (_) { /* seguimos al probe */ }
 
-          // Paso B: probe de sign-in para distinguir existencia vs contraseña mala
+          // 2) Probe de login: decide EXISTE + password correcta/incorrecta
           try {
             const chkApp  = firebase.apps.find(a => a.name === "checkpass")
                           || firebase.initializeApp(firebase.app().options, "checkpass");
             const chkAuth = chkApp.auth();
 
             await chkAuth.signInWithEmailAndPassword(email, pwd);
-            // Si llega aquí: EXISTE y contraseña correcta
+            // EXISTE + contraseña correcta
             await chkAuth.signOut();
             await chkApp.delete();
 
@@ -355,26 +356,24 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
 
           } catch (err) {
             const code = err?.code || "";
-            // En SDKs recientes, Firebase usa 'auth/invalid-login-credentials' para ambos casos.
-            // Interpretación:
-            // - Si Auth reportó métodos → el usuario existe; error => password incorrecta.
-            // - Si Auth NO reportó métodos → tratamos como user-not-found.
-            if (code === "auth/wrong-password" ||
-                (existsViaMethods && code === "auth/invalid-login-credentials")) {
+
+            // 🔒 Cambio CLAVE:
+            // Tratar SIEMPRE 'invalid-login-credentials' como contraseña incorrecta (cuenta existente),
+            // para evitar falsos "Cuenta nueva" aunque fetchSignInMethods falle.
+            if (code === "auth/wrong-password" || code === "auth/invalid-login-credentials") {
               alert("La contraseña es incorrecta para esta cuenta existente.");
               return;
             }
-            if (code === "auth/user-not-found" ||
-                (!existsViaMethods && code === "auth/invalid-login-credentials")) {
-              // Continuar al flujo de cuenta nueva (debajo)
-            } else {
+
+            if (code !== "auth/user-not-found") {
               console.warn("Sign-in probe error:", err);
               alert("No se pudo verificar la cuenta. Intenta nuevamente.");
               return;
             }
+            // Si es user-not-found, seguimos abajo a cuenta nueva
           }
 
-          // Paso C: cuenta NO existe → habilitar creación (se hará en el submit final)
+          // 3) Cuenta NO existe → habilitar creación (se hará en el submit final)
           if (pwd.length < 6) {
             alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
             return;
