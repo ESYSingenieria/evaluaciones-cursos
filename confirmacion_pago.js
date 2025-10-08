@@ -257,7 +257,8 @@ async function emailExistsInAuth(email) {
 
 function generateInscriptionFields(courseId, quantity, container, itemMeta = {}) {
   container.innerHTML = "";
-  const isAsync = /asincronico/i.test(courseId) || /asincronico/i.test(itemMeta?.name || "");
+  const isAsync =
+    /asincronico/i.test(courseId) || /asincronico/i.test(itemMeta?.name || "");
 
   for (let i = 0; i < quantity; i++) {
     const div = document.createElement("div");
@@ -276,10 +277,10 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
 
         <button type="button" id="precheck-${courseId}-${i}" class="btn btn-primary" style="margin:8px 0;">Confirmar</button>
 
-        <!-- Mensajes para cuenta existente -->
+        <!-- Mensaje para cuenta EXISTENTE -->
         <div id="status-${courseId}-${i}" style="display:none; margin:6px 0; color:#0a7; font-weight:600;"></div>
 
-        <!-- Bloque solo para cuentas nuevas -->
+        <!-- Bloque para CUENTA NUEVA (solo se muestra si no existe en Auth) -->
         <div id="postconfirm-${courseId}-${i}" style="display:none; margin-top:8px;">
           <div class="ok-msg" style="color:#0a7; font-weight:600; margin-bottom:8px;"></div>
 
@@ -304,16 +305,18 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         const nameInput  = postBox.querySelector(`#name-${courseId}-${i}`);
         const rutInput   = postBox.querySelector(`#rut-${courseId}-${i}`);
 
-        // Formato de RUT en vivo (solo si se muestra postBox)
+        // Formateo RUT en vivo solo si se muestra el bloque de nueva cuenta
         rutInput?.addEventListener("input", (e) => {
           e.target.value = formatRut(e.target.value);
         });
 
         btn?.addEventListener("click", async () => {
+          // Normalización fuerte del email
           const email = (emailInput.value || "")
+            .normalize("NFKC")
             .toLowerCase()
-            .replace(/[\u200B-\u200D\uFEFF]/g, "")
-            .replace(/\s+/g, "")
+            .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width
+            .replace(/\s+/g, "")                   // espacios
             .trim();
           const pwd   = (passInput.value || "").trim();
 
@@ -322,59 +325,87 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
             return;
           }
 
-          // ¿Existe la cuenta?
-          const exists = await emailExistsInAuth(email);
+          // === Paso A: consulta rápida a Authentication (principal y secundaria)
+          let existsViaMethods = false;
+          try {
+            const m1 = await firebase.auth()
+              .fetchSignInMethodsForEmail(email)
+              .catch(() => []);
+            const secApp =
+              firebase.apps.find((a) => a.name === "secondary") ||
+              firebase.initializeApp(firebase.app().options, "secondary");
+            const m2 = await secApp
+              .auth()
+              .fetchSignInMethodsForEmail(email)
+              .catch(() => []);
+            existsViaMethods = (m1 && m1.length > 0) || (m2 && m2.length > 0);
+          } catch (_) {
+            // seguimos al probe
+          }
 
-          if (exists) {
-            // Verificar contraseña para confirmar identidad
-            try {
-              const testApp = firebase.apps.find(a => a.name === "checkpass") ||
-                              firebase.initializeApp(firebase.app().options, "checkpass");
-              const testAuth = testApp.auth();
+          // === Paso B: “probe” de sign-in para distinguir user-not-found vs wrong-password
+          // Si ya sabemos que existe por métodos, igual verificamos contraseña.
+          try {
+            const chkApp =
+              firebase.apps.find((a) => a.name === "checkpass") ||
+              firebase.initializeApp(firebase.app().options, "checkpass");
+            const chkAuth = chkApp.auth();
 
-              await testAuth.signInWithEmailAndPassword(email, pwd);
-              await testAuth.signOut();
-              await testApp.delete();
+            await chkAuth.signInWithEmailAndPassword(email, pwd);
+            // Si llegó aquí: EXISTE y la contraseña es correcta
+            await chkAuth.signOut();
+            await chkApp.delete();
 
-              // ✅ Cuenta existente verificada
-              statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará al finalizar la inscripción.";
-              statusDiv.style.display = "";
-              btn.disabled = true;
-              emailInput.readOnly = true;
-              passInput.readOnly  = true;
-              passInput.dataset.needsAccount = "0";
+            // ✅ Cuenta EXISTENTE verificada (no crear ahora; se asignará en el submit)
+            statusDiv.textContent =
+              "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
+            statusDiv.style.display = "";
+            btn.disabled = true;
+            emailInput.readOnly = true;
+            passInput.readOnly = true;
+            passInput.dataset.needsAccount = "0";
 
-              // Asegura que el bloque de 'nueva cuenta' NO exija datos
-              postBox.style.display = "none";
-              nameInput.required = false;
-              rutInput.required  = false;
-
-            } catch (err) {
-              console.warn("Error de autenticación:", err);
+            // Asegura que el bloque de 'nueva cuenta' NO exija datos
+            postBox.style.display = "none";
+            if (nameInput) nameInput.required = false;
+            if (rutInput) rutInput.required = false;
+            return;
+          } catch (err) {
+            const code = err?.code || "";
+            if (existsViaMethods && code === "auth/wrong-password") {
+              // Existe en Auth, pero contraseña incorrecta
               alert("La contraseña es incorrecta para esta cuenta existente.");
+              return;
             }
-            return;
+            if (code !== "auth/user-not-found" && code !== "auth/wrong-password") {
+              console.warn("Sign-in probe error:", err);
+              alert("No se pudo verificar la cuenta. Intenta nuevamente.");
+              return;
+            }
+            // Si cae aquí con user-not-found y tampoco había métodos → tratamos como NO existente
           }
 
-          // 🆕 Cuenta NO existe → permitir completar datos (se creará en el submit final)
+          // === Paso C: cuenta NO existe → pedir datos para crear en el submit final
           if (pwd.length < 6) {
-            alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
+            alert(
+              "Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres."
+            );
             return;
           }
 
-          okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
+          okMsg.textContent =
+            "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
           postBox.style.display = "";
-          passInput.dataset.needsAccount = "1";
+          passInput.dataset.needsAccount = "1"; // el submit final CREARÁ la cuenta
           btn.disabled = true;
           emailInput.readOnly = true;
-          passInput.readOnly  = true;
+          passInput.readOnly = true;
 
-          // Ahora sí, exige los datos
-          nameInput.required = true;
-          rutInput.required  = true;
+          // Ahora sí, estos datos son obligatorios
+          if (nameInput) nameInput.required = true;
+          if (rutInput) rutInput.required = true;
         });
       }, 0);
-
     } else {
       // ——— NO asincrónico: formulario clásico ———
       div.innerHTML = `
