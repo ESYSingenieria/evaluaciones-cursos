@@ -579,13 +579,12 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
 
             await courseRef.set(existingData, { merge: true });
 
-                        // === SOLO asincrónico ===
+            // === SOLO asincrónico ===
             if (/asincronico/i.test(item.id) || /asincronico/i.test(item.name || "")) {
 
                 const latestEval = await findLatestAsyncEvaluationFor(item);
                 if (!latestEval) {
                     console.warn("No se encontró evaluación asincrónica para", item.name);
-                    // Aun así continúa con inscriptions y el resto de items
                     continue;
                 }
 
@@ -595,31 +594,79 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
                     if (!emailEl || !passInp) { continue; }
 
                     const email = (emailEl.value || "").trim().toLowerCase();
-                    const needCreate = passInp.dataset.needsAccount === "1"; // ← lo setea el precheck
+                    const password = (passInp.value || "").trim();
+                    const needCreate = passInp.dataset.needsAccount === "1"; // set por el precheck
 
-                    // Si NO hay que crear (porque el precheck detectó cuenta existente y ya asignó/redirigió),
-                    // aquí no hacemos nada y seguimos con el siguiente inscrito.
-                    if (!needCreate) {
-                        continue;
-                    }
-
-                    // Crear CUENTA NUEVA (correo no existía) con los campos revelados tras el precheck
+                    // Campos opcionales (si existen)
                     const nameEl = document.getElementById(`name-${item.id}-${i}`);
                     const rutEl  = document.getElementById(`rut-${item.id}-${i}`);
                     const compEl = document.getElementById(`company-${item.id}-${i}`);
-
                     const name    = (nameEl?.value || "").trim();
                     const rut     = formatRut((rutEl?.value || "").trim());
                     const company = (compEl?.value || "").trim();
-                    const password = (passInp.value || "").trim();
 
-                    if (!name || !rut || !isValidEmail(email) || password.length < 6) {
+                    // Helper asignar evaluación a un doc users (evita duplicar)
+                    const assignEvalToUserDoc = async (userRef) => {
+                        const snap = await userRef.get();
+                        if (snap.exists) {
+                            const data = snap.data() || {};
+                            const setE = new Set(data.assignedEvaluations || []);
+                            setE.add(latestEval.id);
+                            await userRef.update({
+                                assignedEvaluations: Array.from(setE),
+                                rut: formatRut(data.rut || rut || ""),
+                                company: data.company || company || ""
+                            });
+                        } else {
+                            // si no existía el doc, créalo mínimo con el curso
+                            await userRef.set({
+                                email, name: name || "", rut: rut || "", company: company || "",
+                                role: "user",
+                                customID: await getNextCustomId(),
+                                assignedEvaluations: [latestEval.id],
+                                assignedCoursesMeta: {},
+                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                            });
+                        }
+                    };
+
+                    if (!needCreate) {
+                        // ✅ CUENTA EXISTENTE (validada en precheck): asignar evaluación
+                        // Intentamos encontrar users por email
+                        const userSnap = await db.collection("users").where("email","==",email).limit(1).get();
+                        if (!userSnap.empty) {
+                            await assignEvalToUserDoc(userSnap.docs[0].ref);
+                        } else {
+                            // No hay doc en users → firmar con la contraseña validada (misma que se usó en precheck)
+                            // para obtener el UID y crear el doc con ese UID
+                            try {
+                                const appX = firebase.apps.find(a => a.name === "assignExisting") ||
+                                             firebase.initializeApp(firebase.app().options, "assignExisting");
+                                const authX = appX.auth();
+                                const cred  = await authX.signInWithEmailAndPassword(email, password);
+                                const uid   = cred.user.uid;
+
+                                await assignEvalToUserDoc(db.collection("users").doc(uid));
+
+                                await authX.signOut();
+                                await appX.delete();
+                            } catch (e) {
+                                console.warn("No se pudo obtener UID para cuenta existente:", e);
+                                alert(`No se pudo asignar el curso a ${email}. Verifica la contraseña en el precheck.`);
+                                return;
+                            }
+                        }
+                        continue;
+                    }
+
+                    // 🆕 CUENTA NUEVA: crear en Auth y users con UID real
+                    if (!isValidEmail(email) || password.length < 6 || !name || !rut) {
                         alert("Completa todos los campos obligatorios y usa un correo/contraseña válidos.");
                         return;
                     }
 
-                    const customID = await getNextCustomId();
-                    const secondaryApp  = firebase.apps.find(a => a.name === "secondary") || firebase.initializeApp(firebase.app().options, "secondary");
+                    const secondaryApp  = firebase.apps.find(a => a.name === "secondary") ||
+                                          firebase.initializeApp(firebase.app().options, "secondary");
                     const secondaryAuth = secondaryApp.auth();
 
                     try {
@@ -628,53 +675,42 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
 
                         await db.collection("users").doc(uid).set({
                             email, name, rut, company,
-                            customID,
+                            customID: await getNextCustomId(),
                             role: "user",
                             assignedEvaluations: [latestEval.id],
                             assignedCoursesMeta: {},
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
 
-                        console.log("🆕 Usuario creado y curso asignado:", email, latestEval.id);
+                        console.log("🆕 Usuario creado en Auth + users, curso asignado:", email, latestEval.id);
+
                     } catch (err) {
                         if (err?.code === "auth/email-already-in-use") {
-                            // Carrera: alguien creó justo antes → tratar como existente y asignar
-                            const userSnap = await db.collection("users").where("email","==",email).limit(1).get();
-                            if (!userSnap.empty) {
-                                const ref  = userSnap.docs[0].ref;
-                                const data = userSnap.docs[0].data();
-                                const setE = new Set(data.assignedEvaluations || []);
-                                setE.add(latestEval.id);
-                                if (!data.customID) {
-                                    const cid = await getNextCustomId();
-                                    await ref.update({ assignedEvaluations: Array.from(setE), customID: cid });
-                                } else {
-                                    await ref.update({ assignedEvaluations: Array.from(setE) });
-                                }
-                                console.log(`✅ Cuenta ya existía; curso asignado: ${email}`);
-                            } else {
-                                // Existe en Auth pero no hay doc 'users' → crear doc espejo con customID
-                                const cid = await getNextCustomId();
-                                await db.collection("users").add({
-                                    email, name, rut, company,
-                                    customID: cid,
-                                    role: "user",
-                                    assignedEvaluations: [latestEval.id],
-                                    assignedCoursesMeta: {},
-                                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                                });
-                                console.warn(`⚠️ Auth existía sin doc users; creado doc espejo para ${email}`);
+                            // Carrera: alguien lo creó entre el precheck y el submit.
+                            // Iniciamos sesión con la contraseña ingresada para obtener UID real y asignar.
+                            try {
+                                const cred = await secondaryAuth.signInWithEmailAndPassword(email, password);
+                                const uid  = cred.user.uid;
+
+                                await assignEvalToUserDoc(db.collection("users").doc(uid));
+
+                                console.log(`⚠️ Email ya existía; se usó UID real y se asignó curso: ${email}`);
+
+                                await secondaryAuth.signOut();
+                            } catch (e) {
+                                console.error("El email existe pero la contraseña no coincide:", e);
+                                alert(`El correo ${email} ya existe y la contraseña no coincide. Corrige en el precheck.`);
+                                return;
                             }
                         } else {
                             console.error("❌ Error creando usuario asincrónico:", err);
+                            alert("No se pudo crear la cuenta. Intenta nuevamente.");
+                            return;
                         }
                     } finally {
                         try { await secondaryAuth.signOut(); } catch {}
                     }
                 }
-
-                // Importante: si el usuario EXISTÍA, ya se asignó y se redirigió en el precheck
-                // (en generateInscriptionFields → botón Confirmar). Aquí solo se crean cuentas nuevas.
             }
         }
 
