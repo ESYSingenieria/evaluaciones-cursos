@@ -256,6 +256,57 @@ async function emailExistsInAuth(email) {
 }
 
 function generateInscriptionFields(courseId, quantity, container, itemMeta = {}) {
+  // —— CSS (se inyecta una sola vez) ————————————————————————————————
+  if (!document.getElementById("confirm-ux-css")) {
+    const css = document.createElement("style");
+    css.id = "confirm-ux-css";
+    css.textContent = `
+      /* Contenedor del selector */
+      .mode-toggle {
+        display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+        position: relative;
+      }
+      /* Píldoras */
+      .mode-option {
+        display:flex; align-items:center; gap:8px;
+        background:#f3f6fb; color:#1f2937;
+        border:1px solid #e5e7eb; border-radius:9999px;
+        padding:6px 12px; cursor:pointer; user-select:none;
+        transition:all .15s ease;
+      }
+      .mode-option:hover { background:#eef2ff; border-color:#d1d5db; }
+      .mode-option.is-active {
+        background:#2563eb; color:#fff; border-color:#2563eb;
+        box-shadow:0 1px 0 rgba(0,0,0,.02), 0 1px 3px rgba(0,0,0,.06) inset;
+      }
+      .mode-option input[type="radio"] { /* oculto, pero accesible */
+        position:absolute; opacity:0; width:1px; height:1px; pointer-events:none;
+      }
+      /* Badge de información con tooltip */
+      .info-badge {
+        position:relative; display:inline-flex; width:22px; height:22px;
+        align-items:center; justify-content:center;
+        border-radius:9999px; background:#0ea5e9; color:#fff;
+        font-weight:700; font-size:13px; cursor:help;
+      }
+      .info-badge::after {
+        content:attr(data-tip);
+        position:absolute; left:50%; transform:translateX(-50%) translateY(8px);
+        bottom:-8px; opacity:0; pointer-events:none;
+        white-space:pre-line; text-align:left;
+        background:#111827; color:#fff; font-size:12px; line-height:1.25;
+        padding:8px 10px; border-radius:8px; width:min(320px, 86vw);
+        box-shadow:0 10px 20px rgba(0,0,0,.18);
+        transition:opacity .15s ease, transform .15s ease;
+      }
+      .info-badge:hover::after {
+        opacity:1; transform:translateX(-50%) translateY(12px);
+      }
+    `;
+    document.head.appendChild(css);
+  }
+  // ————————————————————————————————————————————————————————————————
+
   container.innerHTML = "";
   const isAsync =
     /asincronico/i.test(courseId) || /asincronico/i.test(itemMeta?.name || "");
@@ -265,26 +316,27 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
     div.className = "inscription-container";
 
     if (isAsync) {
-      // === ASINCRÓNICO: selector de cuenta + precheck ===
+      // === ASINCRÓNICO: selector bonito + tooltip ===
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
 
-        <div style="margin:6px 0 10px 0; display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
-          <label style="display:flex; align-items:center; gap:6px;">
+        <div class="mode-toggle">
+          <label class="mode-option is-active" id="pill-existing-${courseId}-${i}">
             <input type="radio" name="acctmode-${courseId}-${i}" id="mode-existing-${courseId}-${i}" value="existing" checked>
-            Cuenta existente
-          </label>
-          <label style="display:flex; align-items:center; gap:6px;">
-            <input type="radio" name="acctmode-${courseId}-${i}" id="mode-new-${courseId}-${i}" value="new">
-            Cuenta nueva
+            <span>Cuenta existente</span>
           </label>
 
-          <button type="button"
-                  id="info-${courseId}-${i}"
-                  title="Si escoges 'Cuenta nueva' pero el correo ya está registrado, la clave válida seguirá siendo la original. Si olvidaste tu clave, ve a la página de inicio de sesión y usa 'Cambiar contraseña'."
-                  style="border:1px solid #ccc; background:#f7f7f7; border-radius:8px; padding:2px 8px; cursor:help;">
-            i
-          </button>
+          <label class="mode-option" id="pill-new-${courseId}-${i}">
+            <input type="radio" name="acctmode-${courseId}-${i}" id="mode-new-${courseId}-${i}" value="new">
+            <span>Cuenta nueva</span>
+          </label>
+
+          <span class="info-badge"
+                id="info-${courseId}-${i}"
+                aria-label="Información"
+                data-tip="Si escoges 'Cuenta nueva' pero el correo ya está registrado, la contraseña válida seguirá siendo la original.\nPara recuperarla ve a la página de inicio de sesión y usa '¿Olvidaste tu contraseña?'">
+            ℹ
+          </span>
         </div>
 
         <label for="email-${courseId}-${i}">Correo Electrónico:</label>
@@ -316,7 +368,8 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         // refs
         const modeExisting = div.querySelector(`#mode-existing-${courseId}-${i}`);
         const modeNew      = div.querySelector(`#mode-new-${courseId}-${i}`);
-        const btnInfo      = div.querySelector(`#info-${courseId}-${i}`);
+        const pillExisting = div.querySelector(`#pill-existing-${courseId}-${i}`);
+        const pillNew      = div.querySelector(`#pill-new-${courseId}-${i}`);
 
         const btn        = div.querySelector(`#precheck-${courseId}-${i}`);
         const emailInput = div.querySelector(`#email-${courseId}-${i}`);
@@ -329,44 +382,39 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
 
         rutInput?.addEventListener("input",(e)=>{ e.target.value = formatRut(e.target.value); });
 
-        // helpers de UI
+        // helpers UI
         const showNewBox = () => {
           postBox.style.display = "";
           okMsg.textContent = "🆕 Cuenta nueva: completa tus datos. Esta cuenta se creará al finalizar la inscripción.";
           if (nameInput) nameInput.required = true;
           if (rutInput)  rutInput.required  = true;
-          passInput.dataset.needsAccount = "1"; // crear luego en submit
+          passInput.dataset.needsAccount = "1";
         };
         const hideNewBox = () => {
           postBox.style.display = "none";
           okMsg.textContent = "";
           if (nameInput) nameInput.required = false;
           if (rutInput)  rutInput.required  = false;
-          passInput.dataset.needsAccount = "0"; // no crear
+          passInput.dataset.needsAccount = "0";
         };
         const clearStatus = () => {
           statusDiv.style.display = "none";
           statusDiv.textContent = "";
         };
 
-        // por defecto: EXISTING
-        hideNewBox();
-        clearStatus();
+        // estado inicial
+        hideNewBox(); clearStatus();
 
-        // cambio de modo
-        modeExisting.addEventListener("change", () => {
-          if (modeExisting.checked) { hideNewBox(); clearStatus(); }
-        });
-        modeNew.addEventListener("change", () => {
-          if (modeNew.checked) { showNewBox(); clearStatus(); }
-        });
+        // toggle de estilo activo en píldoras
+        const refreshPills = () => {
+          pillExisting.classList.toggle("is-active", modeExisting.checked);
+          pillNew.classList.toggle("is-active", modeNew.checked);
+        };
+        modeExisting.addEventListener("change", () => { hideNewBox(); clearStatus(); refreshPills(); });
+        modeNew.addEventListener("change", () => { showNewBox(); clearStatus(); refreshPills(); });
+        refreshPills();
 
-        // info
-        btnInfo.addEventListener("click", () => {
-          alert("Si escoges 'Cuenta nueva' pero el correo ya está registrado, la clave válida seguirá siendo la original. Para recuperar tu clave, ve a la página de inicio de sesión y usa 'Cambiar contraseña'.");
-        });
-
-        // PRECHECK (solo verifica y marca; NO crea ni asigna aquí)
+        // PRECHECK (igual que ya tenías: verifica y marca; NO crea ni asigna aquí)
         btn.addEventListener("click", async () => {
           const mode  = modeNew.checked ? "new" : "existing";
           const email = (emailInput.value || "")
@@ -377,21 +425,14 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
           clearStatus();
 
           if (!isValidEmail(email)) { alert("Correo inválido."); return; }
-          if (mode === "new" && pwd.length < 6) {
-            alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
-            return;
-          }
+          if (mode === "new" && pwd.length < 6) { alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres."); return; }
 
           try {
             const methods = await firebase.auth().fetchSignInMethodsForEmail(email);
             const exists  = Array.isArray(methods) && methods.length > 0;
 
             if (mode === "existing") {
-              if (!exists) {
-                alert("Ese correo no tiene cuenta en la plataforma. Cambia a 'Cuenta nueva' para crearla.");
-                return;
-              }
-              // probe de contraseña
+              if (!exists) { alert("Ese correo no tiene cuenta en la plataforma. Cambia a 'Cuenta nueva' para crearla."); return; }
               try {
                 const app = firebase.apps.find(a=>a.name==="checkpass") || firebase.initializeApp(firebase.app().options,"checkpass");
                 const auth = app.auth();
@@ -402,13 +443,14 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
                 statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
                 statusDiv.style.display = "";
                 passInput.dataset.needsAccount = "0"; // no crear
+                hideNewBox();
               } catch (err) {
                 const code = err?.code || "";
                 if (code === "auth/wrong-password" || code === "auth/invalid-login-credentials") {
                   alert("La contraseña es incorrecta para esta cuenta existente.");
-                  return;
+                } else {
+                  alert("No se pudo verificar la cuenta. Intenta nuevamente.");
                 }
-                alert("No se pudo verificar la cuenta. Intenta nuevamente.");
               }
               return;
             }
@@ -419,8 +461,6 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
               hideNewBox();
               return;
             }
-
-            // correo no existe → OK para crear en el submit
             showNewBox();
             statusDiv.textContent = "✅ Datos listos. Esta cuenta se creará al finalizar la inscripción.";
             statusDiv.style.display = "";
@@ -430,18 +470,14 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
           }
         });
 
-        // Reset si el usuario edita
-        const resetOnEdit = () => {
-          clearStatus();
-          // no bloqueamos nada
-        };
+        // reset mensajes si editan
+        const resetOnEdit = () => { clearStatus(); };
         emailInput.addEventListener("input", resetOnEdit);
         passInput.addEventListener("input", resetOnEdit);
-
       }, 0);
 
     } else {
-      // === NO asincrónico: formulario clásico ===
+      // === NO ASINCRÓNICO (igual que antes) ===
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
         <label for="name-${courseId}-${i}">Nombre:</label>
@@ -461,6 +497,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         const rutInput = div.querySelector(`#rut-${courseId}-${i}`);
         rutInput?.addEventListener("input",(e)=>{ e.target.value = formatRut(e.target.value); });
       }, 0);
+
       continue;
     }
 
