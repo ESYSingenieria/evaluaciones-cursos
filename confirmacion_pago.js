@@ -265,22 +265,19 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
     div.className = "inscription-container";
 
     if (isAsync) {
-      // ——— ASINCRÓNICO: precheck (valida/etiqueta; NO crea/NO asigna aquí) ———
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
 
         <label for="email-${courseId}-${i}">Correo Electrónico:</label>
-        <input type="email" id="email-${courseId}-${i}" required>
+        <input type="email" id="email-${courseId}-${i}">
 
         <label for="password-${courseId}-${i}">Contraseña:</label>
-        <input type="password" id="password-${courseId}-${i}" minlength="6" required>
+        <input type="password" id="password-${courseId}-${i}" minlength="6">
 
         <button type="button" id="precheck-${courseId}-${i}" class="btn btn-primary" style="margin:8px 0;">Confirmar</button>
 
-        <!-- Mensaje para cuenta EXISTENTE -->
         <div id="status-${courseId}-${i}" style="display:none; margin:6px 0; color:#0a7; font-weight:600;"></div>
 
-        <!-- Bloque para CUENTA NUEVA (solo se muestra si no existe en Auth) -->
         <div id="postconfirm-${courseId}-${i}" style="display:none; margin-top:8px;">
           <div class="ok-msg" style="color:#0a7; font-weight:600; margin-bottom:8px;"></div>
 
@@ -295,6 +292,8 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         </div>
       `;
 
+      container.appendChild(div);
+
       setTimeout(() => {
         const btn        = div.querySelector(`#precheck-${courseId}-${i}`);
         const emailInput = div.querySelector(`#email-${courseId}-${i}`);
@@ -305,79 +304,96 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         const nameInput  = postBox.querySelector(`#name-${courseId}-${i}`);
         const rutInput   = postBox.querySelector(`#rut-${courseId}-${i}`);
 
-        rutInput?.addEventListener("input", (e) => {
-          e.target.value = formatRut(e.target.value);
-        });
+        rutInput?.addEventListener("input", (e) => { e.target.value = formatRut(e.target.value); });
 
-        // === PRECHECK: un único intento de sign-in decide TODAS las ramas ===
+        function hideNewAccountBox() {
+          postBox.style.display = "none";
+          okMsg.textContent = "";
+          if (nameInput) nameInput.required = false;
+          if (rutInput)  rutInput.required  = false;
+          passInput.dataset.needsAccount = "0";
+        }
+        hideNewAccountBox();
+        statusDiv.style.display = "none";
+        statusDiv.textContent = "";
+
         btn?.addEventListener("click", async () => {
           const email = (emailInput.value || "")
-            .normalize("NFKC").toLowerCase().replace(/\s+/g, "").trim();
+            .normalize("NFKC").toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, "").trim();
           const pwd   = (passInput.value || "").trim();
 
           if (!isValidEmail(email)) { alert("Correo inválido."); return; }
 
+          // 1) ¿Tiene proveedores? (si [] => NO existe)
+          let methods = [];
           try {
-            // App temporal SOLO para el probe
+            methods = await firebase.auth().fetchSignInMethodsForEmail(email);
+          } catch (e) {
+            console.warn("fetchSignInMethods error:", e);
+            alert("No se pudo verificar la cuenta. Intenta nuevamente.");
+            return;
+          }
+
+          // 2) NO EXISTE → no intentes login; habilita creación
+          if (!methods || methods.length === 0) {
+            if (pwd.length < 6) { alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres."); return; }
+            okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
+            postBox.style.display = "";
+            passInput.dataset.needsAccount = "1";
+            btn.disabled = true;
+            emailInput.readOnly = true;
+            passInput.readOnly  = true;
+            if (nameInput) nameInput.required = true;
+            if (rutInput)  rutInput.required  = true;
+            return;
+          }
+
+          // 3) SÍ EXISTE → verifica contraseña
+          try {
             const probeApp  = firebase.apps.find(a => a.name === "checkpass")
                            || firebase.initializeApp(firebase.app().options, "checkpass");
             const probeAuth = probeApp.auth();
-
-            // 1) Intentar iniciar sesión
             await probeAuth.signInWithEmailAndPassword(email, pwd);
-
-            // → ÉXITO: EXISTE + contraseña OK
             await probeAuth.signOut();
-            await probeApp.delete();
+            try { await probeApp.delete(); } catch {}
 
             statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
             statusDiv.style.display = "";
             btn.disabled = true;
             emailInput.readOnly = true;
             passInput.readOnly  = true;
-            passInput.dataset.needsAccount = "0";  // no crear
-            postBox.style.display = "none";
-            if (nameInput) nameInput.required = false;
-            if (rutInput)  rutInput.required  = false;
+            passInput.dataset.needsAccount = "0";
+            hideNewAccountBox();
             return;
 
           } catch (err) {
             const code = err?.code || "";
-            // 2) Decisión por error
-            if (code === "auth/user-not-found") {
-              // → NO EXISTE: habilitar alta
-              if (pwd.length < 6) {
-                alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
-                return;
-              }
-              okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
-              postBox.style.display = "";
-              passInput.dataset.needsAccount = "1"; // crear en submit
-              btn.disabled = true;
-              emailInput.readOnly = true;
-              passInput.readOnly  = true;
-              if (nameInput) nameInput.required = true;
-              if (rutInput)  rutInput.required  = true;
-              return;
-            }
-
             if (code === "auth/wrong-password" || code === "auth/invalid-login-credentials") {
-              // → EXISTE, pero la contraseña está mal
               alert("La contraseña es incorrecta para esta cuenta existente.");
               return;
             }
-
-            // Otros casos (red, configuración, etc.)
             console.warn("Sign-in probe error:", err);
             alert("No se pudo verificar la cuenta. Intenta nuevamente.");
             return;
           }
         });
-        // === FIN PRECHECK ===
+
+        // Si editan email/pass, resetea estado
+        const resetOnEdit = () => {
+          btn.disabled = false;
+          emailInput.readOnly = false;
+          passInput.readOnly  = false;
+          statusDiv.style.display = "none";
+          statusDiv.textContent = "";
+          hideNewAccountBox();
+        };
+        emailInput.addEventListener("input", resetOnEdit);
+        passInput.addEventListener("input", resetOnEdit);
+
       }, 0);
 
     } else {
-      // ——— NO asincrónico: formulario clásico ———
+      // NO asincrónico
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
         <label for="name-${courseId}-${i}">Nombre:</label>
@@ -392,13 +408,12 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         <label for="company-${courseId}-${i}">Empresa (Opcional):</label>
         <input type="text" id="company-${courseId}-${i}">
       `;
-
+      container.appendChild(div);
       setTimeout(() => {
         const rutInput = div.querySelector(`#rut-${courseId}-${i}`);
-        rutInput?.addEventListener("input", (e) => {
-          e.target.value = formatRut(e.target.value);
-        });
+        rutInput?.addEventListener("input", (e) => { e.target.value = formatRut(e.target.value); });
       }, 0);
+      continue;
     }
 
     container.appendChild(div);
