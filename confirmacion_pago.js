@@ -265,6 +265,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
     div.className = "inscription-container";
 
     if (isAsync) {
+      // ASINCRÓNICO: precheck (valida/etiqueta; NO crea/NO asigna aquí)
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
 
@@ -319,36 +320,24 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
 
         btn?.addEventListener("click", async () => {
           const email = (emailInput.value || "")
-            .normalize("NFKC").toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, "").trim();
+            .normalize("NFKC").toLowerCase()
+            .replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, "")
+            .trim();
           const pwd   = (passInput.value || "").trim();
 
           if (!isValidEmail(email)) { alert("Correo inválido."); return; }
 
-          // 1) ¿Tiene proveedores? (si [] => NO existe)
-          let methods = [];
+          // 1) Primero, sign-in-methods (para no confundir "no existe" con clave mala)
+          let exists = false;
           try {
-            methods = await firebase.auth().fetchSignInMethodsForEmail(email);
+            const methods = await firebase.auth().fetchSignInMethodsForEmail(email);
+            exists = Array.isArray(methods) && methods.length > 0;
           } catch (e) {
             console.warn("fetchSignInMethods error:", e);
-            alert("No se pudo verificar la cuenta. Intenta nuevamente.");
-            return;
+            // no abortamos; pasamos al probe para decidir
           }
 
-          // 2) NO EXISTE → no intentes login; habilita creación
-          if (!methods || methods.length === 0) {
-            if (pwd.length < 6) { alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres."); return; }
-            okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
-            postBox.style.display = "";
-            passInput.dataset.needsAccount = "1";
-            btn.disabled = true;
-            emailInput.readOnly = true;
-            passInput.readOnly  = true;
-            if (nameInput) nameInput.required = true;
-            if (rutInput)  rutInput.required  = true;
-            return;
-          }
-
-          // 3) SÍ EXISTE → verifica contraseña
+          // 2) Probe de login para resolver ambigüedades
           try {
             const probeApp  = firebase.apps.find(a => a.name === "checkpass")
                            || firebase.initializeApp(firebase.app().options, "checkpass");
@@ -357,6 +346,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
             await probeAuth.signOut();
             try { await probeApp.delete(); } catch {}
 
+            // → EXISTE + contraseña OK
             statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
             statusDiv.style.display = "";
             btn.disabled = true;
@@ -368,24 +358,57 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
 
           } catch (err) {
             const code = err?.code || "";
-            if (code === "auth/wrong-password" || code === "auth/invalid-login-credentials") {
+
+            // Si ya sabíamos que existía por methods y falla login → contraseña mala
+            if (exists && (code === "auth/wrong-password" || code === "auth/invalid-login-credentials")) {
               alert("La contraseña es incorrecta para esta cuenta existente.");
               return;
             }
+
+            // Si NO sabíamos que existía (methods vacío) y el probe devuelve:
+            //  - user-not-found  → NUEVA
+            //  - wrong-password/invalid-login-credentials → en realidad EXISTE (Firebase oculta existencia)
+            if (!exists) {
+              if (code === "auth/user-not-found") {
+                // → NUEVA: habilitar alta
+                if (pwd.length < 6) { alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres."); return; }
+                okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
+                postBox.style.display = "";
+                passInput.dataset.needsAccount = "1";
+                btn.disabled = true;
+                emailInput.readOnly = true;
+                passInput.readOnly  = true;
+                if (nameInput) nameInput.required = true;
+                if (rutInput)  rutInput.required  = true;
+                return;
+              }
+
+              if (code === "auth/wrong-password" || code === "auth/invalid-login-credentials") {
+                // → EXISTE aunque methods viniera vacío
+                statusDiv.textContent = "✅ Cuenta verificada (correo existente). Ingresa la contraseña correcta para continuar.";
+                statusDiv.style.display = "";
+                // No bloqueamos inputs; el usuario puede corregir la clave
+                return;
+              }
+            }
+
             console.warn("Sign-in probe error:", err);
             alert("No se pudo verificar la cuenta. Intenta nuevamente.");
             return;
           }
         });
 
-        // Si editan email/pass, resetea estado
+        // Reset si editan email/clave
         const resetOnEdit = () => {
-          btn.disabled = false;
-          emailInput.readOnly = false;
-          passInput.readOnly  = false;
           statusDiv.style.display = "none";
           statusDiv.textContent = "";
-          hideNewAccountBox();
+          passInput.dataset.needsAccount = "0";
+          postBox.style.display = "none";
+          if (nameInput) nameInput.required = false;
+          if (rutInput)  rutInput.required  = false;
+          emailInput.readOnly = false;
+          passInput.readOnly  = false;
+          btn.disabled = false;
         };
         emailInput.addEventListener("input", resetOnEdit);
         passInput.addEventListener("input", resetOnEdit);
@@ -393,7 +416,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
       }, 0);
 
     } else {
-      // NO asincrónico
+      // NO asincrónico: formulario clásico
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
         <label for="name-${courseId}-${i}">Nombre:</label>
