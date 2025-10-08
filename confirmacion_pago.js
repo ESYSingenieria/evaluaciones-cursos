@@ -309,92 +309,111 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
           e.target.value = formatRut(e.target.value);
         });
 
+        // === HANDLER COMPLETO DEL PRECHECK (tu bloque) ===
         btn?.addEventListener("click", async () => {
-          // Normalización fuerte del email
-          const email = (emailInput.value || "")
-            .normalize("NFKC")
-            .toLowerCase()
-            .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width
-            .replace(/\s+/g, "")                   // espacios
-            .trim();
+          const email = (emailInput.value || "").normalize("NFKC").toLowerCase().replace(/\s+/g, "").trim();
           const pwd   = (passInput.value || "").trim();
 
           if (!isValidEmail(email)) { alert("Correo inválido."); return; }
 
-          // 1) Consulta métodos en principal y secundaria → determina EXISTE / NO EXISTE
-          let existsViaMethods = false;
+          // 0) DEBUG: imprime config del runtime para confirmar proyecto
+          console.log("=== DEBUG precheck ===");
+          console.log("firebase.app().options:", firebase.app().options);
+          console.log("Using primary auth:", !!firebase.auth);
+
+          // 1) fetchSignInMethods en la app PRINCIPAL (no secondary)
+          let methods = [];
           try {
-            const m1 = await firebase.auth().fetchSignInMethodsForEmail(email).catch(() => []);
-            const secApp = firebase.apps.find(a => a.name === "secondary")
-                        || firebase.initializeApp(firebase.app().options, "secondary");
-            const m2 = await secApp.auth().fetchSignInMethodsForEmail(email).catch(() => []);
-            existsViaMethods = (m1 && m1.length > 0) || (m2 && m2.length > 0);
-          } catch (_) {
-            // Si falla, seguimos al probe; decidiremos ahí.
+            methods = await firebase.auth().fetchSignInMethodsForEmail(email);
+            console.log("fetchSignInMethods (primary) ->", methods);
+          } catch (e) {
+            console.warn("fetchSignInMethods error (primary):", e);
+            // no return — seguimos al probe
           }
 
-          // 2A) Si NO existe por métodos → cuenta nueva (NO probamos password)
-          if (!existsViaMethods) {
-            if (pwd.length < 6) {
-              alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
+          // 2) Si methods indica existencia → probe de contraseña
+          if (methods && methods.length > 0) {
+            try {
+              // sign-in probe usando una app temporal
+              const probeApp = firebase.apps.find(a => a.name === "checkpass") || firebase.initializeApp(firebase.app().options, "checkpass");
+              const probeAuth = probeApp.auth();
+              await probeAuth.signInWithEmailAndPassword(email, pwd);
+              await probeAuth.signOut();
+              await probeApp.delete();
+
+              statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
+              statusDiv.style.display = "";
+              btn.disabled = true;
+              emailInput.readOnly = true;
+              passInput.readOnly  = true;
+              passInput.dataset.needsAccount = "0";
+              postBox.style.display = "none";
+              if (nameInput) nameInput.required = false;
+              if (rutInput)  rutInput.required  = false;
               return;
+            } catch (err) {
+              console.log("Sign-in probe error (existing methods):", err);
+              if (err?.code === "auth/wrong-password" || err?.code === "auth/invalid-login-credentials") {
+                alert("La contraseña es incorrecta para esta cuenta existente.");
+                return;
+              } else {
+                alert("No se pudo verificar la cuenta. Intenta nuevamente.");
+                return;
+              }
             }
-            okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
-            postBox.style.display = "";
-            passInput.dataset.needsAccount = "1";
-            btn.disabled = true;
-            emailInput.readOnly = true;
-            passInput.readOnly  = true;
-
-            if (nameInput) nameInput.required = true;
-            if (rutInput)  rutInput.required  = true;
-            return;
           }
 
-          // 2B) Si SÍ existe por métodos → verificar contraseña con sign-in de prueba
+          // 3) Si methods vacío → probablemente NO existe. Hacemos probe por si acaso.
+          //    (Algunos errores de método pueden hacer que methods == [] aunque la cuenta exista.)
           try {
-            const chkApp  = firebase.apps.find(a => a.name === "checkpass")
-                          || firebase.initializeApp(firebase.app().options, "checkpass");
-            const chkAuth = chkApp.auth();
+            const probeApp = firebase.apps.find(a => a.name === "checkpass") || firebase.initializeApp(firebase.app().options, "checkpass");
+            const probeAuth = probeApp.auth();
+            await probeAuth.signInWithEmailAndPassword(email, pwd);
+            await probeAuth.signOut();
+            await probeApp.delete();
 
-            await chkAuth.signInWithEmailAndPassword(email, pwd);
-            // EXISTE + contraseña correcta
-            await chkAuth.signOut();
-            await chkApp.delete();
-
+            // Si llegó aquí: pudo hacer sign-in aunque methods estaba vacío.
+            // Eso indica inconsistencia entre fetchSignInMethods y sign-in (probablemente proyecto mismatch).
+            console.warn("Sign-in succeeded despite empty fetchSignInMethods -> possible project mismatch. Treating as EXISTING.");
             statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
             statusDiv.style.display = "";
             btn.disabled = true;
             emailInput.readOnly = true;
             passInput.readOnly  = true;
             passInput.dataset.needsAccount = "0";
-
             postBox.style.display = "none";
             if (nameInput) nameInput.required = false;
             if (rutInput)  rutInput.required  = false;
             return;
-
-          } catch (err) {
-            const code = err?.code || "";
-
-            // Solo tratamos 'invalid-login-credentials' como contraseña incorrecta
-            // si previamente confirmamos que EXISTE por métodos.
-            if (code === "auth/wrong-password" || code === "auth/invalid-login-credentials") {
+          } catch (err2) {
+            console.log("Sign-in probe error (methods empty):", err2);
+            // Si el error es wrong-password/invalid-login-credentials → cuenta existe, contraseña incorrecta
+            if (err2?.code === "auth/wrong-password" || err2?.code === "auth/invalid-login-credentials") {
               alert("La contraseña es incorrecta para esta cuenta existente.");
               return;
             }
 
-            if (code === "auth/user-not-found") {
-              // Caso raro: métodos dijeron que existe pero el probe no lo encontró → tratamos como error temporal
-              alert("No se pudo verificar la cuenta. Intenta nuevamente.");
+            // Si no hay métodos y el probe dice user-not-found -> claramente NO existe
+            if (err2?.code === "auth/user-not-found") {
+              if (pwd.length < 6) { alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres."); return; }
+              okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
+              postBox.style.display = "";
+              passInput.dataset.needsAccount = "1";
+              btn.disabled = true;
+              emailInput.readOnly = true;
+              passInput.readOnly  = true;
+              if (nameInput) nameInput.required = true;
+              if (rutInput)  rutInput.required  = true;
               return;
             }
 
-            console.warn("Sign-in probe error:", err);
+            // Otros errores → fallback
+            console.warn("Unhandled probe error:", err2);
             alert("No se pudo verificar la cuenta. Intenta nuevamente.");
             return;
           }
         });
+        // === FIN HANDLER ===
       }, 0);
 
     } else {
