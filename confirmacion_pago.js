@@ -494,251 +494,341 @@ function debounce(fn, ms=350) {
 
 // Confirmar inscripción y actualizar Firestore
 document.getElementById("inscription-form").addEventListener("submit", async function (event) {
-    event.preventDefault();
+  event.preventDefault();
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const codigoCompra = urlParams.get("codigoCompra");
+  const urlParams = new URLSearchParams(window.location.search);
+  const codigoCompra = urlParams.get("codigoCompra");
 
-    if (!codigoCompra) {
-        return;
+  if (!codigoCompra) {
+    return;
+  }
+
+  // helper local para fecha de compra (Chile)
+  const purchaseDateYMD = () =>
+    new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(new Date());
+
+  try {
+    // ✅ Validar el estado de la compra antes de inscribir
+    const compraRef = db.collection("compras").doc(codigoCompra);
+    const compraSnap = await compraRef.get();
+
+    if (!compraSnap.exists || compraSnap.data().estado === "finalizada") {
+      window.location.href = "https://esys.cl/";
+      return;
     }
 
-    try {
-        // ✅ Validar el estado de la compra antes de inscribir
-        const compraRef = db.collection("compras").doc(codigoCompra);
-        const compraSnap = await compraRef.get();
+    const compraData = compraSnap.data();
+    const items = compraData.items;
 
-        if (!compraSnap.exists || compraSnap.data().estado === "finalizada") {
-            window.location.href = "https://esys.cl/";
+    if (!items || items.length === 0) {
+      return;
+    }
+
+    for (const item of items) {
+      const courseId = item.id;
+      const coursePrice = item.price;
+      const isAsyncItem = /asincronico/i.test(item.id) || /asincronico/i.test(item.name || "");
+      let selectedDate = "sin_fecha"; // marcador para asincrónicos
+
+      if (!isAsyncItem) {
+        const ds = document.getElementById(`date-${courseId}`);
+        selectedDate = ds ? ds.value : "";
+        if (!selectedDate) {
+          alert(`Selecciona una fecha válida para ${item.name}.`);
+          return;
+        }
+      }
+
+      const inscriptionDocId = `${courseId}_${selectedDate}`;
+      const courseRef = db.collection("inscriptions").doc(inscriptionDocId);
+
+      let inscriptions = [];
+      let existingData = { inscriptions: [], totalInscritos: 0, totalPagado: 0 };
+
+      await db.runTransaction(async (transaction) => {
+        const doc = await transaction.get(courseRef);
+        if (doc.exists) {
+          existingData = doc.data();
+        }
+      });
+
+      for (let i = 0; i < item.quantity; i++) {
+        const email = (document.getElementById(`email-${courseId}-${i}`).value || "").trim().toLowerCase();
+        const passEl = document.getElementById(`password-${courseId}-${i}`);
+        const isAsync = /asincronico/i.test(item.id) || /asincronico/i.test(item.name || "");
+        const needCreate = isAsync && passEl && passEl.dataset.needsAccount === "1";
+
+        let name = "", rut = "", company = null;
+
+        if (isAsync && !needCreate) {
+          // ✅ Asincrónico con cuenta existente verificada en el precheck:
+          const nameEl = document.getElementById(`name-${courseId}-${i}`);
+          const rutEl  = document.getElementById(`rut-${courseId}-${i}`);
+          const compEl = document.getElementById(`company-${courseId}-${i}`);
+          name    = (nameEl?.value || "").trim();
+          rut     = (rutEl?.value  || "").trim();
+          company = (compEl?.value || "").trim() || null;
+
+          if (!email) {
+            alert(`Completa el correo para el inscrito ${i + 1} en ${item.name}.`);
             return;
+          }
+
+        } else {
+          // 🆕 Cuenta nueva (asincrónico) O curso NO asincrónico → datos obligatorios
+          const nameEl = document.getElementById(`name-${courseId}-${i}`);
+          const rutEl  = document.getElementById(`rut-${courseId}-${i}`);
+          const compEl = document.getElementById(`company-${courseId}-${i}`);
+
+          name    = (nameEl?.value || "").trim();
+          rut     = (rutEl?.value  || "").trim();
+          company = (compEl?.value || "").trim() || null;
+
+          if (!name || !rut || !email) {
+            alert(`Completa todos los campos para el inscrito ${i + 1} en ${item.name}.`);
+            return;
+          }
+        }
+        inscriptions.push({ name, rut, email, company });
+      }
+
+      existingData.inscriptions.push(...inscriptions);
+      existingData.totalInscritos += inscriptions.length;
+      existingData.totalPagado += coursePrice;
+
+      await courseRef.set(existingData, { merge: true });
+
+      // === SOLO asincrónico ===
+      if (/asincronico/i.test(item.id) || /asincronico/i.test(item.name || "")) {
+
+        const latestEval = await findLatestAsyncEvaluationFor(item);
+        if (!latestEval) {
+          console.warn("No se encontró evaluación asincrónica para", item.name);
+          continue;
         }
 
-        const compraData = compraSnap.data();
-        const items = compraData.items;
+        // helper local para upsert de "inscripciones" (ESPAÑOL) por fecha
+        const upsertInscripcion = async ({ courseKey, dateStr, attendee }) => {
+          const sessionId = `${courseKey}_${dateStr}_abierto`;
+          const sessRef   = db.collection("inscripciones").doc(sessionId);
 
-        if (!items || items.length === 0) {
-            return;
-        }
+          await db.runTransaction(async (tx) => {
+            const snap = await tx.get(sessRef);
 
-        for (const item of items) {
-            const courseId = item.id;
-            const coursePrice = item.price;
-            const isAsync = /asincronico/i.test(item.id) || /asincronico/i.test(item.name || "");
-            let selectedDate = "sin_fecha"; // marcador para asincrónicos
+            const base = snap.exists ? (snap.data() || {}) : {
+              courseDate: "",
+              courseKey,
+              empresaSolicitante: "",
+              formaCurso: "abierto",
+              inscriptions: {}
+            };
 
-            if (!isAsync) {
-              const ds = document.getElementById(`date-${courseId}`);
-              selectedDate = ds ? ds.value : "";
-              if (!selectedDate) {
-                alert(`Selecciona una fecha válida para ${item.name}.`);
+            const insc = base.inscriptions || {};
+            let idx = Object.keys(insc).find(k =>
+              (insc[k]?.attendance?.email || "").toLowerCase() === (attendee.email || "").toLowerCase()
+            );
+            if (idx === undefined) idx = String(Object.keys(insc).length);
+
+            insc[idx] = { attendance: attendee };
+
+            tx.set(sessRef, { ...base, inscriptions: insc }, { merge: true });
+          });
+
+          return sessionId;
+        };
+
+        for (let i = 0; i < item.quantity; i++) {
+          const emailEl = document.getElementById(`email-${item.id}-${i}`);
+          const passInp = document.getElementById(`password-${item.id}-${i}`);
+          if (!emailEl || !passInp) { continue; }
+
+          const email = (emailEl.value || "").trim().toLowerCase();
+          const password = (passInp.value || "").trim();
+          const needCreate = passInp.dataset.needsAccount === "1"; // set por el precheck
+
+          // Campos opcionales (si existen)
+          const nameEl = document.getElementById(`name-${item.id}-${i}`);
+          const rutEl  = document.getElementById(`rut-${item.id}-${i}`);
+          const compEl = document.getElementById(`company-${item.id}-${i}`);
+          const name    = (nameEl?.value || "").trim();
+          const rut     = formatRut((rutEl?.value || "").trim());
+          const company = (compEl?.value || "").trim();
+
+          // Datos comunes para meta y sesiones
+          const courseKey    = latestEval.id;          // p. ej. "nfpa_70e_asincronico.v2"
+          const purchaseDate = purchaseDateYMD();      // fecha de compra (Chile)
+
+          // Helper asignar evaluación + reflejar meta y sesión
+          const assignEvalToUserDoc = async (userRef) => {
+            const snap = await userRef.get();
+            let data = {};
+            if (snap.exists) data = snap.data() || {};
+
+            // 1) Asegura assignedEvaluations
+            const setE = new Set(data.assignedEvaluations || []);
+            setE.add(courseKey);
+            await userRef.update({
+              assignedEvaluations: Array.from(setE),
+              rut: formatRut(data.rut || rut || ""),
+              company: data.company || company || ""
+            });
+
+            // 2) Upsert en "inscripciones" (ESPAÑOL) con evaluationLocked:false
+            const attendee = {
+              name:    name || data.name || "",
+              rut:     formatRut(rut || data.rut || ""),
+              company: company || data.company || "",
+              customID: data.customID || "",
+              email,
+              price: 0,
+              evaluationLocked: false // 🔓
+            };
+            const sessionId = await upsertInscripcion({
+              courseKey,
+              dateStr: purchaseDate,
+              attendee
+            });
+
+            // 3) Meta del usuario
+            const prevMeta = data.assignedCoursesMeta || {};
+            await userRef.update({
+              assignedCoursesMeta: {
+                ...prevMeta,
+                [courseKey]: {
+                  ...(prevMeta[courseKey] || {}),
+                  evaluationId: courseKey,
+                  courseKey,
+                  date: purchaseDate,
+                  formaCurso: "abierto",
+                  empresaSolicitante: "",
+                  priceParticipant: null,
+                  precioTotalCerrado: null,
+                  sessionId
+                }
+              }
+            });
+          };
+
+          if (!needCreate) {
+            // ✅ CUENTA EXISTENTE (validada en precheck): asignar evaluación + meta + sesión
+            const userSnap = await db.collection("users").where("email","==",email).limit(1).get();
+            if (!userSnap.empty) {
+              await assignEvalToUserDoc(userSnap.docs[0].ref);
+            } else {
+              // No hay doc en users → re-login con contraseña validada
+              try {
+                const appX = firebase.apps.find(a => a.name === "assignExisting") ||
+                             firebase.initializeApp(firebase.app().options, "assignExisting");
+                const authX = appX.auth();
+                const cred  = await authX.signInWithEmailAndPassword(email, password);
+                const uid   = cred.user.uid;
+
+                await assignEvalToUserDoc(db.collection("users").doc(uid));
+
+                await authX.signOut();
+                await appX.delete();
+              } catch (e) {
+                console.warn("No se pudo obtener UID para cuenta existente:", e);
+                alert(`No se pudo asignar el curso a ${email}. Verifica la contraseña en el precheck.`);
                 return;
               }
             }
+            continue;
+          }
 
-            const inscriptionDocId = `${courseId}_${selectedDate}`;
-            const courseRef = db.collection("inscriptions").doc(inscriptionDocId);
+          // 🆕 CUENTA NUEVA: crear en Auth y users con UID real, dejar meta + sesión
+          if (!isValidEmail(email) || password.length < 6 || !name || !rut) {
+            alert("Completa todos los campos obligatorios y usa un correo/contraseña válidos.");
+            return;
+          }
 
-            let inscriptions = [];
-            let existingData = { inscriptions: [], totalInscritos: 0, totalPagado: 0 };
+          const secondaryApp  = firebase.apps.find(a => a.name === "secondary") ||
+                                firebase.initializeApp(firebase.app().options, "secondary");
+          const secondaryAuth = secondaryApp.auth();
 
-            await db.runTransaction(async (transaction) => {
-                const doc = await transaction.get(courseRef);
-                if (doc.exists) {
-                    existingData = doc.data();
-                }
+          try {
+            const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+            const uid  = cred.user.uid;
+
+            // Prepara customID
+            const cid = await getNextCustomId();
+
+            // 1) Upsert sesión en "inscripciones"
+            const attendee = {
+              name,
+              rut: formatRut(rut),
+              company,
+              customID: cid,
+              email,
+              price: 0,
+              evaluationLocked: false // 🔓
+            };
+            const sessionId = await upsertInscripcion({
+              courseKey,
+              dateStr: purchaseDate,
+              attendee
             });
 
-            for (let i = 0; i < item.quantity; i++) {
-                const email = (document.getElementById(`email-${courseId}-${i}`).value || "").trim().toLowerCase();
-                const passEl = document.getElementById(`password-${courseId}-${i}`);
-                const isAsync = /asincronico/i.test(item.id) || /asincronico/i.test(item.name || "");
-                const needCreate = isAsync && passEl && passEl.dataset.needsAccount === "1";
-
-                let name = "", rut = "", company = null;
-
-                if (isAsync && !needCreate) {
-                  // ✅ Asincrónico con cuenta existente verificada en el precheck:
-                  // no obligamos nombre/rut aquí (se asigna al final).
-                  // Puedes opcionalmente tomar valores si el admin los quiere registrar.
-                  const nameEl = document.getElementById(`name-${courseId}-${i}`);
-                  const rutEl  = document.getElementById(`rut-${courseId}-${i}`);
-                  const compEl = document.getElementById(`company-${courseId}-${i}`);
-                  name    = (nameEl?.value || "").trim();
-                  rut     = (rutEl?.value  || "").trim();
-                  company = (compEl?.value || "").trim() || null;
-
-                  if (!email) {
-                    alert(`Completa el correo para el inscrito ${i + 1} en ${item.name}.`);
-                    return;
-                  }
-
-                } else {
-                  // 🆕 Cuenta nueva (asincrónico) O curso NO asincrónico → datos obligatorios
-                  const nameEl = document.getElementById(`name-${courseId}-${i}`);
-                  const rutEl  = document.getElementById(`rut-${courseId}-${i}`);
-                  const compEl = document.getElementById(`company-${courseId}-${i}`);
-
-                  name    = (nameEl?.value || "").trim();
-                  rut     = (rutEl?.value  || "").trim();
-                  company = (compEl?.value || "").trim() || null;
-
-                  if (!name || !rut || !email) {
-                    alert(`Completa todos los campos para el inscrito ${i + 1} en ${item.name}.`);
-                    return;
-                  }
+            // 2) Crear doc users con meta completa (incluye sessionId)
+            await db.collection("users").doc(uid).set({
+              email, name, rut: formatRut(rut), company,
+              customID: cid,
+              role: "user",
+              assignedEvaluations: [courseKey],
+              assignedCoursesMeta: {
+                [courseKey]: {
+                  evaluationId: courseKey,
+                  courseKey,
+                  date: purchaseDate,
+                  formaCurso: "abierto",
+                  empresaSolicitante: "",
+                  priceParticipant: null,
+                  precioTotalCerrado: null,
+                  sessionId
                 }
-                inscriptions.push({ name, rut, email, company });
+              },
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+
+            console.log("🆕 Usuario creado en Auth + users, curso asignado:", email, courseKey);
+
+          } catch (err) {
+            if (err?.code === "auth/email-already-in-use") {
+              // Carrera: alguien lo creó entre el precheck y el submit.
+              try {
+                const cred = await secondaryAuth.signInWithEmailAndPassword(email, password);
+                const uid  = cred.user.uid;
+
+                await assignEvalToUserDoc(db.collection("users").doc(uid));
+
+                console.log(`⚠️ Email ya existía; se usó UID real y se asignó curso: ${email}`);
+
+                await secondaryAuth.signOut();
+              } catch (e) {
+                console.error("El email existe pero la contraseña no coincide:", e);
+                alert(`El correo ${email} ya existe y la contraseña no coincide. Corrige en el precheck.`);
+                return;
+              }
+            } else {
+              console.error("❌ Error creando usuario asincrónico:", err);
+              alert("No se pudo crear la cuenta. Intenta nuevamente.");
+              return;
             }
-
-            existingData.inscriptions.push(...inscriptions);
-            existingData.totalInscritos += inscriptions.length;
-            existingData.totalPagado += coursePrice;
-
-            await courseRef.set(existingData, { merge: true });
-
-            // === SOLO asincrónico ===
-            if (/asincronico/i.test(item.id) || /asincronico/i.test(item.name || "")) {
-
-                const latestEval = await findLatestAsyncEvaluationFor(item);
-                if (!latestEval) {
-                    console.warn("No se encontró evaluación asincrónica para", item.name);
-                    continue;
-                }
-
-                for (let i = 0; i < item.quantity; i++) {
-                    const emailEl = document.getElementById(`email-${item.id}-${i}`);
-                    const passInp = document.getElementById(`password-${item.id}-${i}`);
-                    if (!emailEl || !passInp) { continue; }
-
-                    const email = (emailEl.value || "").trim().toLowerCase();
-                    const password = (passInp.value || "").trim();
-                    const needCreate = passInp.dataset.needsAccount === "1"; // set por el precheck
-
-                    // Campos opcionales (si existen)
-                    const nameEl = document.getElementById(`name-${item.id}-${i}`);
-                    const rutEl  = document.getElementById(`rut-${item.id}-${i}`);
-                    const compEl = document.getElementById(`company-${item.id}-${i}`);
-                    const name    = (nameEl?.value || "").trim();
-                    const rut     = formatRut((rutEl?.value || "").trim());
-                    const company = (compEl?.value || "").trim();
-
-                    // Helper asignar evaluación a un doc users (evita duplicar)
-                    const assignEvalToUserDoc = async (userRef) => {
-                        const snap = await userRef.get();
-                        if (snap.exists) {
-                            const data = snap.data() || {};
-                            const setE = new Set(data.assignedEvaluations || []);
-                            setE.add(latestEval.id);
-                            await userRef.update({
-                                assignedEvaluations: Array.from(setE),
-                                rut: formatRut(data.rut || rut || ""),
-                                company: data.company || company || ""
-                            });
-                        } else {
-                            // si no existía el doc, créalo mínimo con el curso
-                            await userRef.set({
-                                email, name: name || "", rut: rut || "", company: company || "",
-                                role: "user",
-                                customID: await getNextCustomId(),
-                                assignedEvaluations: [latestEval.id],
-                                assignedCoursesMeta: {},
-                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                            });
-                        }
-                    };
-
-                    if (!needCreate) {
-                        // ✅ CUENTA EXISTENTE (validada en precheck): asignar evaluación
-                        // Intentamos encontrar users por email
-                        const userSnap = await db.collection("users").where("email","==",email).limit(1).get();
-                        if (!userSnap.empty) {
-                            await assignEvalToUserDoc(userSnap.docs[0].ref);
-                        } else {
-                            // No hay doc en users → firmar con la contraseña validada (misma que se usó en precheck)
-                            // para obtener el UID y crear el doc con ese UID
-                            try {
-                                const appX = firebase.apps.find(a => a.name === "assignExisting") ||
-                                             firebase.initializeApp(firebase.app().options, "assignExisting");
-                                const authX = appX.auth();
-                                const cred  = await authX.signInWithEmailAndPassword(email, password);
-                                const uid   = cred.user.uid;
-
-                                await assignEvalToUserDoc(db.collection("users").doc(uid));
-
-                                await authX.signOut();
-                                await appX.delete();
-                            } catch (e) {
-                                console.warn("No se pudo obtener UID para cuenta existente:", e);
-                                alert(`No se pudo asignar el curso a ${email}. Verifica la contraseña en el precheck.`);
-                                return;
-                            }
-                        }
-                        continue;
-                    }
-
-                    // 🆕 CUENTA NUEVA: crear en Auth y users con UID real
-                    if (!isValidEmail(email) || password.length < 6 || !name || !rut) {
-                        alert("Completa todos los campos obligatorios y usa un correo/contraseña válidos.");
-                        return;
-                    }
-
-                    const secondaryApp  = firebase.apps.find(a => a.name === "secondary") ||
-                                          firebase.initializeApp(firebase.app().options, "secondary");
-                    const secondaryAuth = secondaryApp.auth();
-
-                    try {
-                        const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
-                        const uid  = cred.user.uid;
-
-                        await db.collection("users").doc(uid).set({
-                            email, name, rut, company,
-                            customID: await getNextCustomId(),
-                            role: "user",
-                            assignedEvaluations: [latestEval.id],
-                            assignedCoursesMeta: {},
-                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-
-                        console.log("🆕 Usuario creado en Auth + users, curso asignado:", email, latestEval.id);
-
-                    } catch (err) {
-                        if (err?.code === "auth/email-already-in-use") {
-                            // Carrera: alguien lo creó entre el precheck y el submit.
-                            // Iniciamos sesión con la contraseña ingresada para obtener UID real y asignar.
-                            try {
-                                const cred = await secondaryAuth.signInWithEmailAndPassword(email, password);
-                                const uid  = cred.user.uid;
-
-                                await assignEvalToUserDoc(db.collection("users").doc(uid));
-
-                                console.log(`⚠️ Email ya existía; se usó UID real y se asignó curso: ${email}`);
-
-                                await secondaryAuth.signOut();
-                            } catch (e) {
-                                console.error("El email existe pero la contraseña no coincide:", e);
-                                alert(`El correo ${email} ya existe y la contraseña no coincide. Corrige en el precheck.`);
-                                return;
-                            }
-                        } else {
-                            console.error("❌ Error creando usuario asincrónico:", err);
-                            alert("No se pudo crear la cuenta. Intenta nuevamente.");
-                            return;
-                        }
-                    } finally {
-                        try { await secondaryAuth.signOut(); } catch {}
-                    }
-                }
-            }
+          } finally {
+            try { await secondaryAuth.signOut(); } catch {}
+          }
         }
-
-        // ✅ Cambiar el estado de la compra a "finalizada"
-        await compraRef.update({ estado: "finalizada" });
-
-        alert("Inscripción confirmada con éxito.");
-        window.location.href = "https://esys.cl/";
-
-    } catch (error) {
-        console.error("Error al registrar la inscripción:", error);
-        alert("Hubo un problema al registrar la inscripción.");
+      }
     }
+
+    // ✅ Cambiar el estado de la compra a "finalizada"
+    await compraRef.update({ estado: "finalizada" });
+
+    alert("Inscripción confirmada con éxito.");
+    window.location.href = "https://esys.cl/";
+
+  } catch (error) {
+    console.error("Error al registrar la inscripción:", error);
+    alert("Hubo un problema al registrar la inscripción.");
+  }
 });
