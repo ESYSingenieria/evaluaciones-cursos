@@ -321,7 +321,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
 
           if (!isValidEmail(email)) { alert("Correo inválido."); return; }
 
-          // 1) Consulta métodos (principal + secundaria) — informativo
+          // 1) Consulta métodos en principal y secundaria → determina EXISTE / NO EXISTE
           let existsViaMethods = false;
           try {
             const m1 = await firebase.auth().fetchSignInMethodsForEmail(email).catch(() => []);
@@ -329,9 +329,29 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
                         || firebase.initializeApp(firebase.app().options, "secondary");
             const m2 = await secApp.auth().fetchSignInMethodsForEmail(email).catch(() => []);
             existsViaMethods = (m1 && m1.length > 0) || (m2 && m2.length > 0);
-          } catch (_) { /* seguimos al probe */ }
+          } catch (_) {
+            // Si falla, seguimos al probe; decidiremos ahí.
+          }
 
-          // 2) Probe de login: decide EXISTE + password correcta/incorrecta
+          // 2A) Si NO existe por métodos → cuenta nueva (NO probamos password)
+          if (!existsViaMethods) {
+            if (pwd.length < 6) {
+              alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
+              return;
+            }
+            okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
+            postBox.style.display = "";
+            passInput.dataset.needsAccount = "1";
+            btn.disabled = true;
+            emailInput.readOnly = true;
+            passInput.readOnly  = true;
+
+            if (nameInput) nameInput.required = true;
+            if (rutInput)  rutInput.required  = true;
+            return;
+          }
+
+          // 2B) Si SÍ existe por métodos → verificar contraseña con sign-in de prueba
           try {
             const chkApp  = firebase.apps.find(a => a.name === "checkpass")
                           || firebase.initializeApp(firebase.app().options, "checkpass");
@@ -357,37 +377,23 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
           } catch (err) {
             const code = err?.code || "";
 
-            // 🔒 Cambio CLAVE:
-            // Tratar SIEMPRE 'invalid-login-credentials' como contraseña incorrecta (cuenta existente),
-            // para evitar falsos "Cuenta nueva" aunque fetchSignInMethods falle.
+            // Solo tratamos 'invalid-login-credentials' como contraseña incorrecta
+            // si previamente confirmamos que EXISTE por métodos.
             if (code === "auth/wrong-password" || code === "auth/invalid-login-credentials") {
               alert("La contraseña es incorrecta para esta cuenta existente.");
               return;
             }
 
-            if (code !== "auth/user-not-found") {
-              console.warn("Sign-in probe error:", err);
+            if (code === "auth/user-not-found") {
+              // Caso raro: métodos dijeron que existe pero el probe no lo encontró → tratamos como error temporal
               alert("No se pudo verificar la cuenta. Intenta nuevamente.");
               return;
             }
-            // Si es user-not-found, seguimos abajo a cuenta nueva
-          }
 
-          // 3) Cuenta NO existe → habilitar creación (se hará en el submit final)
-          if (pwd.length < 6) {
-            alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
+            console.warn("Sign-in probe error:", err);
+            alert("No se pudo verificar la cuenta. Intenta nuevamente.");
             return;
           }
-
-          okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
-          postBox.style.display = "";
-          passInput.dataset.needsAccount = "1";
-          btn.disabled = true;
-          emailInput.readOnly = true;
-          passInput.readOnly  = true;
-
-          if (nameInput) nameInput.required = true;
-          if (rutInput)  rutInput.required  = true;
         });
       }, 0);
 
