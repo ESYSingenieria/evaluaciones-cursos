@@ -265,15 +265,33 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
     div.className = "inscription-container";
 
     if (isAsync) {
-      // ASINCRÓNICO: precheck (valida/etiqueta; NO crea/NO asigna aquí)
+      // === ASINCRÓNICO: selector de cuenta + precheck ===
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
 
+        <div style="margin:6px 0 10px 0; display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+          <label style="display:flex; align-items:center; gap:6px;">
+            <input type="radio" name="acctmode-${courseId}-${i}" id="mode-existing-${courseId}-${i}" value="existing" checked>
+            Cuenta existente
+          </label>
+          <label style="display:flex; align-items:center; gap:6px;">
+            <input type="radio" name="acctmode-${courseId}-${i}" id="mode-new-${courseId}-${i}" value="new">
+            Cuenta nueva
+          </label>
+
+          <button type="button"
+                  id="info-${courseId}-${i}"
+                  title="Si escoges 'Cuenta nueva' pero el correo ya está registrado, la clave válida seguirá siendo la original. Si olvidaste tu clave, ve a la página de inicio de sesión y usa 'Cambiar contraseña'."
+                  style="border:1px solid #ccc; background:#f7f7f7; border-radius:8px; padding:2px 8px; cursor:help;">
+            i
+          </button>
+        </div>
+
         <label for="email-${courseId}-${i}">Correo Electrónico:</label>
-        <input type="email" id="email-${courseId}-${i}">
+        <input type="email" id="email-${courseId}-${i}" required>
 
         <label for="password-${courseId}-${i}">Contraseña:</label>
-        <input type="password" id="password-${courseId}-${i}" minlength="6">
+        <input type="password" id="password-${courseId}-${i}" minlength="6" required>
 
         <button type="button" id="precheck-${courseId}-${i}" class="btn btn-primary" style="margin:8px 0;">Confirmar</button>
 
@@ -292,10 +310,14 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
           <input type="text" id="company-${courseId}-${i}">
         </div>
       `;
-
       container.appendChild(div);
 
       setTimeout(() => {
+        // refs
+        const modeExisting = div.querySelector(`#mode-existing-${courseId}-${i}`);
+        const modeNew      = div.querySelector(`#mode-new-${courseId}-${i}`);
+        const btnInfo      = div.querySelector(`#info-${courseId}-${i}`);
+
         const btn        = div.querySelector(`#precheck-${courseId}-${i}`);
         const emailInput = div.querySelector(`#email-${courseId}-${i}`);
         const passInput  = div.querySelector(`#password-${courseId}-${i}`);
@@ -305,110 +327,113 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         const nameInput  = postBox.querySelector(`#name-${courseId}-${i}`);
         const rutInput   = postBox.querySelector(`#rut-${courseId}-${i}`);
 
-        rutInput?.addEventListener("input", (e) => { e.target.value = formatRut(e.target.value); });
+        rutInput?.addEventListener("input",(e)=>{ e.target.value = formatRut(e.target.value); });
 
-        function hideNewAccountBox() {
+        // helpers de UI
+        const showNewBox = () => {
+          postBox.style.display = "";
+          okMsg.textContent = "🆕 Cuenta nueva: completa tus datos. Esta cuenta se creará al finalizar la inscripción.";
+          if (nameInput) nameInput.required = true;
+          if (rutInput)  rutInput.required  = true;
+          passInput.dataset.needsAccount = "1"; // crear luego en submit
+        };
+        const hideNewBox = () => {
           postBox.style.display = "none";
           okMsg.textContent = "";
           if (nameInput) nameInput.required = false;
           if (rutInput)  rutInput.required  = false;
-          passInput.dataset.needsAccount = "0";
-        }
-        hideNewAccountBox();
-        statusDiv.style.display = "none";
-        statusDiv.textContent = "";
+          passInput.dataset.needsAccount = "0"; // no crear
+        };
+        const clearStatus = () => {
+          statusDiv.style.display = "none";
+          statusDiv.textContent = "";
+        };
 
-        btn?.addEventListener("click", async () => {
+        // por defecto: EXISTING
+        hideNewBox();
+        clearStatus();
+
+        // cambio de modo
+        modeExisting.addEventListener("change", () => {
+          if (modeExisting.checked) { hideNewBox(); clearStatus(); }
+        });
+        modeNew.addEventListener("change", () => {
+          if (modeNew.checked) { showNewBox(); clearStatus(); }
+        });
+
+        // info
+        btnInfo.addEventListener("click", () => {
+          alert("Si escoges 'Cuenta nueva' pero el correo ya está registrado, la clave válida seguirá siendo la original. Para recuperar tu clave, ve a la página de inicio de sesión y usa 'Cambiar contraseña'.");
+        });
+
+        // PRECHECK (solo verifica y marca; NO crea ni asigna aquí)
+        btn.addEventListener("click", async () => {
+          const mode  = modeNew.checked ? "new" : "existing";
           const email = (emailInput.value || "")
             .normalize("NFKC").toLowerCase()
-            .replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, "")
-            .trim();
+            .replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g,"").trim();
           const pwd   = (passInput.value || "").trim();
 
-          if (!isValidEmail(email)) { alert("Correo inválido."); return; }
+          clearStatus();
 
-          // 1) Primero, sign-in-methods (para no confundir "no existe" con clave mala)
-          let exists = false;
-          try {
-            const methods = await firebase.auth().fetchSignInMethodsForEmail(email);
-            exists = Array.isArray(methods) && methods.length > 0;
-          } catch (e) {
-            console.warn("fetchSignInMethods error:", e);
-            // no abortamos; pasamos al probe para decidir
+          if (!isValidEmail(email)) { alert("Correo inválido."); return; }
+          if (mode === "new" && pwd.length < 6) {
+            alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
+            return;
           }
 
-          // 2) Probe de login para resolver ambigüedades
           try {
-            const probeApp  = firebase.apps.find(a => a.name === "checkpass")
-                           || firebase.initializeApp(firebase.app().options, "checkpass");
-            const probeAuth = probeApp.auth();
-            await probeAuth.signInWithEmailAndPassword(email, pwd);
-            await probeAuth.signOut();
-            try { await probeApp.delete(); } catch {}
+            const methods = await firebase.auth().fetchSignInMethodsForEmail(email);
+            const exists  = Array.isArray(methods) && methods.length > 0;
 
-            // → EXISTE + contraseña OK
-            statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
-            statusDiv.style.display = "";
-            btn.disabled = true;
-            emailInput.readOnly = true;
-            passInput.readOnly  = true;
-            passInput.dataset.needsAccount = "0";
-            hideNewAccountBox();
-            return;
+            if (mode === "existing") {
+              if (!exists) {
+                alert("Ese correo no tiene cuenta en la plataforma. Cambia a 'Cuenta nueva' para crearla.");
+                return;
+              }
+              // probe de contraseña
+              try {
+                const app = firebase.apps.find(a=>a.name==="checkpass") || firebase.initializeApp(firebase.app().options,"checkpass");
+                const auth = app.auth();
+                await auth.signInWithEmailAndPassword(email, pwd);
+                await auth.signOut();
+                try { await app.delete(); } catch {}
 
-          } catch (err) {
-            const code = err?.code || "";
-
-            // Si ya sabíamos que existía por methods y falla login → contraseña mala
-            if (exists && (code === "auth/wrong-password" || code === "auth/invalid-login-credentials")) {
-              alert("La contraseña es incorrecta para esta cuenta existente.");
+                statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
+                statusDiv.style.display = "";
+                passInput.dataset.needsAccount = "0"; // no crear
+              } catch (err) {
+                const code = err?.code || "";
+                if (code === "auth/wrong-password" || code === "auth/invalid-login-credentials") {
+                  alert("La contraseña es incorrecta para esta cuenta existente.");
+                  return;
+                }
+                alert("No se pudo verificar la cuenta. Intenta nuevamente.");
+              }
               return;
             }
 
-            // Si NO sabíamos que existía (methods vacío) y el probe devuelve:
-            //  - user-not-found  → NUEVA
-            //  - wrong-password/invalid-login-credentials → en realidad EXISTE (Firebase oculta existencia)
-            if (!exists) {
-              if (code === "auth/user-not-found") {
-                // → NUEVA: habilitar alta
-                if (pwd.length < 6) { alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres."); return; }
-                okMsg.textContent = "🆕 Cuenta nueva detectada: completa tus datos para crearla al finalizar la inscripción.";
-                postBox.style.display = "";
-                passInput.dataset.needsAccount = "1";
-                btn.disabled = true;
-                emailInput.readOnly = true;
-                passInput.readOnly  = true;
-                if (nameInput) nameInput.required = true;
-                if (rutInput)  rutInput.required  = true;
-                return;
-              }
-
-              if (code === "auth/wrong-password" || code === "auth/invalid-login-credentials") {
-                // → EXISTE aunque methods viniera vacío
-                statusDiv.textContent = "✅ Cuenta verificada (correo existente). Ingresa la contraseña correcta para continuar.";
-                statusDiv.style.display = "";
-                // No bloqueamos inputs; el usuario puede corregir la clave
-                return;
-              }
+            // mode === "new"
+            if (exists) {
+              alert("Este correo ya está registrado. Si es tu cuenta, cambia a 'Cuenta existente' y valida tu contraseña.");
+              hideNewBox();
+              return;
             }
 
-            console.warn("Sign-in probe error:", err);
-            alert("No se pudo verificar la cuenta. Intenta nuevamente.");
-            return;
+            // correo no existe → OK para crear en el submit
+            showNewBox();
+            statusDiv.textContent = "✅ Datos listos. Esta cuenta se creará al finalizar la inscripción.";
+            statusDiv.style.display = "";
+          } catch (e) {
+            console.warn("Precheck error:", e);
+            alert("No se pudo verificar el correo ahora. Vuelve a intentar.");
           }
         });
 
-        // Reset si editan email/clave
+        // Reset si el usuario edita
         const resetOnEdit = () => {
-          statusDiv.style.display = "none";
-          statusDiv.textContent = "";
-          passInput.dataset.needsAccount = "0";
-          postBox.style.display = "none";
-          if (nameInput) nameInput.required = false;
-          if (rutInput)  rutInput.required  = false;
-          emailInput.readOnly = false;
-          passInput.readOnly  = false;
-          btn.disabled = false;
+          clearStatus();
+          // no bloqueamos nada
         };
         emailInput.addEventListener("input", resetOnEdit);
         passInput.addEventListener("input", resetOnEdit);
@@ -416,7 +441,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
       }, 0);
 
     } else {
-      // NO asincrónico: formulario clásico
+      // === NO asincrónico: formulario clásico ===
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
         <label for="name-${courseId}-${i}">Nombre:</label>
@@ -434,7 +459,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
       container.appendChild(div);
       setTimeout(() => {
         const rutInput = div.querySelector(`#rut-${courseId}-${i}`);
-        rutInput?.addEventListener("input", (e) => { e.target.value = formatRut(e.target.value); });
+        rutInput?.addEventListener("input",(e)=>{ e.target.value = formatRut(e.target.value); });
       }, 0);
       continue;
     }
@@ -514,76 +539,64 @@ function debounce(fn, ms=350) {
     };
 }
 
-// Confirmar inscripción y actualizar Firestore
 document.getElementById("inscription-form").addEventListener("submit", async function (event) {
   event.preventDefault();
 
   const urlParams = new URLSearchParams(window.location.search);
   const codigoCompra = urlParams.get("codigoCompra");
+  if (!codigoCompra) return;
 
-  if (!codigoCompra) {
-    return;
-  }
-
-  // helper local para fecha de compra (Chile)
   const purchaseDateYMD = () =>
     new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(new Date());
 
   try {
-    // ✅ Validar el estado de la compra antes de inscribir
+    // validar compra
     const compraRef = db.collection("compras").doc(codigoCompra);
     const compraSnap = await compraRef.get();
-
     if (!compraSnap.exists || compraSnap.data().estado === "finalizada") {
       window.location.href = "https://esys.cl/";
       return;
     }
 
     const compraData = compraSnap.data();
-    const items = compraData.items;
-
-    if (!items || items.length === 0) {
-      return;
-    }
+    const items = compraData.items || [];
+    if (items.length === 0) return;
 
     for (const item of items) {
       const courseId = item.id;
       const coursePrice = item.price;
       const isAsyncItem = /asincronico/i.test(item.id) || /asincronico/i.test(item.name || "");
-      let selectedDate = "sin_fecha"; // marcador para asincrónicos
+      let selectedDate = "sin_fecha"; // asincrónicos: fecha de compra; no se selecciona
 
       if (!isAsyncItem) {
         const ds = document.getElementById(`date-${courseId}`);
         selectedDate = ds ? ds.value : "";
-        if (!selectedDate) {
-          alert(`Selecciona una fecha válida para ${item.name}.`);
-          return;
-        }
+        if (!selectedDate) { alert(`Selecciona una fecha válida para ${item.name}.`); return; }
       }
 
+      // doc en "inscriptions" (EN)
       const inscriptionDocId = `${courseId}_${selectedDate}`;
       const courseRef = db.collection("inscriptions").doc(inscriptionDocId);
 
       let inscriptions = [];
       let existingData = { inscriptions: [], totalInscritos: 0, totalPagado: 0 };
 
-      await db.runTransaction(async (transaction) => {
-        const doc = await transaction.get(courseRef);
-        if (doc.exists) {
-          existingData = doc.data();
-        }
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(courseRef);
+        if (snap.exists) existingData = snap.data() || {};
       });
 
+      // recolecta datos de cada inscrito
       for (let i = 0; i < item.quantity; i++) {
-        const email = (document.getElementById(`email-${courseId}-${i}`).value || "").trim().toLowerCase();
+        const email = (document.getElementById(`email-${courseId}-${i}`)?.value || "")
+                        .trim().toLowerCase();
         const passEl = document.getElementById(`password-${courseId}-${i}`);
-        const isAsync = /asincronico/i.test(item.id) || /asincronico/i.test(item.name || "");
-        const needCreate = isAsync && passEl && passEl.dataset.needsAccount === "1";
+        const needCreate = isAsyncItem && passEl && passEl.dataset.needsAccount === "1";
 
         let name = "", rut = "", company = null;
 
-        if (isAsync && !needCreate) {
-          // ✅ Asincrónico con cuenta existente verificada en el precheck:
+        if (isAsyncItem && !needCreate) {
+          // cuenta existente (validada en precheck)
           const nameEl = document.getElementById(`name-${courseId}-${i}`);
           const rutEl  = document.getElementById(`rut-${courseId}-${i}`);
           const compEl = document.getElementById(`company-${courseId}-${i}`);
@@ -591,13 +604,9 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
           rut     = (rutEl?.value  || "").trim();
           company = (compEl?.value || "").trim() || null;
 
-          if (!email) {
-            alert(`Completa el correo para el inscrito ${i + 1} en ${item.name}.`);
-            return;
-          }
-
+          if (!email) { alert(`Completa el correo para el inscrito ${i + 1} en ${item.name}.`); return; }
         } else {
-          // 🆕 Cuenta nueva (asincrónico) O curso NO asincrónico → datos obligatorios
+          // nueva cuenta (asincrónico) o curso NO asincrónico
           const nameEl = document.getElementById(`name-${courseId}-${i}`);
           const rutEl  = document.getElementById(`rut-${courseId}-${i}`);
           const compEl = document.getElementById(`company-${courseId}-${i}`);
@@ -611,32 +620,28 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
             return;
           }
         }
+
         inscriptions.push({ name, rut, email, company });
       }
 
+      // guardar lista de inscritos del "inscriptions" (EN)
       existingData.inscriptions.push(...inscriptions);
       existingData.totalInscritos += inscriptions.length;
       existingData.totalPagado += coursePrice;
-
       await courseRef.set(existingData, { merge: true });
 
-      // === SOLO asincrónico ===
-      if (/asincronico/i.test(item.id) || /asincronico/i.test(item.name || "")) {
-
+      // === manejo asincrónico (evaluación + meta + inscripciones (ES)) ===
+      if (isAsyncItem) {
         const latestEval = await findLatestAsyncEvaluationFor(item);
-        if (!latestEval) {
-          console.warn("No se encontró evaluación asincrónica para", item.name);
-          continue;
-        }
+        if (!latestEval) { console.warn("No se encontró evaluación asincrónica para", item.name); continue; }
 
-        // helper local para upsert de "inscripciones" (ESPAÑOL) por fecha
+        // helper: upsert en "inscripciones" (ES) con evaluationLocked:false
         const upsertInscripcion = async ({ courseKey, dateStr, attendee }) => {
           const sessionId = `${courseKey}_${dateStr}_abierto`;
           const sessRef   = db.collection("inscripciones").doc(sessionId);
 
           await db.runTransaction(async (tx) => {
             const snap = await tx.get(sessRef);
-
             const base = snap.exists ? (snap.data() || {}) : {
               courseDate: "",
               courseKey,
@@ -652,23 +657,22 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
             if (idx === undefined) idx = String(Object.keys(insc).length);
 
             insc[idx] = { attendance: attendee };
-
             tx.set(sessRef, { ...base, inscriptions: insc }, { merge: true });
           });
 
           return sessionId;
         };
 
+        // procesa cada inscrito asincrónico
         for (let i = 0; i < item.quantity; i++) {
           const emailEl = document.getElementById(`email-${item.id}-${i}`);
           const passInp = document.getElementById(`password-${item.id}-${i}`);
-          if (!emailEl || !passInp) { continue; }
+          if (!emailEl || !passInp) continue;
 
           const email = (emailEl.value || "").trim().toLowerCase();
           const password = (passInp.value || "").trim();
-          const needCreate = passInp.dataset.needsAccount === "1"; // set por el precheck
+          const needCreate = passInp.dataset.needsAccount === "1";
 
-          // Campos opcionales (si existen)
           const nameEl = document.getElementById(`name-${item.id}-${i}`);
           const rutEl  = document.getElementById(`rut-${item.id}-${i}`);
           const compEl = document.getElementById(`company-${item.id}-${i}`);
@@ -676,17 +680,14 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
           const rut     = formatRut((rutEl?.value || "").trim());
           const company = (compEl?.value || "").trim();
 
-          // Datos comunes para meta y sesiones
-          const courseKey    = latestEval.id;          // p. ej. "nfpa_70e_asincronico.v2"
-          const purchaseDate = purchaseDateYMD();      // fecha de compra (Chile)
+          const courseKey    = latestEval.id;
+          const purchaseDate = purchaseDateYMD();
 
-          // Helper asignar evaluación + reflejar meta y sesión
           const assignEvalToUserDoc = async (userRef) => {
             const snap = await userRef.get();
-            let data = {};
-            if (snap.exists) data = snap.data() || {};
+            let data = snap.exists ? (snap.data() || {}) : {};
 
-            // 1) Asegura assignedEvaluations
+            // assignedEvaluations
             const setE = new Set(data.assignedEvaluations || []);
             setE.add(courseKey);
             await userRef.update({
@@ -695,7 +696,7 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
               company: data.company || company || ""
             });
 
-            // 2) Upsert en "inscripciones" (ESPAÑOL) con evaluationLocked:false
+            // sesión en "inscripciones" (ES), desbloqueada
             const attendee = {
               name:    name || data.name || "",
               rut:     formatRut(rut || data.rut || ""),
@@ -703,15 +704,11 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
               customID: data.customID || "",
               email,
               price: 0,
-              evaluationLocked: false // 🔓
+              evaluationLocked: false
             };
-            const sessionId = await upsertInscripcion({
-              courseKey,
-              dateStr: purchaseDate,
-              attendee
-            });
+            const sessionId = await upsertInscripcion({ courseKey, dateStr: purchaseDate, attendee });
 
-            // 3) Meta del usuario
+            // meta
             const prevMeta = data.assignedCoursesMeta || {};
             await userRef.update({
               assignedCoursesMeta: {
@@ -732,21 +729,18 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
           };
 
           if (!needCreate) {
-            // ✅ CUENTA EXISTENTE (validada en precheck): asignar evaluación + meta + sesión
+            // cuenta existente (prechequeada)
             const userSnap = await db.collection("users").where("email","==",email).limit(1).get();
             if (!userSnap.empty) {
               await assignEvalToUserDoc(userSnap.docs[0].ref);
             } else {
-              // No hay doc en users → re-login con contraseña validada
+              // no hay doc en users: obtener UID con login y asignar
               try {
-                const appX = firebase.apps.find(a => a.name === "assignExisting") ||
-                             firebase.initializeApp(firebase.app().options, "assignExisting");
+                const appX = firebase.apps.find(a=>a.name==="assignExisting") || firebase.initializeApp(firebase.app().options,"assignExisting");
                 const authX = appX.auth();
                 const cred  = await authX.signInWithEmailAndPassword(email, password);
                 const uid   = cred.user.uid;
-
                 await assignEvalToUserDoc(db.collection("users").doc(uid));
-
                 await authX.signOut();
                 await appX.delete();
               } catch (e) {
@@ -758,40 +752,25 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
             continue;
           }
 
-          // 🆕 CUENTA NUEVA: crear en Auth y users con UID real, dejar meta + sesión
+          // crear cuenta nueva
           if (!isValidEmail(email) || password.length < 6 || !name || !rut) {
             alert("Completa todos los campos obligatorios y usa un correo/contraseña válidos.");
             return;
           }
 
-          const secondaryApp  = firebase.apps.find(a => a.name === "secondary") ||
-                                firebase.initializeApp(firebase.app().options, "secondary");
+          const secondaryApp  = firebase.apps.find(a=>a.name==="secondary") || firebase.initializeApp(firebase.app().options,"secondary");
           const secondaryAuth = secondaryApp.auth();
 
           try {
             const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
             const uid  = cred.user.uid;
+            const cid  = await getNextCustomId();
 
-            // Prepara customID
-            const cid = await getNextCustomId();
+            // sesión (ES) desbloqueada
+            const attendee = { name, rut: formatRut(rut), company, customID: cid, email, price:0, evaluationLocked:false };
+            const sessionId = await upsertInscripcion({ courseKey, dateStr: purchaseDate, attendee });
 
-            // 1) Upsert sesión en "inscripciones"
-            const attendee = {
-              name,
-              rut: formatRut(rut),
-              company,
-              customID: cid,
-              email,
-              price: 0,
-              evaluationLocked: false // 🔓
-            };
-            const sessionId = await upsertInscripcion({
-              courseKey,
-              dateStr: purchaseDate,
-              attendee
-            });
-
-            // 2) Crear doc users con meta completa (incluye sessionId)
+            // doc usuario con meta
             await db.collection("users").doc(uid).set({
               email, name, rut: formatRut(rut), company,
               customID: cid,
@@ -812,27 +791,21 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
               createdAt: firebase.firestore.FieldValue.serverTimestamp()
             });
 
-            console.log("🆕 Usuario creado en Auth + users, curso asignado:", email, courseKey);
-
           } catch (err) {
             if (err?.code === "auth/email-already-in-use") {
-              // Carrera: alguien lo creó entre el precheck y el submit.
+              // carrera
               try {
                 const cred = await secondaryAuth.signInWithEmailAndPassword(email, password);
                 const uid  = cred.user.uid;
-
                 await assignEvalToUserDoc(db.collection("users").doc(uid));
-
-                console.log(`⚠️ Email ya existía; se usó UID real y se asignó curso: ${email}`);
-
                 await secondaryAuth.signOut();
               } catch (e) {
-                console.error("El email existe pero la contraseña no coincide:", e);
+                console.error("Email existe pero contraseña no coincide:", e);
                 alert(`El correo ${email} ya existe y la contraseña no coincide. Corrige en el precheck.`);
                 return;
               }
             } else {
-              console.error("❌ Error creando usuario asincrónico:", err);
+              console.error("Error creando usuario asincrónico:", err);
               alert("No se pudo crear la cuenta. Intenta nuevamente.");
               return;
             }
@@ -843,12 +816,10 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
       }
     }
 
-    // ✅ Cambiar el estado de la compra a "finalizada"
+    // cerrar compra
     await compraRef.update({ estado: "finalizada" });
-
     alert("Inscripción confirmada con éxito.");
     window.location.href = "https://esys.cl/";
-
   } catch (error) {
     console.error("Error al registrar la inscripción:", error);
     alert("Hubo un problema al registrar la inscripción.");
