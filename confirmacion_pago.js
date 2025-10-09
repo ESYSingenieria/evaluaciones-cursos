@@ -312,7 +312,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
             <span>Cuenta existente</span>
           </label>
 
-          <label class="mode-option" id="pill-new-${courseId}-${i}">
+        <label class="mode-option" id="pill-new-${courseId}-${i}">
             <input type="radio" name="acctmode-${courseId}-${i}" id="mode-new-${courseId}-${i}" value="new">
             <span>Cuenta nueva</span>
           </label>
@@ -335,7 +335,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         <div id="status-${courseId}-${i}" style="display:none; margin:6px 0; color:#0a7; font-weight:600;"></div>
 
         <div id="postconfirm-${courseId}-${i}" style="display:none; margin-top:8px;">
-          <div class="ok-msg" style="color:#0a7; font-weight:600; margin-bottom:8px;"></div>
+          <div class="ok-msg" style="display:none;"></div>
 
           <label for="name-${courseId}-${i}">Nombre:</label>
           <input type="text" id="name-${courseId}-${i}">
@@ -367,16 +367,18 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
 
         rutInput?.addEventListener("input", (e) => { e.target.value = formatRut(e.target.value); });
 
+        // helpers UI
         const showNewBox = () => {
           postBox.style.display = "";
-          okMsg.textContent = "🆕 Cuenta nueva: completa tus datos. Esta cuenta se creará al finalizar la inscripción.";
+          // sin mensajes ni badge, solo campos
+          okMsg.style.display = "none";
           if (nameInput) nameInput.required = true;
           if (rutInput)  rutInput.required  = true;
           passInput.dataset.needsAccount = "1";
         };
         const hideNewBox = () => {
           postBox.style.display = "none";
-          okMsg.textContent = "";
+          okMsg.style.display = "none";
           if (nameInput) nameInput.required = false;
           if (rutInput)  rutInput.required  = false;
           passInput.dataset.needsAccount = "0";
@@ -390,14 +392,30 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
           pillNew.classList.toggle("is-active", modeNew.checked);
         };
 
-        // estado inicial
+        // estado inicial → EXISTENTE
         hideNewBox(); clearStatus(); refreshPills();
-        modeExisting.addEventListener("change", () => { hideNewBox(); clearStatus(); refreshPills(); });
-        modeNew.addEventListener("change", () => { showNewBox(); clearStatus(); refreshPills(); });
+        btn.style.display = ""; // visible para EXISTENTE
 
-        // ——— PRECHECK corregido ———
+        modeExisting.addEventListener("change", () => {
+          // mostrar botón y limpiar mensajes / campos extra
+          btn.style.display = "";
+          hideNewBox();
+          clearStatus();
+          refreshPills();
+        });
+
+        modeNew.addEventListener("change", () => {
+          // ocultar botón y mensajes; mostrar solo los campos
+          btn.style.display = "none";
+          clearStatus();
+          showNewBox();
+          refreshPills();
+        });
+
+        // ——— PRECHECK: SOLO para CUENTA EXISTENTE ———
         btn.addEventListener("click", async () => {
-          const mode  = modeNew.checked ? "new" : "existing";
+          if (modeNew.checked) return; // por si acaso
+
           const email = (emailInput.value || "")
             .normalize("NFKC").toLowerCase()
             .replace(/[\u200B-\u200D\uFEFF]/g, "")
@@ -409,60 +427,30 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
 
           if (!isValidEmail(email)) { alert("Correo inválido."); return; }
 
-          // CUENTA EXISTENTE → intenta login directamente
-          if (mode === "existing") {
-            try {
-              const app  = firebase.apps.find(a => a.name === "checkpass")
-                         || firebase.initializeApp(firebase.app().options, "checkpass");
-              const auth = app.auth();
-
-              await auth.signInWithEmailAndPassword(email, pwd);
-              await auth.signOut();
-              try { await app.delete(); } catch {}
-
-              statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
-              statusDiv.style.display = "";
-              passInput.dataset.needsAccount = "0";
-              hideNewBox();
-              return;
-
-            } catch (err) {
-              const code = err?.code || "";
-              if (code === "auth/wrong-password" || code === "auth/invalid-login-credentials") {
-                alert("La contraseña es incorrecta para esta cuenta existente.");
-              } else if (code === "auth/user-not-found") {
-                alert("El correo ingresado no está registrado en la plataforma.");
-              } else {
-                console.warn("Sign-in probe error:", err);
-                alert("No se pudo verificar la cuenta. Intenta nuevamente.");
-              }
-              return;
-            }
-          }
-
-          // CUENTA NUEVA → valida longitud y que no exista ya
-          if (pwd.length < 6) {
-            alert("Para crear una cuenta nueva, la contraseña debe tener al menos 6 caracteres.");
-            return;
-          }
-
           try {
-            const methods = await firebase.auth().fetchSignInMethodsForEmail(email);
-            const exists  = Array.isArray(methods) && methods.length > 0;
+            const app  = firebase.apps.find(a => a.name === "checkpass")
+                       || firebase.initializeApp(firebase.app().options, "checkpass");
+            const auth = app.auth();
 
-            if (exists) {
-              alert("Este correo ya está registrado. Si es tu cuenta, cambia a 'Cuenta existente' y valida tu contraseña.");
-              hideNewBox();
-              return;
-            }
+            await auth.signInWithEmailAndPassword(email, pwd);
+            await auth.signOut();
+            try { await app.delete(); } catch {}
 
-            showNewBox();
-            statusDiv.textContent = "✅ Datos listos. Esta cuenta se creará al finalizar la inscripción.";
+            statusDiv.textContent = "✅ Cuenta verificada. El curso se asignará a esta cuenta al finalizar la inscripción.";
             statusDiv.style.display = "";
+            passInput.dataset.needsAccount = "0";
+            hideNewBox(); // no pedimos nombre/rut
 
-          } catch (e) {
-            console.warn("Precheck (new) error:", e);
-            alert("No se pudo verificar el correo ahora. Vuelve a intentar.");
+          } catch (err) {
+            const code = err?.code || "";
+            if (code === "auth/wrong-password" || code === "auth/invalid-login-credentials") {
+              alert("La contraseña es incorrecta para esta cuenta existente.");
+            } else if (code === "auth/user-not-found") {
+              alert("El correo ingresado no está registrado en la plataforma.");
+            } else {
+              console.warn("Sign-in probe error:", err);
+              alert("No se pudo verificar la cuenta. Intenta nuevamente.");
+            }
           }
         });
 
