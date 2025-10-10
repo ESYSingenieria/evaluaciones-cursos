@@ -337,7 +337,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
         <div id="postconfirm-${courseId}-${i}" style="display:none; margin-top:8px;">
           <div class="ok-msg" style="display:none;"></div>
 
-          <label for="name-${courseId}-${i}">Nombre:</label>
+          <label for="name-${courseId}-${i}">Nombre Completo:</label>
           <input type="text" id="name-${courseId}-${i}">
 
           <label for="rut-${courseId}-${i}">RUT:</label>
@@ -464,7 +464,7 @@ function generateInscriptionFields(courseId, quantity, container, itemMeta = {})
       // ——— NO ASINCRÓNICO (campos simples como antes) ———
       div.innerHTML = `
         <h3>Inscrito ${i + 1}</h3>
-        <label for="name-${courseId}-${i}">Nombre:</label>
+        <label for="name-${courseId}-${i}">Nombre Completo:</label>
         <input type="text" id="name-${courseId}-${i}" required>
 
         <label for="rut-${courseId}-${i}">RUT:</label>
