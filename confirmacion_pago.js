@@ -579,11 +579,14 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
     const items = compraData.items || [];
     if (items.length === 0) return;
 
-    // Helper local: upsert en 'inscripciones' (ES) COMO ARRAY CORRECTO:
-    // inscriptions: [ { email, name, rut, company, customID, price, evaluationLocked, createdAt }, ... ]
+    // Helper local: upsert en 'inscripciones' (ES) COMO ARRAY CORRECTO
+    // Nota: no usar FieldValue.serverTimestamp() dentro de arrays — usamos Timestamp.now()
     const upsertInscripcionES = async ({ courseKey, dateStr, attendee }) => {
       const sessionId = `${courseKey}_${dateStr}_abierto`;
       const sessRef = db.collection("inscripciones").doc(sessionId);
+
+      // timestamp concreto (permitido dentro de arrays)
+      const now = firebase.firestore.Timestamp.now();
 
       await db.runTransaction(async (tx) => {
         const snap = await tx.get(sessRef);
@@ -613,14 +616,14 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
           const existing = arr[foundIndex] || {};
           const merged = Object.assign({}, existing, attendee, {
             evaluationLocked: false,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            updatedAt: now
           });
           arr[foundIndex] = merged;
         } else {
-          // nuevo -> push
+          // nuevo -> push (usamos `now` en createdAt)
           const toPush = Object.assign({}, attendee, {
             evaluationLocked: false,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            createdAt: now
           });
           arr.push(toPush);
         }
@@ -691,13 +694,20 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
           }
         }
 
-        // Normaliza rut
+        // Normaliza rut (si existe la función)
         try { rut = formatRut(rut); } catch(e){}
 
-        inscriptionsEN.push({ name, rut, email, company });
+        // Para EN no añadimos timestamps con FieldValue.serverTimestamp dentro del array:
+        inscriptionsEN.push({
+          name,
+          rut,
+          email,
+          company,
+          createdAt: firebase.firestore.Timestamp.now()
+        });
       } // end loop quantity
 
-      // Guardar EN (inscriptions)
+      // Guardar EN (inscriptions) — aseguramos no usar FieldValue.serverTimestamp dentro del array
       const mergedEN = {
         ...prevEN,
         inscriptions: (prevEN.inscriptions || []).concat(inscriptionsEN),
@@ -736,8 +746,8 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
             company: company || null,
             price: 0,
             evaluationLocked: false,
-            certDownloadLocked: false,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            certDownloadLocked: false
+            // createdAt lo agrega upsertInscripcionES con Timestamp.now()
           };
 
           // Helper para asignar evaluación al documento de usuario
