@@ -579,8 +579,8 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
     const items = compraData.items || [];
     if (items.length === 0) return;
 
-    // Helper local: upsert en 'inscripciones' (ES) con el formato correcto:
-    // inscriptions: { "0": { email, name, rut, company, customID, price, evaluationLocked, createdAt }, ... }
+    // Helper local: upsert en 'inscripciones' (ES) COMO ARRAY CORRECTO:
+    // inscriptions: [ { email, name, rut, company, customID, price, evaluationLocked, createdAt }, ... ]
     const upsertInscripcionES = async ({ courseKey, dateStr, attendee }) => {
       const sessionId = `${courseKey}_${dateStr}_abierto`;
       const sessRef = db.collection("inscripciones").doc(sessionId);
@@ -592,31 +592,46 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
           courseKey,
           empresaSolicitante: "",
           formaCurso: "abierto",
-          inscriptions: {}
+          inscriptions: []
         };
 
-        const insc = Object.assign({}, base.inscriptions || {});
-        // Buscar duplicado por email / customID / rut
-        let foundKey = Object.keys(insc).find(k => {
-          const e = (insc[k]?.email || "").toLowerCase();
-          const cid = (insc[k]?.customID || "");
-          const r = (insc[k]?.rut || "");
-          return (e && e === (attendee.email || "").toLowerCase()) ||
+        const arr = Array.isArray(base.inscriptions) ? base.inscriptions.slice() : [];
+
+        // buscar por email / customID / rut
+        const emailNorm = (attendee.email || "").toLowerCase();
+        const foundIndex = arr.findIndex(p => {
+          const e = (p.email || "").toLowerCase();
+          const cid = p.customID || "";
+          const r = p.rut || "";
+          return (e && e === emailNorm) ||
                  (cid && attendee.customID && cid === attendee.customID) ||
                  (r && attendee.rut && r === attendee.rut);
         });
 
-        if (foundKey === undefined) {
-          // nuevo índice -> usar longitud actual como clave
-          const keys = Object.keys(insc);
-          const next = keys.length ? String(Math.max(...keys.map(k => parseInt(k,10).isNaN ? 0 : parseInt(k,10))) + 1) : "0";
-          insc[next] = Object.assign({}, attendee);
+        if (foundIndex >= 0) {
+          // actualizar entry existente (no destruir campos no relacionados)
+          const existing = arr[foundIndex] || {};
+          const merged = Object.assign({}, existing, attendee, {
+            evaluationLocked: false,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          arr[foundIndex] = merged;
         } else {
-          // ya existe -> actualizar algunos campos y forzar evaluationLocked:false
-          insc[foundKey] = Object.assign({}, insc[foundKey], attendee, { evaluationLocked: false });
+          // nuevo -> push
+          const toPush = Object.assign({}, attendee, {
+            evaluationLocked: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          arr.push(toPush);
         }
 
-        const newBase = Object.assign({}, base, { inscriptions: insc, courseKey, courseDate: dateStr, formaCurso: "abierto" });
+        const newBase = Object.assign({}, base, {
+          inscriptions: arr,
+          courseKey,
+          courseDate: dateStr,
+          formaCurso: "abierto"
+        });
+
         tx.set(sessRef, newBase, { merge: true });
       });
 
@@ -639,8 +654,8 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
       // --- GUARDA en `inscriptions` (EN) como antes (colección inglesa) ---
       const inscriptionDocIdEN = `${courseId}_${selectedDate}`;
       const courseRefEN = db.collection("inscriptions").doc(inscriptionDocIdEN);
-      // Leemos snapshot inicial para agregar abajo (merge)
-      const existingEN = (await courseRefEN.get()).exists ? (await courseRefEN.get()).data() : { inscriptions: [], totalInscritos: 0, totalPagado: 0 };
+      const prevENsnap = await courseRefEN.get();
+      const prevEN = prevENsnap.exists ? prevENsnap.data() : { inscriptions: [], totalInscritos:0, totalPagado:0 };
 
       // Recolectar inscritos temporales para EN
       const inscriptionsEN = [];
@@ -683,8 +698,6 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
       } // end loop quantity
 
       // Guardar EN (inscriptions)
-      const prevENsnap = await courseRefEN.get();
-      const prevEN = prevENsnap.exists ? prevENsnap.data() : { inscriptions: [], totalInscritos:0, totalPagado:0 };
       const mergedEN = {
         ...prevEN,
         inscriptions: (prevEN.inscriptions || []).concat(inscriptionsEN),
@@ -715,7 +728,7 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
           const rut     = formatRut((rutEl?.value || "").trim() || "");
           const company = (compEl?.value || "").trim() || "";
 
-          // Construye el objeto attendee **al nivel correcto** (NO dentro de attendance)
+          // Construye el objeto attendee AL MISMO NIVEL (no dentro de attendance)
           const attendee = {
             email,
             name,
@@ -822,7 +835,7 @@ document.getElementById("inscription-form").addEventListener("submit", async fun
             // Añadir customID a attendee
             attendee.customID = cid;
 
-            // Crear session ES (desbloqueada)
+            // Crear session ES (desbloqueada) y obtener sessionId
             const sessionId = await upsertInscripcionES({ courseKey, dateStr: purchaseDate, attendee });
 
             // Crear doc en users con assignedEvaluations y assignedCoursesMeta
