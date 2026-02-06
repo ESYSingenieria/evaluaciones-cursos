@@ -215,7 +215,7 @@ async function processCheckout() {
     try {
         sessionStorage.removeItem("inscripcionConfirmada");
 
-        const response = await fetch("https://creartransaccionwebpay-wf5bhi5ova-uc.a.run.app", {
+        const response = await fetch("https://creartransaccionwebpay-wf5bhi5ova-uc.a.run.app/", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
